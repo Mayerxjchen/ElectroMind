@@ -5,32 +5,21 @@ from dataclasses import dataclass, field
 @dataclass
 class RunResult:
     content: str
-    tool_calls: list[dict] = field(default_factory=list)
+    tool_calls: list = field(default_factory=list)
     usage: object | None = None
 
     @property
-    def has_tool_calls(self) -> bool:
+    def has_tool_calls(self):
         return len(self.tool_calls) > 0
 
 
 class LLM:
-    """Stateless LLM client wrapper.
-
-    This class only forwards requests to the model inference service.
-    It does not persist or manage conversation history/session state.
-    The caller is responsible for storing and assembling message history.
-    """
+    """Stateless wrapper: forwards to the model; no history (caller builds ``messages``)."""
 
     API_KEY_ENV_VAR = "OPENAI_API_KEY"
     BASE_URL = "https://api.openai.com"
 
-    def __init__(
-        self,
-        model_id: str,
-        base_url: str | None = None,
-        apikey: str | None = None,
-        request_kwargs: dict | None = None,
-    ) -> None:
+    def __init__(self, model_id, base_url=None, apikey=None, request_kwargs=None):
         from openai import AsyncOpenAI
 
         resolved_base_url = (base_url or self.BASE_URL).strip()
@@ -42,13 +31,11 @@ class LLM:
         self.model_id = model_id
         self.request_kwargs = request_kwargs or {}
 
-    def get_api_key(self) -> str:
+    def get_api_key(self):
         return os.getenv(self.API_KEY_ENV_VAR)
 
-    async def invoke(
-        self, messages: list[dict], tools: list[dict] | None = None
-    ) -> RunResult:
-        kwargs: dict = {
+    async def invoke(self, messages, tools=None):
+        kwargs = {
             "model": self.model_id,
             "messages": messages,
             "stream": False,
@@ -63,7 +50,7 @@ class LLM:
         message = response.choices[0].message
 
         content = message.content or ""
-        tool_calls: list[dict] = []
+        tool_calls = []
         if message.tool_calls:
             for tool_call in message.tool_calls:
                 tool_calls.append(
@@ -78,27 +65,3 @@ class LLM:
                 )
 
         return RunResult(content=content, tool_calls=tool_calls, usage=response.usage)
-
-
-class DeepSeek(LLM):
-    API_KEY_ENV_VAR = "DEEPSEEK_API_KEY"
-    BASE_URL = "https://api.deepseek.com"
-
-    def __init__(self, model_id: str = "deepseek-chat", **kwargs) -> None:
-        super().__init__(model_id, **kwargs)
-
-
-class VllmModel(LLM):
-    API_KEY_ENV_VAR = "VLLM_API_KEY"
-    BASE_URL = "http://localhost:30000/v1"
-
-    def __init__(self, model_id: str = "Qwen/Qwen2.5-72B-Instruct", **kwargs) -> None:
-        super().__init__(model_id, **kwargs)
-
-
-class ChatAnywhereModel(LLM):
-    API_KEY_ENV_VAR = "CHAT_ANYWHERE_API_KEY"
-    BASE_URL = "https://api.chatanywhere.tech/v1"
-
-    def __init__(self, model_id: str = "Qwen/Qwen2.5-7B-Instruct", **kwargs) -> None:
-        super().__init__(model_id, **kwargs)

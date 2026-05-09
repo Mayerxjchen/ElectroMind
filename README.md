@@ -1,19 +1,19 @@
 # pagent
 
-Small **async** agent core built on OpenAI-compatible **Chat Completions** APIs:
+基于 **OpenAI 兼容 Chat Completions** 的轻量 **async** agent 核心：
 
-- `Session`: system / user / assistant / tool messages
-- `LLM`: stateless wrapper around `AsyncOpenAI` (+ optional backends: DeepSeek, vLLM, ChatAnywhere)
-- `@tool()` / `FunctionTool`: expose Python callables as function-calling schemas
-- `Agent`: multi-turn loop until the model stops calling tools or `max_turns` is exceeded
+- `Session`：对话缓冲 `messages`，用 `session += {...}` 追加消息，`reset()` 清空
+- `LLM`：对 `AsyncOpenAI` 的薄封装，只负责单次 `invoke`；历史由 `Session` 组装
+- `@tool()` / `FunctionTool`：把 Python 函数变成 function-calling 的 schema
+- `Agent`：多轮循环，直到模型不再调用工具或达到 `max_turns`
 
-## Install
+## 安装
 
 ```bash
 pip install pagent
 ```
 
-Or from a checkout:
+从源码目录：
 
 ```bash
 cd pagent
@@ -21,34 +21,129 @@ uv sync
 pip install -e .
 ```
 
-## Quick usage
+## 环境变量（API Key）
+
+默认 `LLM` 会读 **`OPENAI_API_KEY`**（与 OpenAI 官方一致）。
+
+在终端里（当前 shell 有效）：
+
+```bash
+export OPENAI_API_KEY="sk-..."   # macOS / Linux
+# Windows (cmd):  set OPENAI_API_KEY=sk-...
+# Windows (PowerShell): $env:OPENAI_API_KEY="sk-..."
+```
+
+长期生效可写进 `~/.zshrc` / `~/.bashrc`，或用 [direnv](https://direnv.net)、`.env` + 你自己的加载方式（本库不读 `.env` 文件）。
+
+若既没设置环境变量、调用时也没传 `apikey=`，请求会带着空 key 发出，一般会认证失败——请至少满足其一。
+
+## 完整示例：工具调用 + 查看用量
+
+下面假设已设置 `OPENAI_API_KEY`，模型名按你账号可用模型修改（示例用 `gpt-4o-mini`）。
+
+将以下内容保存为 `demo.py` 后执行：`python demo.py`。
 
 ```python
 import asyncio
-from pagent import Agent, DeepSeek, Session, tool
+import os
+
+from pagent import Agent, LLM, Session, tool
 
 
 @tool()
 def get_weather(city: str) -> str:
-    """Return a fake weather string.
+    """Return a short fake weather line for the city.
 
     Args:
-        city: City name.
+        city: City name in English or Chinese.
     """
-    return f"sunny in {city}"
+    return f"It's sunny in {city} today."
 
 
 async def main() -> None:
-    agent = Agent(
-        llm=DeepSeek(),
-        session=Session("You are a helpful assistant."),
-        tools=[get_weather],
-    )
-    out = await agent.run("What's the weather in Xiamen?")
-    print(out.content)
+    if not os.getenv("OPENAI_API_KEY"):
+        raise SystemExit("请先设置环境变量 OPENAI_API_KEY")
+
+    llm = LLM("gpt-4o-mini")
+    session = Session("You are a concise assistant. Use tools when needed.")
+    agent = Agent(llm=llm, session=session, tools=[get_weather], max_turns=8)
+
+    result = await agent.run("厦门今天天气怎样？用工具查。")
+    print("--- reply ---")
+    print(result.content)
+    print("--- stats ---")
+    print(agent.stats)
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
 ```
 
-Set the appropriate API key (`DEEPSEEK_API_KEY` for `DeepSeek`, or `OPENAI_API_KEY` for the base `LLM` class).
+`agent.stats` 上会累计 `turns`、token 用量等；`result` 为最后一轮模型返回（`result.usage` 等为该轮信息，具体以 SDK 为准）。
+
+## 接入自己的供应商（任意 OpenAI 兼容网关）
+
+思路：**同一个 `LLM` 类**，换 `base_url`、`model_id`，以及 key 的来源。
+
+### 方式一：显式传参（推荐，最直观）
+
+把网关文档里的 **Base URL**（通常带 `/v1`）、**模型 id**、**API Key** 填进去即可：
+
+```python
+import os
+
+from pagent import LLM
+
+llm = LLM(
+    "your-model-id-on-that-host",
+    base_url="https://your-gateway.example.com/v1",
+    apikey=os.environ["MY_LLM_API_KEY"],
+)
+```
+
+也可以继续用环境变量存 key，变量名你自己定，只要在代码里 `os.environ["..."]` 或 `os.getenv("...")` 读出来传给 `apikey` 即可。
+
+### 方式二：子类固定「自家」默认地址和 key 环境变量
+
+适合团队内封装：把 `BASE_URL`、`API_KEY_ENV_VAR` 写在子类上，`get_api_key()` 会自动读对应环境变量。
+
+```python
+import os
+
+from pagent import LLM
+
+
+class AcmeChat(LLM):
+    """示例：公司统一网关。"""
+
+    API_KEY_ENV_VAR = "ACME_LLM_API_KEY"
+    BASE_URL = "https://llm.acme.internal/v1"
+
+    def __init__(self, model_id="acme-default", **kwargs):
+        super().__init__(model_id, **kwargs)
+
+
+# 使用前: export ACME_LLM_API_KEY=...
+llm = AcmeChat("acme-default")
+```
+
+`kwargs` 仍可传 `base_url` / `apikey` / `request_kwargs`，用于临时覆盖默认（与基类 `LLM.__init__` 行为一致）。
+
+### `request_kwargs`：额外请求参数
+
+若网关要求温度、顶层 `extra_body` 等，可挂在构造函数的第四项：
+
+```python
+LLM(
+    "some-model",
+    base_url="https://.../v1",
+    apikey=os.environ["MY_KEY"],
+    request_kwargs={"temperature": 0.2},
+)
+```
+
+这些键会并入每次 `chat.completions.create(...)`（本库固定 `stream=False`）。
+
+---
+
+**说明**：只要对方实现的是 **OpenAI Chat Completions** 兼容接口（路径、字段与官方相近），上述方式即可；若对方 API 形状完全不同，需要在网关侧做适配，或自行改写 `LLM.invoke`，那已超出本库的默认假设。

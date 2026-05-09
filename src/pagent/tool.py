@@ -2,26 +2,20 @@ from __future__ import annotations
 
 import inspect
 import json
-from collections.abc import Callable
+from functools import reduce
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from docstring_parser import parse
 
 
 class FunctionTool:
-    def __init__(
-        self,
-        name: str,
-        description: str,
-        parameters: dict[str, Any],
-        func: Callable | None = None,
-    ) -> None:
+    def __init__(self, name, description, parameters, func=None):
         self.name = name
         self.description = description
         self.parameters = parameters
         self.func = func
 
-    def to_dict(self) -> dict[str, Any]:
+    def to_dict(self):
         return {
             "type": "function",
             "function": {
@@ -31,12 +25,12 @@ class FunctionTool:
             },
         }
 
-    def call(self, arguments: str | dict[str, Any] | None = None) -> str:
+    def call(self, arguments=None):
         if self.func is None:
             raise ValueError(f"tool {self.name} has no bound function")
 
         if arguments is None:
-            payload: dict[str, Any] = {}
+            payload = {}
         elif isinstance(arguments, str):
             if not arguments.strip():
                 payload = {}
@@ -51,7 +45,7 @@ class FunctionTool:
         return str(self.func(**payload))
 
 
-def unwrap_optional(type_hint: Any) -> tuple[bool, Any]:
+def unwrap_optional(type_hint):
     origin = get_origin(type_hint)
     if origin is Union:
         args = get_args(type_hint)
@@ -59,11 +53,11 @@ def unwrap_optional(type_hint: Any) -> tuple[bool, Any]:
             non_none_args = [arg for arg in args if arg is not type(None)]
             if len(non_none_args) == 1:
                 return True, non_none_args[0]
-            return True, Union[tuple(non_none_args)]
+            return True, reduce(lambda x, y: x | y, non_none_args)
     return False, type_hint
 
 
-def type_to_schema(type_hint: Any) -> dict[str, Any]:
+def type_to_schema(type_hint):
     origin = get_origin(type_hint)
     if origin is list:
         args = get_args(type_hint)
@@ -82,11 +76,7 @@ def type_to_schema(type_hint: Any) -> dict[str, Any]:
     return {"type": "string"}
 
 
-def extract_function_schema(
-    func: Any,
-    name_override: str | None = None,
-    description_override: str | None = None,
-) -> tuple[str, str | None, dict[str, Any]]:
+def extract_function_schema(func, name_override=None, description_override=None):
     func_name = name_override or func.__name__
     sig = inspect.signature(func)
     docstring = parse(func.__doc__ or "")
@@ -94,8 +84,8 @@ def extract_function_schema(
     param_docs = {param.arg_name: param.description for param in docstring.params}
     type_hints = get_type_hints(func)
 
-    properties: dict[str, Any] = {}
-    required: list[str] = []
+    properties = {}
+    required = []
     for param_name, param in sig.parameters.items():
         if param_name in ("self", "cls", "context"):
             continue
@@ -120,8 +110,8 @@ def extract_function_schema(
     return func_name, description, json_schema
 
 
-def tool(name: str | None = None, description: str | None = None):
-    def decorator(func: Callable) -> FunctionTool:
+def tool(name=None, description=None):
+    def decorator(func):
         func_name, func_description, parameters = extract_function_schema(
             func,
             name_override=name,
@@ -137,5 +127,5 @@ def tool(name: str | None = None, description: str | None = None):
     return decorator
 
 
-def to_openai_tools(tools: list[FunctionTool]) -> list[dict[str, Any]]:
+def to_openai_tools(tools):
     return [ft.to_dict() for ft in tools]
