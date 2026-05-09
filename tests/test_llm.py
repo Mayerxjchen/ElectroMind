@@ -2,7 +2,7 @@ import asyncio
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
-from pagent import LLM
+from pagent import LLM, DeepSeek, Ollama, Sglang, Vllm
 
 
 def make_llm(response):
@@ -100,3 +100,32 @@ def test_invoke_empty_choices():
     assert result.content == ""
     assert result.tool_calls == []
     assert result.usage is usage
+
+
+def test_deepseek_provider_defaults():
+    ds = DeepSeek(apikey="sk-test")
+    assert ds.model_id == "deepseek-v4-flash"
+    assert DeepSeek.API_KEY_ENV_VAR == "DEEPSEEK_API_KEY"
+    assert "deepseek.com" in ds.base_url
+
+
+def test_local_providers_default_base_urls():
+    om = Ollama("phi4")
+    assert om.model_id == "phi4"
+    assert ":11434" in om.base_url and om.apikey == "not-needed"
+
+    vv = Vllm("Meta-Llama-3-8B-Instruct")
+    assert ":8000" in vv.base_url and vv.apikey == "not-needed"
+
+    sg = Sglang("Qwen2.5-7B-Instruct")
+    assert ":30000" in sg.base_url and sg.apikey == "not-needed"
+
+
+def test_local_providers_respect_explicit_api_key():
+    assert Vllm("m", apikey="real").apikey == "real"
+
+
+def test_local_providers_optional_env_key(monkeypatch):
+    monkeypatch.setenv(Vllm.API_KEY_ENV_VAR, "vk")
+    v = Vllm("x")
+    assert v.apikey == "vk"

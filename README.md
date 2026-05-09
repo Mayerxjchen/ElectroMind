@@ -4,8 +4,11 @@
 
 - `Session`：对话缓冲 `messages`，用 `session += {...}` 追加消息，`reset()` 清空
 - `LLM`：对 `AsyncOpenAI` 的薄封装，只负责单次 `invoke`；历史由 `Session` 组装
+- `DeepSeek`：同上，接入 [DeepSeek 官方 OpenAI 兼容 API](https://api-docs.deepseek.com/zh-cn/)（详见下文）
+- `Ollama` / `Vllm` / `Sglang`：本地 OpenAI 兼容服务默认地址占位（`/v1`），见下文
 - `@tool()` / `FunctionTool`：把 Python 函数变成 function-calling 的 schema
 - `Agent`：多轮循环，直到模型不再调用工具或达到 `max_turns`
+- **内置工具**（`defaults`）：`clock`（UTC/本地 ISO）、`region`（本机 locale / 时区等线索，非 GPS）；`DEFAULT_TOOLS` 两者皆含，可按需删减
 
 ## 安装
 
@@ -23,7 +26,7 @@ pip install -e .
 
 ## 环境变量（API Key）
 
-默认 `LLM` 会读 **`OPENAI_API_KEY`**（与 OpenAI 官方一致）。
+默认 `LLM` 会读 **`OPENAI_API_KEY`**（与 OpenAI 官方一致）；用 **`DeepSeek()`** 时读 **`DEEPSEEK_API_KEY`**。
 
 在终端里（当前 shell 有效）：
 
@@ -36,6 +39,75 @@ export OPENAI_API_KEY="sk-..."   # macOS / Linux
 长期生效可写进 `~/.zshrc` / `~/.bashrc`，或用 [direnv](https://direnv.net)、`.env` + 你自己的加载方式（本库不读 `.env` 文件）。
 
 若既没设置环境变量、调用时也没传 `apikey=`，请求会带着空 key 发出，一般会认证失败——请至少满足其一。
+
+## DeepSeek
+
+以官方文档为准：[**DeepSeek API 文档**](https://api-docs.deepseek.com/zh-cn/)（OpenAI SDK 兼容）。
+
+| 项目 | 值 |
+|------|-----|
+| OpenAI SDK `base_url` | `https://api.deepseek.com`（与本库 `DeepSeek.BASE_URL` 一致） |
+| API Key | 在 [控制台](https://platform.deepseek.com/api_keys) 申请；本地可 `export DEEPSEEK_API_KEY=...` |
+| 常用模型（见文档「模型 & 价格」） | `deepseek-v4-flash`、`deepseek-v4-pro` 等 |
+| `deepseek-chat` / `deepseek-reasoner` | 官方说明将于 **2026/07/24** 弃用；兼容上分别对应 **`deepseek-v4-flash` 的非思考 / 思考** 用法，建议新代码直接用 v4 模型名 |
+
+示例（默认模型为 `deepseek-v4-flash`，可用第一个参数换掉）：
+
+```python
+from pagent import Agent, DeepSeek, Session, tool
+
+agent = Agent(
+    llm=DeepSeek(),  # 或 DeepSeek("deepseek-v4-pro")
+    session=Session(),
+    tools=[...],
+)
+```
+
+若要用文档里的 **思考模式** 等扩展字段，可通过 `request_kwargs` 传给 `chat.completions.create`（示例见官网「首次调用 API」——如 `reasoning_effort`、`extra_body` / `thinking` 等），例如：
+
+```python
+DeepSeek(
+    "deepseek-v4-pro",
+    request_kwargs={
+        "reasoning_effort": "high",
+        "extra_body": {"thinking": {"type": "enabled"}},
+    },
+)
+```
+
+具体参数名与是否必填以 [官方文档](https://api-docs.deepseek.com/zh-cn/) 当期说明为准。
+
+### 本地：Ollama、vLLM、SGLang
+
+三者若在本地提供 **OpenAI Chat Completions 兼容 HTTP API**（通常路径带 **`/v1`**），本库的 **`LLM`** 都可以通过 `base_url` + `model_id` 直接使用；我们为常见默认监听地址提供了薄封装：**`Ollama`**、**`Vllm`**、**`Sglang`**。
+
+| 类 | 默认 `base_url` | 备注 |
+|----|-----------------|------|
+| `Ollama` | `http://127.0.0.1:11434/v1` | 以 [Ollama OpenAI 兼容说明](https://github.com/ollama/ollama/blob/main/docs/openai.md) 为准；`model_id` = 与你本机 `ollama ls` / 拉取的名称一致 |
+| `Vllm` | `http://127.0.0.1:8000/v1` | 对应 vLLM 启动 OpenAI API server 的常见端口（以你 `--port` / 文档为准） |
+| `Sglang` | `http://127.0.0.1:30000/v1` | 常见于 SGLang router 示例端口，**请按当前启动命令与官方文档校对** |
+
+这些服务多数 **不需要真实 API Key**；`AsyncOpenAI` 往往需要非空字符串，因此未设置环境变量、也未传 `apikey=` 时，我们会填入占位符 **`not-needed`**。你若在服务端配置了鉴权，请设置对应环境变量或传入 `apikey=`：
+
+- `Ollama` → `OLLAMA_API_KEY`（若你使用自定义网关代理）
+- `Vllm` → `VLLM_API_KEY`
+- `Sglang` → `SGLANG_API_KEY`
+
+示例：
+
+```python
+from pagent import Agent, Ollama, Session, tool
+
+agent = Agent(
+    llm=Ollama("llama3.2"),
+    session=Session(),
+    tools=[...],
+)
+```
+
+另一台机器或换端口：**`base_url`** 可随时覆盖默认值，例如 `Ollama("mistral-small3.3", base_url="http://192.168.1.5:11434/v1")`。
+
+工具调用能否稳定工作取决于 **服务端与具体模型对 function calling 的实现**；遇到问题请先在对应引擎文档里核对是否支持 `/v1/chat/completions` 与 tools 字段。
 
 ## 完整示例：工具调用 + 查看用量
 

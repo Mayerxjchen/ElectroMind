@@ -1,6 +1,6 @@
 import pytest
 
-from pagent import FunctionTool, tool, to_openai_tools
+from pagent import FunctionTool, to_openai_tools, tool
 
 
 @tool()
