@@ -144,6 +144,23 @@ LLM(
 
 这些键会并入每次 `chat.completions.create(...)`（本库固定 `stream=False`）。
 
+## 维护者：GitHub 自动发布到 PyPI
+
+仓库带 [`.github/workflows/publish.yml`](.github/workflows/publish.yml)：每次在 GitHub 上 **Release → Publish a release**（正式发布，不是 draft）时，CI 会 `uv build` 并上传到 PyPI。
+
+**一次性配置（推荐 [Trusted Publishing](https://docs.pypi.org/trusted-publishers/)，无需把 token 写进 GitHub Secrets）：**
+
+1. 在 [PyPI](https://pypi.org/) 上确保已有项目 `pagent`（首次可用手动 `uv publish` 建项目，或在项目设置里按 PyPI 说明添加 pending publisher）。
+2. 打开该项目的 **Manage → Settings → Publishing**，添加 **Trusted Publisher**：
+   - Provider：**GitHub**
+   - Owner / Repository：你的 `用户名/pagent`
+   - Workflow name：`publish.yml`
+   - **Environment** 留空（与当前 workflow 一致；若你在 PyPI 填了 environment，则须在 GitHub 仓库里建同名 [Environment](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions#jobsjob_idenvironment)，并在 workflow 里写 `environment: 名字`）。
+3. 发版前把 `pyproject.toml` 里的 **`version`** 改成新版本，合并到默认分支。
+4. 在 GitHub 上 **新建 tag**（例如 `v0.1.1`）并 **Create release**；发布完成后等几分钟再查 [pypi.org/project/pagent](https://pypi.org/project/pagent/)。
+
+若暂不想配 OIDC，仍可在本机用 **API token** + `uv publish`。
+
 ---
 
 **说明**：只要对方实现的是 **OpenAI Chat Completions** 兼容接口（路径、字段与官方相近），上述方式即可；若对方 API 形状完全不同，需要在网关侧做适配，或自行改写 `LLM.invoke`，那已超出本库的默认假设。

@@ -47,21 +47,21 @@ class LLM:
         response = await self.client.chat.completions.create(**kwargs)
         if not response.choices:
             return RunResult(content="", tool_calls=[], usage=response.usage)
+
         message = response.choices[0].message
-
         content = message.content or ""
-        tool_calls = []
-        if message.tool_calls:
-            for tool_call in message.tool_calls:
-                tool_calls.append(
-                    {
-                        "id": tool_call.id,
-                        "type": tool_call.type,
-                        "function": {
-                            "name": tool_call.function.name,
-                            "arguments": tool_call.function.arguments,
-                        },
-                    }
-                )
+        if not message.tool_calls:
+            return RunResult(content=content, tool_calls=[], usage=response.usage)
 
+        tool_calls = [
+            {
+                "id": tc.id,
+                "type": tc.type,
+                "function": {
+                    "name": tc.function.name,
+                    "arguments": tc.function.arguments,
+                },
+            }
+            for tc in message.tool_calls
+        ]
         return RunResult(content=content, tool_calls=tool_calls, usage=response.usage)

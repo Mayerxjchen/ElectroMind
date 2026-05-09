@@ -30,31 +30,34 @@ class FunctionTool:
             raise ValueError(f"tool {self.name} has no bound function")
 
         if arguments is None:
-            payload = {}
-        elif isinstance(arguments, str):
-            if not arguments.strip():
-                payload = {}
-            else:
-                try:
-                    payload = json.loads(arguments)
-                except json.JSONDecodeError as e:
-                    return f"Invalid JSON in tool arguments: {e}"
-        else:
-            payload = arguments
+            return str(self.func(**{}))
 
-        return str(self.func(**payload))
+        if isinstance(arguments, str):
+            stripped = arguments.strip()
+            if not stripped:
+                return str(self.func(**{}))
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError as e:
+                return f"Invalid JSON in tool arguments: {e}"
+            return str(self.func(**payload))
+
+        return str(self.func(**arguments))
 
 
 def unwrap_optional(type_hint):
     origin = get_origin(type_hint)
-    if origin is Union:
-        args = get_args(type_hint)
-        if type(None) in args:
-            non_none_args = [arg for arg in args if arg is not type(None)]
-            if len(non_none_args) == 1:
-                return True, non_none_args[0]
-            return True, reduce(lambda x, y: x | y, non_none_args)
-    return False, type_hint
+    if origin is not Union:
+        return False, type_hint
+
+    args = get_args(type_hint)
+    if type(None) not in args:
+        return False, type_hint
+
+    non_none_args = [arg for arg in args if arg is not type(None)]
+    if len(non_none_args) == 1:
+        return True, non_none_args[0]
+    return True, reduce(lambda x, y: x | y, non_none_args)
 
 
 def type_to_schema(type_hint):

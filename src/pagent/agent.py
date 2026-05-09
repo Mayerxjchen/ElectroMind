@@ -47,18 +47,14 @@ class Agent:
             function_call = tool_call["function"]
             name = function_call["name"]
             tc = self.tool_map.get(name)
-            if tc is None:
-                self.session += {
-                    "role": "tool",
-                    "content": f"error: unknown tool {name!r}; available: {sorted(self.tool_map)}",
-                    "tool_call_id": tool_call["id"],
-                }
-                continue
-            tool_result = tc.call(function_call["arguments"])
             self.session += {
                 "role": "tool",
-                "content": tool_result,
                 "tool_call_id": tool_call["id"],
+                "content": (
+                    f"error: unknown tool {name!r}; available: {sorted(self.tool_map)}"
+                    if tc is None
+                    else tc.call(function_call["arguments"])
+                ),
             }
 
     def reset(self):
@@ -73,14 +69,15 @@ class Agent:
             result = await self.llm.invoke(
                 self.session.messages, tools=self.tool_schemas
             )
-            if result.tool_calls:
-                self.session += {
+            self.session += (
+                {
                     "role": "assistant",
                     "content": result.content or None,
                     "tool_calls": result.tool_calls,
                 }
-            else:
-                self.session += {"role": "assistant", "content": result.content}
+                if result.tool_calls
+                else {"role": "assistant", "content": result.content}
+            )
             self.stats.add_usage(result.usage)
 
             if not result.has_tool_calls:
