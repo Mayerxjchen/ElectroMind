@@ -14,7 +14,7 @@ class RunResult:
 
 
 class LLM:
-    """Stateless wrapper: forwards to the model; no history (caller builds ``messages``)."""
+    """Stateless wrapper: forwards to the model; no history (caller builds messages)."""
 
     API_KEY_ENV_VAR = "OPENAI_API_KEY"
     BASE_URL = "https://api.openai.com"
@@ -68,19 +68,19 @@ class LLM:
 
 
 def _dummy_openai_sdk_key(existing):
-    """OpenAI client often rejects an empty api_key; local servers rarely need a real secret."""
+    """OpenAI client often rejects empty api_key; local servers may not require a real key."""
     if existing is not None and str(existing).strip():
         return existing.strip()
     return "not-needed"
 
 
 class Ollama(LLM):
-    """本地 `Ollama` 的 OpenAI 兼容路由（`/v1`）。
+    """Local Ollama OpenAI-compatible endpoint (usually /v1).
 
-    见：<https://github.com/ollama/ollama/blob/main/docs/openai.md>
-
-    ``model_id`` 需与你在本机 `ollama run` / `ollama pull` 的名称一致；
-    ``OLLAMA_API_KEY`` 可选用（若无则占位 key）。"""
+    Docs: <https://github.com/ollama/ollama/blob/main/docs/openai.md>
+    model_id should match what you use with ollama run / ollama pull.
+    OLLAMA_API_KEY is optional (dummy key is used when missing).
+    """
 
     API_KEY_ENV_VAR = "OLLAMA_API_KEY"
     BASE_URL = "http://127.0.0.1:11434/v1"
@@ -96,10 +96,11 @@ class Ollama(LLM):
 
 
 class Vllm(LLM):
-    """vLLM `--api-server` OpenAI Chat Completions 兼容入口（默认 `:8000/v1`）。
+    """vLLM OpenAI Chat Completions endpoint (default :8000/v1).
 
-    端口与 `--host` / `--model` 以你进程为准；
-    ``VLLM_API_KEY``（或显式 ``apikey=``），无则占位。"""
+    Port/host/model depend on your launch flags.
+    VLLM_API_KEY (or explicit apikey=) is optional; dummy is used if missing.
+    """
 
     API_KEY_ENV_VAR = "VLLM_API_KEY"
     BASE_URL = "http://127.0.0.1:8000/v1"
@@ -115,10 +116,11 @@ class Vllm(LLM):
 
 
 class Sglang(LLM):
-    """SGLang OpenAI-compatible HTTP server（常见 ``:30000/v1``）。
+    """SGLang OpenAI-compatible endpoint (common :30000/v1).
 
-    启动端口以官方文档 `/sgl-workspace/router` 等说明为准；
-    ``SGLANG_API_KEY``（或 ``apikey=``），无则占位。"""
+    Use your actual router/server port from your launch command.
+    SGLANG_API_KEY (or apikey=) is optional; dummy is used if missing.
+    """
 
     API_KEY_ENV_VAR = "SGLANG_API_KEY"
     BASE_URL = "http://127.0.0.1:30000/v1"
@@ -134,11 +136,10 @@ class Sglang(LLM):
 
 
 class DeepSeek(LLM):
-    """DeepSeek（OpenAI 兼容 Chat Completions）。
+    """DeepSeek OpenAI-compatible Chat Completions provider.
 
-    官方说明：<https://api-docs.deepseek.com/zh-cn/>
-
-    Key：环境变量 ``DEEPSEEK_API_KEY``，或在平台申请：https://platform.deepseek.com/api_keys
+    Docs: <https://api-docs.deepseek.com/zh-cn/>
+    API key: DEEPSEEK_API_KEY or <https://platform.deepseek.com/api_keys>
     """
 
     API_KEY_ENV_VAR = "DEEPSEEK_API_KEY"

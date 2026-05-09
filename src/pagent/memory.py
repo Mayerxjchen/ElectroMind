@@ -1,8 +1,9 @@
-"""实验性模块，暂未纳入 pagent 包的主干公开 API。
+"""Experimental module, not part of the stable top-level public API.
 
-不要使用 ``from pagent import Memory``（包根未导出）。
-需要时：`from pagent.memory import Memory`。
-接口可能在后续版本中调整或移除。"""
+Avoid ``from pagent import Memory`` (it is intentionally not exported there).
+Use ``from pagent.memory import Memory`` when needed.
+The interface may change or be removed in future versions.
+"""
 
 import json
 
