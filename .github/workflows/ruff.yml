@@ -5,20 +5,23 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@v8
         with:
           version: "latest"
 
       - name: Sync dev deps, Ruff & pytest
         run: |
-          uv sync --group dev --frozen
+          uv sync --group dev --extra search --frozen
           uv run ruff check .
           uv run ruff format --check .
           uv run pytest tests/ -q

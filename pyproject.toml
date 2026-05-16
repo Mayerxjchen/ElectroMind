@@ -12,6 +12,9 @@ dependencies = [
     "openai>=2.31.0",
 ]
 
+[project.optional-dependencies]
+search = ["ddgs>=7"]
+
 [build-system]
 requires = ["uv_build>=0.8.20,<0.9.0"]
 build-backend = "uv_build"

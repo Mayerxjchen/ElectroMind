@@ -49,6 +49,48 @@ def region() -> str:
     return "; ".join(bits)
 
 
+@tool()
+def web_search(query: str, max_results: int = 5) -> str:
+    """Search the web and return numbered title/link/snippet lines.
+
+    Args:
+        query: Search keywords.
+        max_results: Maximum number of results (1-10).
+    """
+    try:
+        from ddgs import DDGS
+    except ImportError:
+        return (
+            "web_search error: missing dependency; "
+            "install with pip install 'pagent[search]' (or pip install ddgs)"
+        )
+
+    q = query.strip()
+    if not q:
+        return "web_search error: empty query"
+
+    n = max(1, min(int(max_results), 10))
+    try:
+        rows = list(DDGS().text(q, max_results=n))
+    except Exception as e:
+        return f"web_search error: {e}"
+
+    if not rows:
+        return "No results found."
+
+    lines = []
+    for i, row in enumerate(rows, start=1):
+        title = str(row.get("title", "")).strip() or "(no title)"
+        href = str(row.get("href", row.get("link", ""))).strip()
+        body = str(row.get("body", row.get("snippet", ""))).strip()
+        lines.append(f"{i}. {title}")
+        if href:
+            lines.append(f"   {href}")
+        if body:
+            lines.append(f"   {body}")
+    return "\n".join(lines)
+
+
 DEFAULT_TOOLS = [
     clock,
     region,
