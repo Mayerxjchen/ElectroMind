@@ -117,6 +117,23 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
+## 终端流式小助手
+
+仓库提供了一个最小 CLI 示例：`examples/cli.py`。
+
+```bash
+python examples/cli.py
+```
+
+支持命令：
+
+- `/help` 查看命令
+- `/reset` 清空会话历史
+- `/stats` 查看当前 token/turn 统计
+- `/exit` 退出
+
+需要先设置 `DEEPSEEK_API_KEY`。
+
 内置搜索（需 `pagent[search]`）：
 
 ```python

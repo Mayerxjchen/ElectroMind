@@ -16,6 +16,18 @@ def make_llm(response):
     return llm, create
 
 
+class FakeAsyncStream:
+    def __init__(self, items):
+        self._items = list(items)
+
+    def __aiter__(self):
+        async def iterator():
+            for item in self._items:
+                yield item
+
+        return iterator()
+
+
 def test_invoke_returns_content_and_usage():
     usage = SimpleNamespace(prompt_tokens=3, completion_tokens=5, total_tokens=8)
     response = SimpleNamespace(
@@ -100,6 +112,47 @@ def test_invoke_empty_choices():
     assert result.content == ""
     assert result.tool_calls == []
     assert result.usage is usage
+
+
+def test_invoke_keeps_reasoning_content():
+    response = SimpleNamespace(
+        choices=[
+            SimpleNamespace(
+                message=SimpleNamespace(
+                    content="answer",
+                    tool_calls=None,
+                    reasoning_content="hidden chain",
+                )
+            )
+        ],
+        usage=None,
+    )
+    llm, _ = make_llm(response)
+    result = asyncio.run(llm.invoke([{"role": "user", "content": "hi"}]))
+    assert result.content == "answer"
+    assert result.reasoning_content == "hidden chain"
+
+
+def test_invoke_stream_yields_chunks():
+    chunks = [
+        SimpleNamespace(id="c1"),
+        SimpleNamespace(id="c2"),
+    ]
+    llm, create = make_llm(FakeAsyncStream(chunks))
+
+    async def collect():
+        out = []
+        async for chunk in llm.invoke_stream([{"role": "user", "content": "hi"}]):
+            out.append(chunk)
+        return out
+
+    out = asyncio.run(collect())
+    assert out == chunks
+    assert create.await_args.kwargs == {
+        "model": "test-model",
+        "messages": [{"role": "user", "content": "hi"}],
+        "stream": True,
+    }
 
 
 def test_deepseek_provider_defaults():

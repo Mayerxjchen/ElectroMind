@@ -1,4 +1,5 @@
 import os
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 
@@ -6,6 +7,7 @@ from dataclasses import dataclass, field
 class RunResult:
     content: str
     tool_calls: list = field(default_factory=list)
+    reasoning_content: str = ""
     usage: object | None = None
 
     @property
@@ -50,8 +52,14 @@ class LLM:
 
         message = response.choices[0].message
         content = message.content or ""
+        reasoning_content = getattr(message, "reasoning_content", None) or ""
         if not message.tool_calls:
-            return RunResult(content=content, tool_calls=[], usage=response.usage)
+            return RunResult(
+                content=content,
+                tool_calls=[],
+                reasoning_content=reasoning_content,
+                usage=response.usage,
+            )
 
         tool_calls = [
             {
@@ -64,7 +72,26 @@ class LLM:
             }
             for tc in message.tool_calls
         ]
-        return RunResult(content=content, tool_calls=tool_calls, usage=response.usage)
+        return RunResult(
+            content=content,
+            tool_calls=tool_calls,
+            reasoning_content=reasoning_content,
+            usage=response.usage,
+        )
+
+    async def invoke_stream(self, messages, tools=None) -> AsyncIterator:
+        kwargs = {
+            "model": self.model_id,
+            "messages": messages,
+            "stream": True,
+            **self.request_kwargs,
+        }
+        if tools:
+            kwargs["tools"] = tools
+
+        stream = await self.client.chat.completions.create(**kwargs)
+        async for chunk in stream:
+            yield chunk
 
 
 def _dummy_openai_sdk_key(existing):

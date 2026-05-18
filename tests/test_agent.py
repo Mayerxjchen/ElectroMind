@@ -1,4 +1,5 @@
 import asyncio
+from types import SimpleNamespace
 
 import pytest
 
@@ -23,6 +24,23 @@ class FakeLLM:
     async def invoke(self, messages, tools=None):
         self.invoke_calls.append((list(messages), tools))
         return self._results.pop(0)
+
+
+class FakeStreamLLM:
+    def __init__(self, turns):
+        self._turns = [list(chunks) for chunks in turns]
+        self.invoke_stream_calls = []
+
+    async def invoke_stream(self, messages, tools=None):
+        self.invoke_stream_calls.append((list(messages), tools))
+        chunks = self._turns.pop(0)
+        for chunk in chunks:
+            yield chunk
+
+
+def make_chunk(content=None, tool_calls=None, usage=None):
+    delta = SimpleNamespace(content=content, tool_calls=tool_calls)
+    return SimpleNamespace(choices=[SimpleNamespace(delta=delta)], usage=usage)
 
 
 def test_agent_rejects_duplicate_tool_names():
@@ -90,3 +108,76 @@ def test_agent_unknown_tool():
     out = asyncio.run(agent.run("x"))
     assert out.content == "sorry"
     assert "unknown tool" in llm.invoke_calls[1][0][-1]["content"]
+
+
+def test_agent_keeps_reasoning_content_in_session():
+    llm = FakeLLM([RunResult(content="ok", reasoning_content="think", tool_calls=[])])
+    session = Session("")
+    agent = Agent(llm, session, tools=[], max_turns=2)
+    out = asyncio.run(agent.run("hello"))
+    assert out.content == "ok"
+    assert session.messages[-1]["reasoning_content"] == "think"
+
+
+def test_agent_arun_stream_plain_text():
+    llm = FakeStreamLLM(
+        [
+            [
+                make_chunk(content="he"),
+                make_chunk(content="llo"),
+            ]
+        ]
+    )
+    agent = Agent(llm, Session(""), tools=[], max_turns=2)
+
+    async def collect():
+        out = []
+        async for token in agent.arun("say hello"):
+            out.append(token)
+        return out
+
+    tokens = asyncio.run(collect())
+    assert tokens == ["he", "llo"]
+    assert agent.session.messages[-1] == {"role": "assistant", "content": "hello"}
+    assert agent.stats.turns == 1
+
+
+def test_agent_arun_stream_with_tool_call():
+    tc_1 = SimpleNamespace(
+        index=0,
+        id="c1",
+        type="function",
+        function=SimpleNamespace(name="echo", arguments='{"msg":"'),
+    )
+    tc_2 = SimpleNamespace(
+        index=0,
+        id=None,
+        type=None,
+        function=SimpleNamespace(name=None, arguments='hi"}'),
+    )
+    llm = FakeStreamLLM(
+        [
+            [
+                make_chunk(tool_calls=[tc_1]),
+                make_chunk(tool_calls=[tc_2]),
+            ],
+            [
+                make_chunk(content="done"),
+            ],
+        ]
+    )
+    session = Session("")
+    agent = Agent(llm, session, tools=[echo], max_turns=4)
+
+    async def collect():
+        out = []
+        async for token in agent.arun("go"):
+            out.append(token)
+        return out
+
+    tokens = asyncio.run(collect())
+    assert tokens == ["done"]
+    tool_msgs = [m for m in session.messages if m["role"] == "tool"]
+    assert len(tool_msgs) == 1
+    assert tool_msgs[0]["content"] == "echo:hi"
+    assert agent.stats.turns == 2
