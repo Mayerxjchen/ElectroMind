@@ -71,14 +71,14 @@ class Agent:
             message["reasoning_content"] = result.reasoning_content
         return message
 
-    async def _invoke_stream_once(self) -> AsyncIterator[str]:
+    async def _invoke_stream_once(self, **run_kwargs) -> AsyncIterator[str]:
         content_parts = []
         reasoning_content_parts = []
         tool_calls_by_idx = {}
         usage = None
 
         async for chunk in self.llm.invoke_stream(
-            self.session.messages, tools=self.tool_schemas
+            self.session.messages, tools=self.tool_schemas, **run_kwargs,
         ):
             usage = getattr(chunk, "usage", usage)
             choices = getattr(chunk, "choices", None) or []
@@ -140,13 +140,13 @@ class Agent:
         if result.has_tool_calls:
             self._execute_tool_calls(result.tool_calls)
 
-    async def run(self, user_input):
+    async def run(self, user_input, **run_kwargs):
         self.session += {"role": "user", "content": user_input}
         result = RunResult(content="")
 
         for _ in range(self.max_turns):
             result = await self.llm.invoke(
-                self.session.messages, tools=self.tool_schemas
+                self.session.messages, tools=self.tool_schemas, **run_kwargs,
             )
             self.session += self._assistant_message(result)
             self.stats.add_usage(result.usage)
@@ -158,11 +158,11 @@ class Agent:
 
         return result
 
-    async def arun(self, user_input):
+    async def arun(self, user_input, **run_kwargs):
         self.session += {"role": "user", "content": user_input}
         for _ in range(self.max_turns):
             turn_start = len(self.session.messages)
-            async for content in self._invoke_stream_once():
+            async for content in self._invoke_stream_once(**run_kwargs):
                 yield content
 
             if turn_start >= len(self.session.messages):

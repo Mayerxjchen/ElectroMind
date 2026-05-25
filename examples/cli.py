@@ -12,10 +12,12 @@ RED = "\033[31m"
 SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 HELP_TEXT = """Commands:
-  /help   show this help
-  /reset  clear session history
-  /stats  show current stats
-  /exit   quit
+  /help          show this help
+  /reset         clear session history
+  /stats         show current stats
+  /effort        show current reasoning_effort
+  /effort <val>  set reasoning_effort (e.g. low, medium, high, 0.5, none to clear)
+  /exit          quit
 """
 
 
@@ -45,6 +47,8 @@ async def main():
     print(f"{CYAN}pagent CLI (streaming){RESET}")
     print(f"{YELLOW}Type /help for commands.{RESET}")
 
+    run_kwargs = {}
+
     while True:
         try:
             user_input = input(f"\n{GREEN}You>{RESET} ").strip()
@@ -67,13 +71,29 @@ async def main():
         if user_input == "/stats":
             print(f"{CYAN}{agent.stats}{RESET}")
             continue
+        if user_input.startswith("/effort"):
+            parts = user_input.split(None, 1)
+            if len(parts) == 1:
+                val = run_kwargs.get("reasoning_effort")
+                print(f"{CYAN}reasoning_effort = {val!r}{RESET}")
+            elif parts[1].strip().lower() == "none":
+                run_kwargs.pop("reasoning_effort", None)
+                print(f"{YELLOW}reasoning_effort cleared{RESET}")
+            else:
+                raw = parts[1].strip()
+                try:
+                    run_kwargs["reasoning_effort"] = float(raw)
+                except ValueError:
+                    run_kwargs["reasoning_effort"] = raw
+                print(f"{CYAN}reasoning_effort = {run_kwargs['reasoning_effort']!r}{RESET}")
+            continue
 
         prefix = f"{CYAN}Assistant>{RESET}"
         stop_spinner = asyncio.Event()
         spinner_task = asyncio.create_task(spinner(prefix, stop_spinner))
         try:
             has_token = False
-            async for token in agent.arun(user_input):
+            async for token in agent.arun(user_input, **run_kwargs):
                 if not has_token:
                     stop_spinner.set()
                     await spinner_task

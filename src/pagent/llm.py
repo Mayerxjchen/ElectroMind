@@ -20,6 +20,8 @@ class LLM:
 
     API_KEY_ENV_VAR = "OPENAI_API_KEY"
     BASE_URL = "https://api.openai.com"
+    # Keys managed by LLM itself — callers must not override these via run_kwargs.
+    RESERVED_KEYS = frozenset({"model", "messages", "stream", "tools"})
 
     def __init__(self, model_id, base_url=None, apikey=None, request_kwargs=None):
         from openai import AsyncOpenAI
@@ -36,12 +38,14 @@ class LLM:
     def get_api_key(self):
         return os.getenv(self.API_KEY_ENV_VAR)
 
-    async def invoke(self, messages, tools=None):
+    async def invoke(self, messages, tools=None, **run_kwargs):
+        check_run_kwargs(run_kwargs)
         kwargs = {
             "model": self.model_id,
             "messages": messages,
             "stream": False,
             **self.request_kwargs,
+            **run_kwargs,
         }
         if tools:
             kwargs["tools"] = tools
@@ -79,12 +83,14 @@ class LLM:
             usage=response.usage,
         )
 
-    async def invoke_stream(self, messages, tools=None) -> AsyncIterator:
+    async def invoke_stream(self, messages, tools=None, **run_kwargs) -> AsyncIterator:
+        check_run_kwargs(run_kwargs)
         kwargs = {
             "model": self.model_id,
             "messages": messages,
             "stream": True,
             **self.request_kwargs,
+            **run_kwargs,
         }
         if tools:
             kwargs["tools"] = tools
@@ -92,6 +98,16 @@ class LLM:
         stream = await self.client.chat.completions.create(**kwargs)
         async for chunk in stream:
             yield chunk
+
+
+def check_run_kwargs(kwargs):
+    """Raise TypeError if caller tries to override keys managed by the LLM layer."""
+    reserved = kwargs.keys() & LLM.RESERVED_KEYS
+    if reserved:
+        raise TypeError(
+            f"run_kwargs must not include {sorted(reserved)}; "
+            f"reserved keys: {sorted(LLM.RESERVED_KEYS)}"
+        )
 
 
 def _dummy_openai_sdk_key(existing):

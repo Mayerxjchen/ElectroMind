@@ -21,8 +21,8 @@ class FakeLLM:
         self._results = list(results)
         self.invoke_calls = []
 
-    async def invoke(self, messages, tools=None):
-        self.invoke_calls.append((list(messages), tools))
+    async def invoke(self, messages, tools=None, **run_kwargs):
+        self.invoke_calls.append((list(messages), tools, run_kwargs))
         return self._results.pop(0)
 
 
@@ -31,15 +31,15 @@ class FakeStreamLLM:
         self._turns = [list(chunks) for chunks in turns]
         self.invoke_stream_calls = []
 
-    async def invoke_stream(self, messages, tools=None):
-        self.invoke_stream_calls.append((list(messages), tools))
+    async def invoke_stream(self, messages, tools=None, **run_kwargs):
+        self.invoke_stream_calls.append((list(messages), tools, run_kwargs))
         chunks = self._turns.pop(0)
         for chunk in chunks:
             yield chunk
 
 
-def make_chunk(content=None, tool_calls=None, usage=None):
-    delta = SimpleNamespace(content=content, tool_calls=tool_calls)
+def make_chunk(content=None, tool_calls=None, usage=None, reasoning_content=None):
+    delta = SimpleNamespace(content=content, tool_calls=tool_calls, reasoning_content=reasoning_content)
     return SimpleNamespace(choices=[SimpleNamespace(delta=delta)], usage=usage)
 
 
@@ -65,9 +65,10 @@ def test_agent_single_turn_no_tools():
     out = asyncio.run(agent.run("hello"))
     assert out.content == "ok"
     assert agent.stats.turns == 1
-    first_msgs = llm.invoke_calls[0][0]
+    first_msgs, first_tools, first_kwargs = llm.invoke_calls[0]
     assert first_msgs[-1]["role"] == "user"
     assert first_msgs[0]["role"] == "system"
+    assert first_kwargs == {}
 
 
 def test_agent_tool_round_trip():
@@ -181,3 +182,99 @@ def test_agent_arun_stream_with_tool_call():
     assert len(tool_msgs) == 1
     assert tool_msgs[0]["content"] == "echo:hi"
     assert agent.stats.turns == 2
+
+
+def test_agent_deepseek_v4_pro_reasoning():
+    """Simulate deepseek-v4-pro: returns reasoning_content then final answer."""
+    reasoning = (
+        "Let me think about this step by step.\n"
+        "1. The user asks a simple math question: 2 + 3.\n"
+        "2. 2 + 3 = 5.\n"
+        "3. The answer is 5."
+    )
+    llm = FakeLLM([
+        RunResult(content="2 + 3 = 5", reasoning_content=reasoning, tool_calls=[])
+    ])
+    session = Session("You are a helpful assistant.")
+    agent = Agent(llm, session, tools=[], max_turns=2)
+    out = asyncio.run(agent.run("2 + 3 = ?"))
+    assert out.content == "2 + 3 = 5"
+    assert out.reasoning_content == reasoning
+    assistant_msg = session.messages[-1]
+    assert assistant_msg["role"] == "assistant"
+    assert assistant_msg["reasoning_content"] == reasoning
+    assert assistant_msg["content"] == "2 + 3 = 5"
+
+
+def test_agent_arun_stream_deepseek_v4_pro_reasoning():
+    """Simulate deepseek-v4-pro streaming: reasoning chunks arrive first, then content."""
+    llm = FakeStreamLLM([
+        [
+            make_chunk(reasoning_content="Let me think... "),
+            make_chunk(reasoning_content="2 + 3 = 5. "),
+            make_chunk(reasoning_content="So the answer is 5."),
+            make_chunk(content="2 + 3 = 5"),
+        ]
+    ])
+    agent = Agent(llm, Session(""), tools=[], max_turns=2)
+
+    async def collect():
+        out = []
+        async for token in agent.arun("2 + 3 = ?"):
+            out.append(token)
+        return out
+
+    tokens = asyncio.run(collect())
+    assert tokens == ["2 + 3 = 5"]
+    assistant_msg = agent.session.messages[-1]
+    assert assistant_msg["role"] == "assistant"
+    assert assistant_msg["content"] == "2 + 3 = 5"
+    assert (
+        assistant_msg["reasoning_content"]
+        == "Let me think... 2 + 3 = 5. So the answer is 5."
+    )
+
+
+def test_agent_run_passes_reasoning_effort():
+    llm = FakeLLM([RunResult(content="ok", tool_calls=[])])
+    agent = Agent(llm, Session(""), tools=[], max_turns=2)
+    out = asyncio.run(agent.run("hello", reasoning_effort="low"))
+    assert out.content == "ok"
+    assert llm.invoke_calls[0][2] == {"reasoning_effort": "low"}
+
+
+def test_agent_run_without_run_kwargs_is_empty():
+    llm = FakeLLM([RunResult(content="ok", tool_calls=[])])
+    agent = Agent(llm, Session(""), tools=[], max_turns=2)
+    asyncio.run(agent.run("hello"))
+    assert llm.invoke_calls[0][2] == {}
+
+
+def test_agent_arun_passes_run_kwargs():
+    llm = FakeStreamLLM([[make_chunk(content="ok")]])
+    agent = Agent(llm, Session(""), tools=[], max_turns=2)
+
+    async def collect():
+        out = []
+        async for token in agent.arun("hello", reasoning_effort=0.5, temperature=0.7):
+            out.append(token)
+        return out
+
+    asyncio.run(collect())
+    assert llm.invoke_stream_calls[0][2] == {"reasoning_effort": 0.5, "temperature": 0.7}
+
+
+def test_llm_rejects_reserved_run_kwargs():
+    from pagent.llm import check_run_kwargs
+
+    with pytest.raises(TypeError, match="reserved"):
+        check_run_kwargs({"model": "hacked"})
+
+    with pytest.raises(TypeError, match="reserved"):
+        check_run_kwargs({"stream": True})
+
+    with pytest.raises(TypeError, match="reserved"):
+        check_run_kwargs({"reasoning_effort": "low", "messages": []})
+
+    # non-reserved keys pass silently
+    check_run_kwargs({"reasoning_effort": "low", "temperature": 0.5})
