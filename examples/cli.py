@@ -85,7 +85,9 @@ async def main():
                     run_kwargs["reasoning_effort"] = float(raw)
                 except ValueError:
                     run_kwargs["reasoning_effort"] = raw
-                print(f"{CYAN}reasoning_effort = {run_kwargs['reasoning_effort']!r}{RESET}")
+                print(
+                    f"{CYAN}reasoning_effort = {run_kwargs['reasoning_effort']!r}{RESET}"
+                )
             continue
 
         prefix = f"{CYAN}Assistant>{RESET}"
@@ -103,7 +105,9 @@ async def main():
             stop_spinner.set()
             await spinner_task
             if not has_token:
-                last_message = agent.session.messages[-1] if agent.session.messages else {}
+                last_message = (
+                    agent.session.messages[-1] if agent.session.messages else {}
+                )
                 print(f"{prefix} ", end="", flush=True)
                 if last_message.get("role") == "assistant" and last_message.get(
                     "tool_calls"

@@ -39,7 +39,9 @@ class FakeStreamLLM:
 
 
 def make_chunk(content=None, tool_calls=None, usage=None, reasoning_content=None):
-    delta = SimpleNamespace(content=content, tool_calls=tool_calls, reasoning_content=reasoning_content)
+    delta = SimpleNamespace(
+        content=content, tool_calls=tool_calls, reasoning_content=reasoning_content
+    )
     return SimpleNamespace(choices=[SimpleNamespace(delta=delta)], usage=usage)
 
 
@@ -192,9 +194,9 @@ def test_agent_deepseek_v4_pro_reasoning():
         "2. 2 + 3 = 5.\n"
         "3. The answer is 5."
     )
-    llm = FakeLLM([
-        RunResult(content="2 + 3 = 5", reasoning_content=reasoning, tool_calls=[])
-    ])
+    llm = FakeLLM(
+        [RunResult(content="2 + 3 = 5", reasoning_content=reasoning, tool_calls=[])]
+    )
     session = Session("You are a helpful assistant.")
     agent = Agent(llm, session, tools=[], max_turns=2)
     out = asyncio.run(agent.run("2 + 3 = ?"))
@@ -208,14 +210,16 @@ def test_agent_deepseek_v4_pro_reasoning():
 
 def test_agent_arun_stream_deepseek_v4_pro_reasoning():
     """Simulate deepseek-v4-pro streaming: reasoning chunks arrive first, then content."""
-    llm = FakeStreamLLM([
+    llm = FakeStreamLLM(
         [
-            make_chunk(reasoning_content="Let me think... "),
-            make_chunk(reasoning_content="2 + 3 = 5. "),
-            make_chunk(reasoning_content="So the answer is 5."),
-            make_chunk(content="2 + 3 = 5"),
+            [
+                make_chunk(reasoning_content="Let me think... "),
+                make_chunk(reasoning_content="2 + 3 = 5. "),
+                make_chunk(reasoning_content="So the answer is 5."),
+                make_chunk(content="2 + 3 = 5"),
+            ]
         ]
-    ])
+    )
     agent = Agent(llm, Session(""), tools=[], max_turns=2)
 
     async def collect():
@@ -261,7 +265,10 @@ def test_agent_arun_passes_run_kwargs():
         return out
 
     asyncio.run(collect())
-    assert llm.invoke_stream_calls[0][2] == {"reasoning_effort": 0.5, "temperature": 0.7}
+    assert llm.invoke_stream_calls[0][2] == {
+        "reasoning_effort": 0.5,
+        "temperature": 0.7,
+    }
 
 
 def test_llm_rejects_reserved_run_kwargs():

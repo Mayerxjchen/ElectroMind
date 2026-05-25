@@ -43,7 +43,9 @@ def calculate(expression: str) -> str:
 
 async def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
-        raise SystemExit("Please set DEEPSEEK_API_KEY: export DEEPSEEK_API_KEY='your-key'")
+        raise SystemExit(
+            "Please set DEEPSEEK_API_KEY: export DEEPSEEK_API_KEY='your-key'"
+        )
 
     session = Session("You are a helpful assistant. Answer questions concisely.")
     llm = DeepSeek("deepseek-v4-flash")

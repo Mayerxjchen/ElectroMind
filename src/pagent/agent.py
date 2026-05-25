@@ -78,7 +78,9 @@ class Agent:
         usage = None
 
         async for chunk in self.llm.invoke_stream(
-            self.session.messages, tools=self.tool_schemas, **run_kwargs,
+            self.session.messages,
+            tools=self.tool_schemas,
+            **run_kwargs,
         ):
             usage = getattr(chunk, "usage", usage)
             choices = getattr(chunk, "choices", None) or []
@@ -146,7 +148,9 @@ class Agent:
 
         for _ in range(self.max_turns):
             result = await self.llm.invoke(
-                self.session.messages, tools=self.tool_schemas, **run_kwargs,
+                self.session.messages,
+                tools=self.tool_schemas,
+                **run_kwargs,
             )
             self.session += self._assistant_message(result)
             self.stats.add_usage(result.usage)
