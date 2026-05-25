@@ -83,6 +83,15 @@ uv sync --group dev --extra search   # 开发依赖 + search，便于测 web_sea
 pip install -e ".[search]"
 ```
 
+### Pre-commit
+
+```bash
+uv sync --group dev
+pre-commit install
+```
+
+每次提交会运行 ruff（检查与格式化）、pytest 以及基础文件检查。
+
 ## 快速开始
 
 ```python

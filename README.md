@@ -83,6 +83,15 @@ uv sync --group dev --extra search   # dev + search extra for tests/web_search
 pip install -e ".[search]"           # editable install with search
 ```
 
+### Pre-commit
+
+```bash
+uv sync --group dev
+pre-commit install
+```
+
+Hooks run ruff (lint + format), pytest, and basic file checks on each commit.
+
 ## Quick start
 
 ```python

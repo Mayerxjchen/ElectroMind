@@ -2,7 +2,17 @@ import asyncio
 import os
 import sys
 
-from pagent import DEFAULT_TOOLS, Agent, DeepSeek, Session
+from pagent import (
+    BACKEND_TIKTOKEN,
+    DEFAULT_TOOLS,
+    Agent,
+    DeepSeek,
+    Session,
+    count_tokens_detail,
+    format_context,
+)
+
+CONTEXT_MAX = int(os.getenv("PAGENT_CONTEXT_MAX", "128000"))
 
 RESET = "\033[0m"
 GREEN = "\033[32m"
@@ -15,10 +25,22 @@ HELP_TEXT = """Commands:
   /help          show this help
   /reset         clear session history
   /stats         show current stats
+  /context       show context window usage (/ctx)
   /effort        show current reasoning_effort
   /effort <val>  set reasoning_effort (e.g. low, medium, high, 0.5, none to clear)
   /exit          quit
 """
+
+
+def show_context(agent):
+    detail = count_tokens_detail(
+        agent.session.messages,
+        tools=agent.tool_schemas,
+        model="gpt-4o",
+        backend=BACKEND_TIKTOKEN,
+        max_tokens=CONTEXT_MAX,
+    )
+    print(format_context(detail))
 
 
 async def spinner(prefix, stop_event):
@@ -70,6 +92,9 @@ async def main():
             continue
         if user_input == "/stats":
             print(f"{CYAN}{agent.stats}{RESET}")
+            continue
+        if user_input in ("/context", "/ctx"):
+            show_context(agent)
             continue
         if user_input.startswith("/effort"):
             parts = user_input.split(None, 1)

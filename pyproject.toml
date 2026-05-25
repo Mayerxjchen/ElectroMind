@@ -10,10 +10,12 @@ requires-python = ">=3.11"
 dependencies = [
     "docstring-parser>=0.18.0",
     "openai>=2.31.0",
+    "tiktoken>=0.7.0",
 ]
 
 [project.optional-dependencies]
 search = ["ddgs>=7"]
+tokens = ["transformers>=4.40"]
 
 [build-system]
 requires = ["uv_build>=0.8.20,<0.9.0"]
@@ -21,6 +23,8 @@ build-backend = "uv_build"
 
 [dependency-groups]
 dev = [
+    "ddgs>=7",
+    "pre-commit>=4",
     "pytest>=8",
     "ruff>=0.9",
 ]
