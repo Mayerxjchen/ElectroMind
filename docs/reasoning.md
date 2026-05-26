@@ -1,6 +1,6 @@
 # reasoning_content examples
 
-Language: [中文](./reasoning.zh-CN.md) | English
+Language: [简体中文](/reasoning.zh-CN) | English
 
 Models such as DeepSeek may return **`reasoning_content`** (chain-of-thought) alongside **`content`** (user-facing answer). pagent carries both on **`RunEnd`**; in streaming mode **`ReasoningDelta`** and **`TextDelta`** events deliver them separately.
 
@@ -10,11 +10,11 @@ Event reference: [events.md](./events.md)
 
 | File | Mode | Description |
 |------|------|-------------|
-| [`examples/reasoning_run.py`](../examples/reasoning_run.py) | Non-streaming | `agent.run()` → `RunEnd` |
-| [`examples/reasoning_stream.py`](../examples/reasoning_stream.py) | Streaming | `agent.arun_events()` → `ReasoningDelta` + `TextDelta` |
-| [`examples/reasoning_common.py`](../examples/reasoning_common.py) | Shared | Questions, `make_agent()` |
+| [reasoning_run.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_run.py) | Non-streaming | `agent.run()` → `RunEnd` |
+| [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | Streaming | `agent.arun_events()` → `ReasoningDelta` + `TextDelta` |
+| [reasoning_common.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_common.py) | Shared | Questions, `make_agent()` |
 
-Also see [`simple_qa.py`](../examples/simple_qa.py) (tools) and [`cli.py`](../examples/cli.py) (interactive CLI).
+Also see [simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py) (tools) and [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) (interactive CLI).
 
 ## Run
 

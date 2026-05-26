@@ -1,6 +1,6 @@
 # reasoning_content 示例
 
-语言： [中文](./reasoning.zh-CN.md) | [English](./reasoning.md)
+语言：中文 | [English](./reasoning.md)
 
 DeepSeek 等模型可在响应中返回 **`reasoning_content`**（思考过程）和 **`content`**（面向用户的答案）。pagent 通过 **`RunEnd`** 承载这两部分，流式场景下通过 **`ReasoningDelta`** / **`TextDelta`** 事件分别推送。
 
@@ -10,11 +10,11 @@ DeepSeek 等模型可在响应中返回 **`reasoning_content`**（思考过程�
 
 | 文件 | 模式 | 说明 |
 |------|------|------|
-| [`examples/reasoning_run.py`](../examples/reasoning_run.py) | 非流式 | `agent.run()` → `RunEnd` |
-| [`examples/reasoning_stream.py`](../examples/reasoning_stream.py) | 流式 | `agent.arun_events()` → `ReasoningDelta` + `TextDelta` |
-| [`examples/reasoning_common.py`](../examples/reasoning_common.py) | 共用 | 题目、`make_agent()` |
+| [reasoning_run.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_run.py) | 非流式 | `agent.run()` → `RunEnd` |
+| [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | 流式 | `agent.arun_events()` → `ReasoningDelta` + `TextDelta` |
+| [reasoning_common.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_common.py) | 共用 | 题目、`make_agent()` |
 
-其他示例：[`simple_qa.py`](../examples/simple_qa.py)（工具调用）、[`cli.py`](../examples/cli.py)（交互式 CLI）。
+其他示例：[simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py)、[cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py)。
 
 ## 运行
 

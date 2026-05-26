@@ -1,8 +1,8 @@
 # Developer guide
 
-Language: [中文](./development.zh-CN.md) | English
+Language: [简体中文](/development.zh-CN) | English
 
-For contributors and anyone hacking the library. End users should read the [documentation site](https://synclionpaw.github.io/pagent/) or [README.md](../README.md).
+For contributors and anyone hacking the library. End users should start at the [documentation home](/) or [Quick start](./guide/quick-start).
 
 ## Layout
 
@@ -17,12 +17,15 @@ Core: `agent.py`, `session.py`, `llm.py`, `tool.py`, `tokens.py`, `events.py`.
 
 ## Capability map
 
-See [development.zh-CN.md](./development.zh-CN.md) for the full table (Chinese). Highlights:
+| Module | Notes |
+|--------|--------|
+| `Session` | OpenAI-shaped messages; `SlidingWindowSession` trims by tokens; `CompactingSession` LLM-compresses history |
+| `LLM` | `invoke` / `invoke_stream`; returns `RunEnd` |
+| `Agent` | `run` / `arun` / `arun_events` / `arun_wire` |
+| `tokens` | `count_tokens`, `count_tokens_detail`, `format_context` |
+| `events` / `wire` | UI timeline — [events.md](./events.md), [wire.md](./wire.md) |
 
-- `Session`, `SlidingWindowSession`, `CompactingSession`
-- `Agent.run` / `arun` / `arun_events`
-- Token helpers and CLI `format_context`
-- Events: [events.md](./events.md)
+中文完整表：[development.zh-CN.md](./development.zh-CN.md)
 
 ## Out of scope
 
@@ -52,7 +55,7 @@ Node tooling lives under `docs/` (`package.json`, `package-lock.json`) so the re
 
 Do **not** commit `docs/.vitepress/dist/` or `site/` — they are in `.gitignore`. Only Markdown sources under `docs/` live on `main`.
 
-On push to `main`, [.github/workflows/docs.yml](../.github/workflows/docs.yml) runs `npm run build` in `docs/` and publishes `docs/.vitepress/dist/` to the **`gh-pages`** branch. Enable in repo **Settings → Pages → Deploy from branch → gh-pages / root**.
+On push to `main`, [docs.yml](https://github.com/SyncLionPaw/pagent/blob/main/.github/workflows/docs.yml) runs `npm run build` in `docs/` and publishes `docs/.vitepress/dist/` to the **`gh-pages`** branch. Enable in repo **Settings → Pages → Deploy from branch → gh-pages / root**.
 
 ## Publishing
 

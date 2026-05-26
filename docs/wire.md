@@ -1,6 +1,6 @@
 # Wire protocol (JSON-RPC 2.0)
 
-Language: [中文](./wire.zh-CN.md) | English
+Language: [简体中文](/wire.zh-CN) | English
 
 For **web / mobile frontends** and any transport that speaks JSON lines (HTTP chunked, SSE `data:` payloads, WebSocket text frames).
 
@@ -116,8 +116,8 @@ Same semantics as [events.md](./events.md); `method` equals the Python event cla
 
 ## Runnable demo
 
-[`examples/wire_demo/`](../examples/wire_demo/) — FastAPI server + single-page UI (`uv run --with fastapi --with uvicorn python examples/wire_demo/server.py`).
+[`examples/wire_demo/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) — FastAPI server + single-page UI. See [Wire demo](./wire-demo) on this site.
 
 ## Source
 
-[`src/pagent/wire.py`](../src/pagent/wire.py)
+[`src/pagent/wire.py`](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/wire.py)

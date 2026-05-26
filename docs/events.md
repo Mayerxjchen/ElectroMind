@@ -1,8 +1,8 @@
 # Agent events
 
-Language: [中文](./events.zh-CN.md) | English
+Language: [简体中文](/events.zh-CN) | English
 
-For developers building custom UIs. Users: [README](../README.md); internals: [development.md](./development.md).
+For developers building custom UIs. New users: [Quick start](./guide/quick-start); internals: [development.md](./development.md).
 
 Structured events for observing the **Agent loop** without coupling to a specific UI (terminal, web, IDE). Inspired by the *Soul / Wire* split in products like Kimi Code: the loop **emits** facts; consumers **subscribe** and render.
 
@@ -177,6 +177,6 @@ async for chunk in agent.arun("Hello"):
 
 ## Source
 
-Definitions: [`src/pagent/events.py`](../src/pagent/events.py)
+Definitions: [`src/pagent/events.py`](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/events.py)
 
 **reasoning_content examples** (run vs stream, `--zh` 鸡兔同笼): [reasoning.md](./reasoning.md)

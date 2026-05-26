@@ -1,8 +1,8 @@
 # Agent 事件
 
-语言： [中文](./events.zh-CN.md) | [English](./events.md)
+语言：中文 | [English](./events.md)
 
-面向需要自定义 UI / 嵌入的开发者。使用者请看 [README](../README.zh-CN.md)；库结构见 [development.zh-CN.md](./development.zh-CN.md)。
+面向需要自定义 UI / 嵌入的开发者。入门请看 [快速开始](/zh/guide/quick-start)；库结构见 [development.zh-CN.md](./development.zh-CN.md)。
 
 结构化事件用于观察 **Agent 循环**，而不绑定某一种 UI（终端、Web、IDE）。思路类似 Kimi Code 的 *Soul / Wire* 分离：循环**发出**事实，消费者**订阅**并渲染。
 
@@ -177,6 +177,6 @@ async for chunk in agent.arun("你好"):
 
 ## 源码
 
-定义见 [`src/pagent/events.py`](../src/pagent/events.py)
+定义见 [`src/pagent/events.py`](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/events.py)
 
 **reasoning_content 用法示例**（非流式 / 流式、`--zh` 鸡兔同笼）：[reasoning.zh-CN.md](./reasoning.zh-CN.md)

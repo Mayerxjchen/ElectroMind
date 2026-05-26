@@ -1,6 +1,6 @@
 # Wire 协议（JSON-RPC 2.0）
 
-语言： [中文](./wire.zh-CN.md) | [English](./wire.md)
+语言：中文 | [English](./wire.md)
 
 面向 **Web / 移动端** 以及任何用 JSON 行传输的场景（HTTP 分块、SSE 的 `data:`、WebSocket 文本帧）。
 
@@ -113,8 +113,8 @@ function onLine(line: string) {
 
 ## 可运行示例
 
-[`examples/wire_demo/`](../examples/wire_demo/) — FastAPI 服务 + 单页 UI（`uv run --with fastapi --with uvicorn python examples/wire_demo/server.py`）。
+[`examples/wire_demo/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) — FastAPI + 单页 UI。本站说明：[Wire demo](./wire-demo)。
 
 ## 源码
 
-[`src/pagent/wire.py`](../src/pagent/wire.py)
+[`src/pagent/wire.py`](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/wire.py)
