@@ -34,6 +34,20 @@ features:
     details: OpenAI、DeepSeek、Ollama、vLLM、SGLang など /v1/chat/completions 互換サーバーに対応。
 ---
 
+<div class="minimal-demo">
+
+## 25 行足らずで Agent が動く
+
+`OPENAI_API_KEY` を設定し、`demo.py` として保存して `python demo.py`。モデルが `@tool` を呼び、答えは `result.content` に入ります。
+
+<<< ../snippets/minimal_agent.py
+
+<p class="output"><code>Sunny in Xiamen today.</code>（例 — 実際の出力はモデル次第）</p>
+
+[クイックスタート →](./guide/quick-start) · [イベントと Wire →](./events)
+
+</div>
+
 ## インストール
 
 ```bash
@@ -41,4 +55,4 @@ pip install pagent
 pip install "pagent[search]"   # 任意 web_search
 ```
 
-**Python 3.11+**。[クイックスタート](./guide/quick-start) を参照。
+**Python 3.11+**。

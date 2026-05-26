@@ -34,6 +34,20 @@ features:
     details: 支持 OpenAI、DeepSeek、Ollama、vLLM、SGLang 等兼容 /v1/chat/completions 的服务。
 ---
 
+<div class="minimal-demo">
+
+## 二十多行，就是一个 Agent
+
+设置 `OPENAI_API_KEY`，保存为 `demo.py`，运行 `python demo.py`。模型会按需调用 `@tool`，答案在 `result.content`。
+
+<<< ../snippets/minimal_agent.py
+
+<p class="output"><code>Sunny in Xiamen today.</code>（示例输出，以模型实际返回为准）</p>
+
+[快速开始 →](./guide/quick-start) · [事件流与 Wire →](./events)
+
+</div>
+
 ## 安装
 
 ```bash
@@ -41,4 +55,4 @@ pip install pagent
 pip install "pagent[search]"   # 可选 web_search
 ```
 
-需要 **Python 3.11+**。完整示例见 [快速开始](./guide/quick-start)。
+需要 **Python 3.11+**。

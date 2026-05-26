@@ -35,6 +35,8 @@ Parallel tools, RAG, MCP, built-in file/shell tools, multimodal, checkpoints —
 
 ## Local development
 
+Uses [uv](https://docs.astral.sh/uv/) for env management. New to uv? See the [official docs](https://docs.astral.sh/uv/).
+
 ```bash
 uv sync --group dev --extra search
 pip install -e ".[search]"

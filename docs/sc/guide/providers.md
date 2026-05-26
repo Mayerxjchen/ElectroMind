@@ -2,7 +2,7 @@
 
 语言：四川话 | [English](/guide/providers) | [普通话](/zh/guide/providers) | [日本語](/ja/guide/providers)
 
-pagent 走 **OpenAI Chat Completions** 兼容接口（`/v1/chat/completions`）喊模型。
+pagent 走 **OpenAI Chat Completions** 兼容接口（`/v1/chat/completions`）**喊**模型，跟打电话差不多，线路要对得起。
 
 ## 内置 Provider
 
@@ -11,7 +11,7 @@ pagent 走 **OpenAI Chat Completions** 兼容接口（`/v1/chat/completions`）�
 | `LLM("gpt-4o-mini")` | 参数自己填 | `OPENAI_API_KEY` |
 | `DeepSeek("deepseek-v4-flash")` | 参数自己填 | `DEEPSEEK_API_KEY` |
 | `Ollama("llama3.2")` | 参数自己填 | 可选 `OLLAMA_API_KEY` |
-| `Vllm`、`Sglang` | 参数自己填 | 看你咋个部署 |
+| `Vllm`、`Sglang` | 参数自己填 | 看你啷个部署 |
 
 ```python
 from pagent import DeepSeek, LLM, Ollama
@@ -23,7 +23,7 @@ llm = Ollama("llama3.2")   # http://127.0.0.1:11434/v1
 
 ## 脑壳转（reasoning）
 
-有些模型会吐 **`reasoning_content`**（比如 DeepSeek）。流式用 `ReasoningDelta`，详见 [脑壳转](../reasoning)。
+有些模型会吐 **`reasoning_content`**（脑壳里头咋个想的，跟摆龙门阵打草稿一样）。流式用 `ReasoningDelta`，详见 [脑壳转](../reasoning)。
 
 ## 可选依赖
 
@@ -31,3 +31,5 @@ llm = Ollama("llama3.2")   # http://127.0.0.1:11434/v1
 pip install "pagent[search]"    # 内置 web_search
 pip install "pagent[tokens]"    # 部分模型的 HF tokenizer
 ```
+
+环境变量 **搁到** `.env` 或 shell 里，装起就 **搞起**。Provider 换错了？**警个醒**：`base_url` 跟 key 要配对，莫乱整。

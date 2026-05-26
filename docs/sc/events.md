@@ -2,15 +2,15 @@
 
 语言：四川话 | [English](/events) | [普通话](/zh/events) | [日本語](/ja/events)
 
-要给自定义 UI / 嵌入整活的开发者看。刚入门看 [赶紧上手](/sc/guide/quick-start)；库结构看 [开发指南](./development)。
+给要自己整 UI、嵌进项目里的开发者看的。刚入门先 [赶紧上手](/sc/guide/quick-start)；想改库里头结构看 [开发指南](./development)。
 
-结构化事件用来**瞅** **Agent 循环**，不绑死某一种 UI（终端、Web、IDE）。思路像 Kimi Code 的 *Soul / Wire* 分开：循环**发出**事实，消费者**订阅**再渲染。
+结构化事件用来**瞅** **Agent 循环**在搞啥子，莫绑死某一种 UI（终端、Web、IDE 都行）。思路像 Kimi Code 的 *Soul / Wire* 分开：循环**发出**事实，外头**订阅**了再画界面，巴适。
 
-**现状：** `Agent.arun_events()` 会吐这些事件。`Agent.arun()` 是兼容层，只透出 `TextDelta.text`。
+**现状：** `Agent.arun_events()` 会吐这些事件。`Agent.arun()` 是兼容层，只透出 `TextDelta.text`，晓得不。
 
 ## 原生 Event 跟 Wire（JSON-RPC）
 
-**同一条时间线，两种形态** — 不是两套不同的事件系统。
+**同一条时间线，两种形态** — 不是两套不同的事件系统，莫扯把子。
 
 | 层次 | 得到啥子 | 典型场景 |
 |------|----------|----------|
@@ -26,9 +26,9 @@
 
 Wire 是对 `arun_events()` 的薄序列化，见 [Wire 协议](./wire)。Python 里也可 `encode_event_line(event)` 再发到 socket。
 
-**用原生**：消费端是 Python，要类型跟模式匹配。
+**用原生**：消费端是 Python，要类型跟模式匹配，撇脱；事件顺序你 **看到起** 哈。
 
-**用 Wire**：消费端不是 Python，或者要 HTTP/SSE/WebSocket 上稳定的 JSON 格式。
+**用 Wire**：消费端不是 Python，或者要 HTTP/SSE/WebSocket 上稳定的 JSON 格式，要得；上线前 **过一道** NDJSON 样例。
 
 ## 导入
 
@@ -55,7 +55,7 @@ from pagent import (
 
 | 事件 | 字段 | 时机（设计意图） |
 |------|------|------------------|
-| `RunBegin` | `user_input: str` | 用户消息已写入 `session`，开始本轮 |
+| `RunBegin` | `user_input: str` | 用户消息已写入 `session`，本轮开整 |
 | `TurnBegin` | `turn: int` | `max_turns` 内开始一次模型调用（从 0 计） |
 | `TurnEnd` | `turn: int`, `stopped: bool` | 助手消息已写入；`stopped=True` 表示本次 run 不再喊模型 |
 | `RunEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` | 整次 `run` / `arun` 结束（跟 `LLM.invoke` 返回值同类型） |
@@ -65,7 +65,7 @@ from pagent import (
 | 事件 | 字段 | 时机（设计意图） |
 |------|------|------------------|
 | `TextDelta` | `text: str` | `invoke_stream` 返回的 assistant `content` 片段 |
-| `ReasoningDelta` | `text: str` | `reasoning_content` 片段（看 Provider） |
+| `ReasoningDelta` | `text: str` | `reasoning_content` 片段（看 Provider 咋个支持） |
 
 ### 单步边界
 
@@ -114,7 +114,7 @@ RunEnd
 
 ### 到 `max_turns` 还有未处理工具
 
-最后一次 `TurnEnd` 可能 `stopped=False`；最后 `RunEnd` 就是最后一条助手消息（可能还带 `tool_calls`）。
+最后一次 `TurnEnd` 可能 `stopped=False`；最后 `RunEnd` 就是最后一条助手消息（可能还带 `tool_calls`），有点打脑壳，要设计好 UI 哦。
 
 ```mermaid
 sequenceDiagram
@@ -158,7 +158,7 @@ async for event in agent.arun_events("你好嘛"):
         case ToolCallBegin(name=n):
             print(f"\n[工具 {n}]")
         case RunEnd(content=c):
-            print(f"\n[结束: {c!r}]")
+            print(f"\n[杀割: {c!r}]")
 ```
 
 只要文本的继续用 `arun()`：
@@ -170,9 +170,9 @@ async for chunk in agent.arun("你好嘛"):
 
 ## 设计说明
 
-- **不可变 dataclass** — 事件是快照，可入队或写日志。
+- **不可变 dataclass** — 事件是快照，可入队或写日志，稳当。
 - **Wire 协议** — JSON-RPC 2.0 通知 + NDJSON：[wire.md](./wire)。可用 `Agent.arun_wire()` 或 `encode_event_line()`。
-- **进站控制**（审批、外部工具、中途 `steer`）— 没建模；以后应是单独的 request 类型，不属于 `Event`。
+- **进站控制**（审批、外部工具、中途 `steer`）— 还没建模；以后应是单独的 request 类型，不属于 `Event`。审批逻辑你自己 **经佑** 到起。
 - **Session 跟事件** — `session.messages` 还是给模型的 API 历史；事件是平行的 UI 时间线（类比 Kimi 的 `context.jsonl` 跟 `wire.jsonl`）。
 
 ## 源码

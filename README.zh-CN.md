@@ -25,6 +25,8 @@ pip install "pagent[search]"
 
 ### uv
 
+[uv](https://docs.astral.sh/uv/) 是极速 Python 包与项目管理工具，不了解请看 [官方文档](https://docs.astral.sh/uv/)。
+
 ```bash
 uv pip install pagent
 uv pip install "pagent[search]"

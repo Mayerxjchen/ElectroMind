@@ -1,0 +1,26 @@
+/* Home: give the minimal demo room to breathe */
+.VPHome .minimal-demo {
+  max-width: 720px;
+  margin: 0 auto 2.5rem;
+  padding: 0 1.5rem;
+}
+
+.VPHome .minimal-demo h2 {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+  font-size: 1.35rem;
+  text-align: center;
+}
+
+.VPHome .minimal-demo .vp-code-group,
+.VPHome .minimal-demo div[class*="language-"] {
+  margin: 1rem 0;
+}
+
+.VPHome .minimal-demo .output {
+  font-size: 0.9rem;
+  color: var(--vp-c-text-2);
+  text-align: center;
+  margin-top: -0.5rem;
+}

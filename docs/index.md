@@ -34,6 +34,20 @@ features:
     details: Works with OpenAI, DeepSeek, Ollama, vLLM, SGLang — any /v1/chat/completions compatible server.
 ---
 
+<div class="minimal-demo">
+
+## A full agent in ~25 lines
+
+Set `OPENAI_API_KEY`, save as `demo.py`, run `python demo.py`. The model can call your `@tool` and you read the answer from `result.content`.
+
+<<< ./snippets/minimal_agent.py
+
+<p class="output"><code>Sunny in Xiamen today.</code> (example — actual text depends on the model)</p>
+
+[Quick start guide →](./guide/quick-start) · [Streaming & Wire →](./events)
+
+</div>
+
 ## Install
 
 ```bash
@@ -41,4 +55,4 @@ pip install pagent
 pip install "pagent[search]"   # optional web_search
 ```
 
-Python **3.11+**. See [Quick start](./guide/quick-start) for a full example.
+Python **3.11+**.

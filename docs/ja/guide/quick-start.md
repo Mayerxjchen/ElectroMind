@@ -9,7 +9,11 @@ pip install pagent
 pip install "pagent[search]"   # 任意 web_search
 ```
 
-クローンしたリポジトリで [uv](https://github.com/astral-sh/uv) を使う場合:
+クローンしたリポジトリで [uv](https://docs.astral.sh/uv/) を使う場合:
+
+::: info uv とは？
+[**公式ドキュメント**](https://docs.astral.sh/uv/) を参照 — 高速な Python パッケージ・プロジェクト管理ツール（[Astral](https://astral.sh/) / Ruff チーム）。pip / poetry の代替としてよく使われます。
+:::
 
 ```bash
 uv sync --group dev --extra search

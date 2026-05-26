@@ -31,6 +31,8 @@ docs/           ドキュメント
 
 ## ローカル開発
 
+開発環境は [uv](https://docs.astral.sh/uv/) を推奨。初めての方は [公式ドキュメント](https://docs.astral.sh/uv/) を参照。
+
 ```bash
 uv sync --group dev --extra search
 pip install -e ".[search]"

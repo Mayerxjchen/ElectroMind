@@ -40,6 +40,8 @@ docs/           文档
 
 ## 本地开发
 
+开发环境推荐 [uv](https://docs.astral.sh/uv/)；不了解 uv 请看 [官方文档](https://docs.astral.sh/uv/)。
+
 ```bash
 cd pagent
 uv sync --group dev --extra search

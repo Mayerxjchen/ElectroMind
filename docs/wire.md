@@ -6,6 +6,99 @@ For **web / mobile frontends** and any transport that speaks JSON lines (HTTP ch
 
 This is **not** a second event system. `arun_wire()` serializes the same stream as `arun_events()`; semantics and ordering match [events.md](./events.md).
 
+## How Wire fits (diagrams)
+
+### Stack: one timeline, two layers
+
+```mermaid
+flowchart TB
+  subgraph loop [Agent loop — same as arun_events]
+    A[Agent]
+    E[Event stream]
+    A --> E
+  end
+
+  subgraph wire [Wire layer — serialization only]
+    W[arun_wire]
+    ENC[encode_event_line]
+    W --> ENC
+  end
+
+  E --> ENC
+  ENC --> NDJSON[NDJSON lines<br/>one JSON-RPC notification per line]
+
+  NDJSON --> T{Transport}
+  T --> H[HTTP chunked<br/>application/x-ndjson]
+  T --> S[SSE data:]
+  T --> WS[WebSocket text]
+  T --> F[File wire.jsonl]
+
+  H --> C[Browser / IDE / any language]
+  S --> C
+  WS --> C
+  F --> C
+
+  C --> UI[UI: switch on method,<br/>render params]
+```
+
+Inbound control (cancel, tool approval, steer) is **not** on this arrow — use your own HTTP/API beside the stream.
+
+### One Python event → one line
+
+```mermaid
+flowchart LR
+  EV["Python Event<br/>TextDelta(text='Hi')"]
+  RPC["JSON-RPC notification<br/>jsonrpc: 2.0<br/>method: TextDelta<br/>params: text: Hi<br/><i>no id</i>"]
+  LINE["NDJSON line + \\n"]
+
+  EV -->|event_to_rpc| RPC
+  RPC -->|json.dumps| LINE
+```
+
+### Typical stream (single turn, text only)
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant App as Your server
+  participant Agent as Agent
+  participant Client as Client UI
+
+  App->>Agent: arun_wire(user_input)
+  Agent-->>Client: RunBegin
+  Agent-->>Client: TurnBegin turn=0
+  loop LLM stream
+    Agent-->>Client: TextDelta
+  end
+  Agent-->>Client: StepEnd
+  Agent-->>Client: TurnEnd stopped=true
+  Agent-->>Client: RunEnd
+  Note over Client: Parse each line;<br/>append TextDelta to answer pane
+```
+
+### With tools (two turns)
+
+```mermaid
+sequenceDiagram
+  participant Client as Client UI
+  participant Agent as Agent
+
+  Agent-->>Client: RunBegin
+  Agent-->>Client: TurnBegin turn=0
+  Agent-->>Client: TextDelta
+  Agent-->>Client: StepEnd tool_calls set
+  Agent-->>Client: ToolCallBegin
+  Agent-->>Client: ToolResult
+  Agent-->>Client: TurnEnd stopped=false
+  Agent-->>Client: TurnBegin turn=1
+  Agent-->>Client: TextDelta
+  Agent-->>Client: StepEnd
+  Agent-->>Client: TurnEnd stopped=true
+  Agent-->>Client: RunEnd
+```
+
+Full event list and ordering: [events.md](./events.md).
+
 ### When to use Wire vs native Event
 
 | Use **Wire** (`arun_wire`, NDJSON) | Use **native Event** (`arun_events`) |

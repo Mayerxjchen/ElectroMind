@@ -164,38 +164,38 @@ export default defineConfig({
       link: "/sc/",
       themeConfig: {
         nav: [
-          { text: "指南", link: "/sc/guide/quick-start", activeMatch: "/sc/guide/" },
+          { text: "咋个用", link: "/sc/guide/quick-start", activeMatch: "/sc/guide/" },
           { text: "事件", link: "/sc/events" },
           { text: "Wire", link: "/sc/wire" },
-          { text: "开发", link: "/sc/development" },
+          { text: "改代码", link: "/sc/development" },
         ],
         sidebar: [
           {
-            text: "入门",
+            text: "先晓得",
             items: [
               { text: "简介", link: "/sc/" },
-              { text: "赶紧上手", link: "/sc/guide/quick-start" },
-              { text: "模型跟 API Key", link: "/sc/guide/providers" },
+              { text: "架势搞起", link: "/sc/guide/quick-start" },
+              { text: "模型跟 Key", link: "/sc/guide/providers" },
               { text: "工具跟会话", link: "/sc/guide/tools-session" },
             ],
           },
           {
-            text: "流式跟 UI",
+            text: "流式跟界面",
             items: [
               { text: "事件流", link: "/sc/events" },
               { text: "Wire 协议", link: "/sc/wire" },
               { text: "脑壳转", link: "/sc/reasoning" },
-              { text: "Wire demo（本地）", link: "/sc/wire-demo" },
+              { text: "Wire demo（本地耍）", link: "/sc/wire-demo" },
             ],
           },
           {
-            text: "开发",
+            text: "改代码",
             items: [{ text: "开发指南", link: "/sc/development" }],
           },
         ],
         editLink: {
           pattern: `${github}/edit/main/docs/:path`,
-          text: "在 GitHub 上改这一页",
+          text: "到 GitHub 上改这一页哈",
         },
       },
     },

@@ -6,6 +6,98 @@
 
 **不是第二套事件系统。** `arun_wire()` 序列化的流与 `arun_events()` 相同；语义与顺序见 [事件流](./events)。
 
+## Wire 怎么接上（图示）
+
+### 整体：同一时间线，多一层序列化
+
+```mermaid
+flowchart TB
+  subgraph loop [Agent 循环 — 与 arun_events 相同]
+    A[Agent]
+    E[Event 流]
+    A --> E
+  end
+
+  subgraph wire [Wire 层 — 仅序列化]
+    W[arun_wire]
+    ENC[encode_event_line]
+    W --> ENC
+  end
+
+  E --> ENC
+  ENC --> NDJSON[NDJSON 行<br/>每行一条 JSON-RPC 通知]
+
+  NDJSON --> T{传输}
+  T --> H[HTTP 分块<br/>application/x-ndjson]
+  T --> S[SSE data:]
+  T --> WS[WebSocket]
+  T --> F[文件 wire.jsonl]
+
+  H --> C[浏览器 / IDE / 任意语言]
+  S --> C
+  WS --> C
+  F --> C
+
+  C --> UI[UI：按 method 分支<br/>渲染 params]
+```
+
+入站控制（取消、工具审批、steer）**不走**这条箭头，请用你自己的 HTTP/API。
+
+### 一个 Event → 一行
+
+```mermaid
+flowchart LR
+  EV["Python Event<br/>TextDelta(text='你好')"]
+  RPC["JSON-RPC 通知<br/>jsonrpc: 2.0<br/>method: TextDelta<br/>params: text: 你好<br/><i>无 id</i>"]
+  LINE["NDJSON 行 + \\n"]
+
+  EV -->|event_to_rpc| RPC
+  RPC -->|json.dumps| LINE
+```
+
+### 典型流（单轮，仅文本）
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant App as 你的服务
+  participant Agent as Agent
+  participant Client as 客户端 UI
+
+  App->>Agent: arun_wire(user_input)
+  Agent-->>Client: RunBegin
+  Agent-->>Client: TurnBegin turn=0
+  loop LLM 流式
+    Agent-->>Client: TextDelta
+  end
+  Agent-->>Client: StepEnd
+  Agent-->>Client: TurnEnd stopped=true
+  Agent-->>Client: RunEnd
+```
+
+### 带工具（两轮）
+
+```mermaid
+sequenceDiagram
+  participant Client as 客户端 UI
+  participant Agent as Agent
+
+  Agent-->>Client: RunBegin
+  Agent-->>Client: TurnBegin turn=0
+  Agent-->>Client: TextDelta
+  Agent-->>Client: StepEnd 含 tool_calls
+  Agent-->>Client: ToolCallBegin
+  Agent-->>Client: ToolResult
+  Agent-->>Client: TurnEnd stopped=false
+  Agent-->>Client: TurnBegin turn=1
+  Agent-->>Client: TextDelta
+  Agent-->>Client: StepEnd
+  Agent-->>Client: TurnEnd stopped=true
+  Agent-->>Client: RunEnd
+```
+
+完整事件说明见 [事件流](./events)。
+
 ### 何时用 Wire、何时用原生 Event
 
 | 用 **Wire**（`arun_wire`、NDJSON） | 用 **原生 Event**（`arun_events`） |

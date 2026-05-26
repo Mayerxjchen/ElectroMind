@@ -9,7 +9,11 @@ pip install pagent
 pip install "pagent[search]"   # 可选 web_search
 ```
 
-在 clone 的仓库里用 [uv](https://github.com/astral-sh/uv)：
+在 clone 的仓库里用 [uv](https://docs.astral.sh/uv/)：
+
+::: info 不了解 uv 是什么？
+请看 [**uv 官方文档**](https://docs.astral.sh/uv/) — 极速 Python 包与项目管理工具（[Astral](https://astral.sh/) / Ruff 团队出品），可替代 pip、poetry 等常见工作流。
+:::
 
 ```bash
 uv sync --group dev --extra search

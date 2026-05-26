@@ -23,6 +23,8 @@ pip install "pagent[search]"   # optional web_search tool
 
 ### uv
 
+[uv](https://docs.astral.sh/uv/) is a fast Python package and project manager ([official docs](https://docs.astral.sh/uv/)).
+
 ```bash
 uv pip install pagent
 uv pip install "pagent[search]"
