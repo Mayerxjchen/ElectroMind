@@ -36,10 +36,20 @@ features:
 
 ## 25 行足らずで Agent が動く
 
-`OPENAI_API_KEY` を設定し、`demo.py` として保存して `python demo.py`。モデルが `@tool` を呼び、答えは `result.content` に入ります。
+プロバイダのタブを選び、API Key を設定、`demo.py` で `python demo.py`。モデルが `@tool` を呼び、答えは `result.content`。
 
-<<< ../snippets/minimal_agent.py
+::: code-group
 
-出力例：`Sunny in Xiamen today.`（実際の出力はモデル次第）。
+<<< ../snippets/minimal_agent_openai.py{python}[OpenAI]
+
+<<< ../snippets/minimal_agent_deepseek.py{python}[DeepSeek]
+
+<<< ../snippets/minimal_agent_claude.py{python}[Claude]
+
+<<< ../snippets/minimal_agent_kimi.py{python}[Kimi]
+
+:::
+
+出力例：`Sunny in Xiamen today.`（実際の出力はモデル次第）。[プロバイダと API Key](./guide/providers)
 
 [インストール →](./guide/install) · [クイックスタート →](./guide/quick-start)

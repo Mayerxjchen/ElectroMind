@@ -36,11 +36,21 @@ features:
 
 ## 二十几行就整一个 Agent
 
-钥匙 `OPENAI_API_KEY` 设好，存成 `demo.py`，直接 **搞起** `python demo.py`。模型要得的时候会调 `@tool`，答案在 `result.content` 里头，安逸。
+点一个模型标签，钥匙设好，存成 `demo.py`，直接 **搞起** `python demo.py`。模型要得的时候会调 `@tool`，答案在 `result.content` 里头，安逸。
 
-<<< ../snippets/minimal_agent.py
+::: code-group
 
-示例输出：`Sunny in Xiamen today.`（示例哈，实际看模型咋个回喃）。
+<<< ../snippets/minimal_agent_openai.py{python}[OpenAI]
+
+<<< ../snippets/minimal_agent_deepseek.py{python}[DeepSeek]
+
+<<< ../snippets/minimal_agent_claude.py{python}[Claude]
+
+<<< ../snippets/minimal_agent_kimi.py{python}[Kimi]
+
+:::
+
+示例输出：`Sunny in Xiamen today.`（示例哈，实际看模型咋个回喃）。[模型跟 Key](./guide/providers)
 
 [安装 →](./guide/install) · [赶紧上手 →](./guide/quick-start)
 

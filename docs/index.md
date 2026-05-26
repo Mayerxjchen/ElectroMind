@@ -36,10 +36,20 @@ features:
 
 ## A full agent in ~25 lines
 
-Set `OPENAI_API_KEY`, save as `demo.py`, run `python demo.py`. The model can call your `@tool` and you read the answer from `result.content`.
+Pick a provider tab, set the API key, save as `demo.py`, run `python demo.py`. The model can call your `@tool` and you read the answer from `result.content`.
 
-<<< ./snippets/minimal_agent.py
+::: code-group
 
-Example output: `Sunny in Xiamen today.` (actual text depends on the model).
+<<< ./snippets/minimal_agent_openai.py{python}[OpenAI]
+
+<<< ./snippets/minimal_agent_deepseek.py{python}[DeepSeek]
+
+<<< ./snippets/minimal_agent_claude.py{python}[Claude]
+
+<<< ./snippets/minimal_agent_kimi.py{python}[Kimi]
+
+:::
+
+Example output: `Sunny in Xiamen today.` (actual text depends on the model). More providers: [Providers & API keys](./guide/providers).
 
 [Install →](./guide/install) · [Quick start →](./guide/quick-start)

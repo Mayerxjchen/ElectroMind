@@ -146,6 +146,7 @@ tests/                   pytest
 | Providers | `docs/guide/providers.md` |
 | Prompt & session | `docs/guide/prompt.md` |
 | Tools | `docs/guide/tools.md` |
+| Built-in tools | `docs/guide/defaults.md` |
 | Memory helper | `docs/guide/memory.md` |
 | Events (full) | `docs/events.md` |
 | Wire (full) | `docs/wire.md` |
