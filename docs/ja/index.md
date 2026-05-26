@@ -2,6 +2,9 @@
 layout: home
 
 hero:
+  image:
+    src: /logo.svg
+    alt: pagent
   name: pagent
   text: 軽量 async Agent ループ
   tagline: OpenAI 互換 Chat Completions · 透明なメッセージ · 自作ツール

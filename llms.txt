@@ -1,0 +1,32 @@
+# pagent
+
+> Minimal async Python Agent loop over OpenAI-compatible Chat Completions. Session + tools + streaming events (native Event or JSON-RPC Wire NDJSON). Python 3.11+.
+
+This file helps LLMs and coding agents find pagent documentation. Prefer **agent-reference** first, then topic pages.
+
+## Documentation
+
+- [Agent reference (read first)](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/agent-reference.md): Dense API cheat sheet for agents
+- [Full doc bundle](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/llms-full.txt): All English guides concatenated (regenerate with `cd docs && npm run build:llms`)
+- [Quick start](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/quick-start.md): Install, minimal Agent, streaming APIs
+- [Providers & API keys](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/providers.md): LLM, DeepSeek, Ollama, vLLM, SGLang
+- [Tools & session](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/tools-session.md): Session, @tool, Agent loop
+- [Events](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/events.md): RunBegin, TextDelta, ToolCallBegin, RunEnd, sequences
+- [Wire protocol](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire.md): JSON-RPC 2.0 NDJSON for browsers and non-Python clients
+- [Reasoning streams](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/reasoning.md): reasoning_content, ReasoningDelta
+- [Wire demo](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire-demo.md): Local FastAPI + browser UI
+- [Developer guide](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/development.md): Repo layout, local dev, docs site
+
+## Human site
+
+- https://synclionpaw.github.io/pagent/
+- https://synclionpaw.github.io/pagent/agent-reference
+- https://synclionpaw.github.io/pagent/llms.txt (this file on Pages)
+
+## Optional
+
+- [简体中文](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/zh/guide/quick-start.md)
+- [日本語](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/ja/guide/quick-start.md)
+- [四川话](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/sc/guide/quick-start.md)
+- [README](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/README.md)
+- [AGENTS.md](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/AGENTS.md): Instructions for coding agents in this repo

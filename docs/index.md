@@ -2,6 +2,9 @@
 layout: home
 
 hero:
+  image:
+    src: /logo.svg
+    alt: pagent
   name: pagent
   text: Minimal async Agent loop
   tagline: OpenAI-compatible Chat Completions · transparent messages · your own tools

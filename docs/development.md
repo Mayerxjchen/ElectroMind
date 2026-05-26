@@ -31,6 +31,8 @@ Core: `agent.py`, `session.py`, `llm.py`, `tool.py`, `tokens.py`, `events.py`.
 
 Parallel tools, RAG, MCP, built-in file/shell tools, multimodal, checkpoints — build in your app.
 
+**Planned:** [Hooks support plan](./plans/hooks.md) (lifecycle hooks for tool approval, cancel, context injection; distinct from Event/Wire).
+
 ## Local development
 
 ```bash
@@ -43,6 +45,8 @@ pytest -q
 ## Documentation site
 
 Built with [VitePress](https://vitepress.dev/). Config: `docs/.vitepress/config.mts`, content: `docs/*.md`.
+
+**For coding agents / LLMs:** [agent-reference](./agent-reference), repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md), [llms.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms.txt), [llms-full.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms-full.txt) (`npm run build:llms` in `docs/` regenerates the bundle).
 
 ```bash
 cd docs

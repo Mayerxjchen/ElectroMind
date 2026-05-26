@@ -1,0 +1,826 @@
+# pagent — full documentation (English)
+
+> Auto-generated for LLM and coding agents. Do not edit by hand.
+> Regenerate: `cd docs && npm run build:llms`
+> Index: https://github.com/SyncLionPaw/pagent/blob/main/llms.txt
+> Site: https://synclionpaw.github.io/pagent/
+
+
+
+---
+
+<!-- source: docs/agent-reference.md -->
+
+# pagent — agent reference
+
+Dense API reference for **coding agents** and LLM tools. Human docs: <https://synclionpaw.github.io/pagent/>.
+
+**Machine indexes:** [llms.txt](/llms.txt) (page list) · [llms-full.txt](/llms-full.txt) (single-file bundle) · repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md)
+
+## What it is
+
+- **Python 3.11+** async library: `Agent` + `Session` + `@tool` functions over **OpenAI-compatible** `POST /v1/chat/completions`.
+- **Not included:** file edit, shell, MCP, RAG, parallel tools, checkpoints — you implement those in your app.
+- **Package:** `pip install pagent` · optional `pagent[search]`, `pagent[tokens]`.
+
+## Core types
+
+| Symbol | Role |
+|--------|------|
+| `Session(system_prompt)` | OpenAI-shaped message list; `session += {"role":"user","content":"..."}` |
+| `SlidingWindowSession` | Trim by **token** budget (not message count) |
+| `CompactingSession` | LLM summarization when context grows |
+| `LLM`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang` | Provider clients; model name in constructor |
+| `Agent(llm, session, tools=[], max_turns=8)` | Runs the tool loop |
+| `RunEnd` | Final model step: `.content`, `.tool_calls`, `.reasoning_content`, `.usage` |
+| `@tool()` | Decorator; schema from type hints + docstring |
+
+## Agent.run APIs
+
+| Method | Returns | When |
+|--------|---------|------|
+| `await agent.run(user_input, **run_kwargs)` | `RunEnd` | Blocking; no stream |
+| `agent.arun(user_input, **run_kwargs)` | `AsyncIterator[str]` | Answer text chunks only (`TextDelta`) |
+| `agent.arun_events(user_input, **run_kwargs)` | `AsyncIterator[Event]` | Full timeline for Python UI |
+| `agent.arun_wire(user_input, **run_kwargs)` | `AsyncIterator[str]` | NDJSON lines (JSON-RPC notifications) |
+
+`run_kwargs` are forwarded to the provider (e.g. `reasoning_effort="medium"` for DeepSeek).
+
+## Event types (`arun_events`)
+
+All are frozen dataclasses; import from `pagent`.
+
+| Event | Fields (summary) | When |
+|-------|------------------|------|
+| `RunBegin` | `user_input` | Run starts |
+| `TurnBegin` | `turn` | One LLM call starts (0-based) |
+| `TextDelta` | `text` | Assistant content chunk |
+| `ReasoningDelta` | `text` | Reasoning chunk (provider-specific) |
+| `StepEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` | One LLM step done |
+| `ToolCallBegin` | `tool_call_id`, `name`, `arguments` | Before tool execution |
+| `ToolResult` | `tool_call_id`, `name`, `content` | After tool; written to session |
+| `TurnEnd` | `turn`, `stopped` | Turn done; `stopped=True` if no more model calls this run |
+| `RunEnd` | same as `StepEnd` | Entire run finished |
+
+Typical sequence (tools): `RunBegin` → `TurnBegin` → `TextDelta*` → `StepEnd` → `ToolCallBegin` → `ToolResult` → `TurnEnd(stopped=False)` → next turn → … → `RunEnd`.
+
+## Wire protocol (`arun_wire`)
+
+One **JSON-RPC 2.0 notification** per NDJSON line (no `id`):
+
+```json
+{"jsonrpc":"2.0","method":"TextDelta","params":{"text":"hi"}}
+```
+
+`method` equals the Python event class name. Same ordering as `arun_events()`.
+
+Python helpers: `encode_event_line`, `decode_event_line`, `event_to_rpc`, `rpc_to_event`.
+
+Inbound control (cancel, tool approval, steer) is **not** in Wire — use your own HTTP/API.
+
+## Minimal example
+
+```python
+import asyncio
+from pagent import Agent, LLM, Session, tool
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for the city."""
+    return f"Sunny in {city}."
+
+async def main():
+    agent = Agent(
+        llm=LLM("gpt-4o-mini"),
+        session=Session("You are helpful."),
+        tools=[get_weather],
+        max_turns=8,
+    )
+    end = await agent.run("Weather in Xiamen?")
+    print(end.content)
+
+asyncio.run(main())
+```
+
+## Streaming example
+
+```python
+from pagent import TextDelta, ToolCallBegin, RunEnd
+
+async for event in agent.arun_events("Hello"):
+    match event:
+        case TextDelta(text=t):
+            print(t, end="", flush=True)
+        case ToolCallBegin(name=n):
+            print(f"\n[tool {n}]")
+        case RunEnd(content=c):
+            print(f"\n[done]")
+```
+
+## Environment variables
+
+| Provider | Variable |
+|----------|----------|
+| OpenAI | `OPENAI_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| Ollama | optional `OLLAMA_API_KEY`; default `http://127.0.0.1:11434/v1` |
+
+## Repo map
+
+```text
+src/pagent/agent.py      Agent loop
+src/pagent/session.py    Session, SlidingWindowSession, CompactingSession
+src/pagent/llm.py        LLM providers, RunEnd
+src/pagent/tool.py       @tool, FunctionTool
+src/pagent/events.py     Event dataclasses
+src/pagent/wire.py       JSON-RPC encode/decode
+examples/wire_demo/      FastAPI + browser NDJSON consumer
+tests/                   pytest
+```
+
+## Extended docs (English)
+
+| Topic | Path |
+|-------|------|
+| Quick start | `docs/guide/quick-start.md` |
+| Providers | `docs/guide/providers.md` |
+| Tools & session | `docs/guide/tools-session.md` |
+| Events (full) | `docs/events.md` |
+| Wire (full) | `docs/wire.md` |
+| Reasoning streams | `docs/reasoning.md` |
+| Development | `docs/development.md` |
+
+Raw URLs: prefix `https://raw.githubusercontent.com/SyncLionPaw/pagent/main/`.
+
+
+---
+
+<!-- source: docs/guide/quick-start.md -->
+
+# Quick start
+
+## Install
+
+```bash
+pip install pagent
+pip install "pagent[search]"   # optional web_search tool
+```
+
+With [uv](https://github.com/astral-sh/uv) in a cloned repo:
+
+```bash
+uv sync --group dev --extra search
+uv run python -c "import pagent; print(pagent.__version__)"
+```
+
+## Minimal agent
+
+```python
+import asyncio
+import os
+
+from pagent import Agent, LLM, Session, tool
+
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for the city."""
+    return f"Sunny in {city} today."
+
+
+async def main():
+    if not os.getenv("OPENAI_API_KEY"):
+        raise SystemExit("Set OPENAI_API_KEY first.")
+
+    agent = Agent(
+        llm=LLM("gpt-4o-mini"),
+        session=Session("You are helpful. Use tools when needed."),
+        tools=[get_weather],
+        max_turns=8,
+    )
+
+    result = await agent.run("What's the weather in Xiamen?")
+    print(result.content)
+
+
+asyncio.run(main())
+```
+
+`run()` returns **`RunEnd`** — use `.content` for the answer.
+
+## Streaming APIs
+
+| API | Returns | Use when |
+|-----|---------|----------|
+| `agent.run()` | `RunEnd` | No streaming |
+| `agent.arun()` | `str` chunks | Typing effect, text only |
+| `agent.arun_events()` | `Event` objects | Python UI, tests |
+| `agent.arun_wire()` | NDJSON lines | Browser, VS Code plugin, any JSON consumer |
+
+Next: [Providers & API keys](./providers) · [Events](/events) · [Wire protocol](/wire)
+
+## Examples (clone repo)
+
+```bash
+git clone https://github.com/SyncLionPaw/pagent.git
+cd pagent
+export DEEPSEEK_API_KEY="your-key"   # for DeepSeek examples
+
+uv run examples/cli.py
+uv run examples/simple_qa.py
+uv run examples/reasoning_stream.py --zh
+uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
+```
+
+| Script | Description |
+|--------|-------------|
+| [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) | Interactive CLI, `/context` |
+| [simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py) | Tools demo |
+| [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | Reasoning + answer stream |
+| [wire_demo](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) | FastAPI + browser UI |
+
+
+---
+
+<!-- source: docs/guide/providers.md -->
+
+# Providers & API keys
+
+pagent talks to any server that implements **OpenAI Chat Completions** (`/v1/chat/completions`).
+
+## Built-in classes
+
+| Class | Default model (examples) | Environment variable |
+|-------|------------------------|----------------------|
+| `LLM("gpt-4o-mini")` | as passed | `OPENAI_API_KEY` |
+| `DeepSeek("deepseek-v4-flash")` | as passed | `DEEPSEEK_API_KEY` |
+| `Ollama("llama3.2")` | as passed | optional `OLLAMA_API_KEY` |
+| `Vllm`, `Sglang` | as passed | provider-specific |
+
+```python
+from pagent import DeepSeek, LLM, Ollama
+
+llm = LLM("gpt-4o-mini")
+llm = DeepSeek("deepseek-v4-flash")
+llm = Ollama("llama3.2")   # http://127.0.0.1:11434/v1
+```
+
+## Reasoning models
+
+Some providers expose **`reasoning_content`** (e.g. DeepSeek). Use `reasoning_effort` in `run_kwargs` and handle `ReasoningDelta` when streaming. See [Reasoning streams](/reasoning).
+
+## Optional extras
+
+```bash
+pip install "pagent[search]"    # web_search tool (ddgs)
+pip install "pagent[tokens]"    # HuggingFace tokenizers for some models
+```
+
+
+---
+
+<!-- source: docs/guide/tools-session.md -->
+
+# Tools & session
+
+## Session
+
+`Session(system_prompt)` holds the message list in **OpenAI chat format**. Append with:
+
+```python
+session += {"role": "user", "content": "Hello"}
+```
+
+Variants:
+
+| Class | Purpose |
+|-------|---------|
+| `Session` | Basic buffer |
+| `SlidingWindowSession` | Trim by **token** budget (not message count) |
+| `CompactingSession` | LLM summary compression when context is large |
+
+## Tools
+
+Decorate a Python function with `@tool()` — schema is inferred from type hints and docstring:
+
+```python
+from pagent import tool
+
+@tool()
+def calculate(expression: str) -> str:
+    """Evaluate a math expression."""
+    ...
+```
+
+Pass callables to `Agent(..., tools=[calculate])`. The model receives OpenAI-style `tools` definitions; pagent executes matching calls and appends `role: tool` messages.
+
+Built-in optional tools: `web_search`, `clock`, `region` (see [defaults](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/defaults.py)).
+
+## Agent loop
+
+```python
+Agent(llm, session, tools=[], max_turns=8)
+```
+
+Each turn: model → optional tool calls → model again until no tools or `max_turns`. Streaming: `arun_events()` / `arun_wire()`.
+
+
+---
+
+<!-- source: docs/events.md -->
+
+# Agent events
+
+For developers building custom UIs. New users: [Quick start](./guide/quick-start); internals: [development.md](./development.md).
+
+Structured events for observing the **Agent loop** without coupling to a specific UI (terminal, web, IDE). Inspired by the *Soul / Wire* split in products like Kimi Code: the loop **emits** facts; consumers **subscribe** and render.
+
+**Status:** `Agent.arun_events()` emits these events. `Agent.arun()` is a thin wrapper that yields only `TextDelta.text` for backward compatibility.
+
+## Native Event vs Wire (JSON-RPC)
+
+**Same timeline, two shapes** — not two different event systems.
+
+| Layer | What you get | Typical use |
+|-------|----------------|-------------|
+| **Native `Event`** | Frozen Python dataclasses (`TextDelta`, `RunEnd`, …) | Python services, CLI, tests, notebooks — `match` / `isinstance`, IDE types |
+| **Wire (JSON-RPC)** | One NDJSON line per event: `{"jsonrpc":"2.0","method":"TextDelta","params":{...}}` | Browser/mobile, other languages, SSE/WebSocket, log files (`wire.jsonl`) |
+
+| API | Returns |
+|-----|---------|
+| `agent.run()` | Final `RunEnd` only (blocking, no stream) |
+| `agent.arun()` | `str` text chunks only |
+| `agent.arun_events()` | **`Event`** objects (full stream) |
+| `agent.arun_wire()` | **`str`** NDJSON lines (same stream, serialized) |
+
+Wire is a thin serializer over `arun_events()`; see [wire.md](./wire.md). In Python you can also `encode_event_line(event)` when bridging to a socket yourself.
+
+**Choose native** when the consumer is Python and you want type checking and pattern matching.
+
+**Choose wire** when the consumer is not Python, or you need a stable on-the-wire format for HTTP/SSE/WebSocket.
+
+## Import
+
+```python
+from pagent import (
+    Event,
+    RunBegin,
+    TurnBegin,
+    TextDelta,
+    ReasoningDelta,
+    StepEnd,
+    ToolCallBegin,
+    ToolResult,
+    TurnEnd,
+    RunEnd,
+)
+```
+
+`Event` is a union of all concrete event classes (for `match` / `isinstance`).
+
+## Event reference
+
+### Lifecycle
+
+| Event | Fields | When (intended) |
+|-------|--------|-----------------|
+| `RunBegin` | `user_input: str` | User message appended to `session`; loop starts |
+| `TurnBegin` | `turn: int` | Start of one LLM call inside `max_turns` (0-based) |
+| `TurnEnd` | `turn: int`, `stopped: bool` | Assistant message written; `stopped=True` if loop will not call the model again this run |
+| `RunEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` | Entire `run` / `arun` finished (same type as `LLM.invoke` return) |
+
+### Streaming
+
+| Event | Fields | When (intended) |
+|-------|--------|-----------------|
+| `TextDelta` | `text: str` | Chunk of assistant `content` from `invoke_stream` |
+| `ReasoningDelta` | `text: str` | Chunk of `reasoning_content` (provider-specific) |
+
+### Step boundary
+
+| Event | Fields | When (intended) |
+|-------|--------|-----------------|
+| `StepEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` | One LLM step finished (stream assembled or single `invoke`) |
+
+Same fields as `RunEnd` for that step. `tool_calls` uses the OpenAI shape: `[{ "id", "type", "function": { "name", "arguments" } }, ...]`.
+
+### Tools
+
+| Event | Fields | When (intended) |
+|-------|--------|-----------------|
+| `ToolCallBegin` | `tool_call_id`, `name`, `arguments` | About to execute one tool |
+| `ToolResult` | `tool_call_id`, `name`, `content` | Tool output appended to `session` as `role: tool` |
+
+## Typical sequences
+
+### Single turn, text only
+
+```text
+RunBegin
+  TurnBegin(0)
+    TextDelta …
+    StepEnd(content=…, tool_calls=[])
+  TurnEnd(0, stopped=True)
+RunEnd
+```
+
+### One turn with tools, then final answer
+
+```text
+RunBegin
+  TurnBegin(0)
+    TextDelta …
+    StepEnd(…, tool_calls=[…])
+    ToolCallBegin(…)
+    ToolResult(…)
+  TurnEnd(0, stopped=False)
+  TurnBegin(1)
+    TextDelta …
+    StepEnd(…, tool_calls=[])
+  TurnEnd(1, stopped=True)
+RunEnd
+```
+
+### Hit `max_turns` with tools still pending
+
+Last `TurnEnd` may have `stopped=False`; the final `RunEnd` event reflects the last assistant message (may still include `tool_calls`).
+
+```mermaid
+sequenceDiagram
+    participant UI
+    participant Agent
+    participant LLM
+    participant Tools
+
+    UI->>Agent: user_input
+    Agent-->>UI: RunBegin
+    loop max_turns
+        Agent-->>UI: TurnBegin
+        Agent->>LLM: invoke / invoke_stream
+        loop stream
+            LLM-->>Agent: delta
+            Agent-->>UI: TextDelta / ReasoningDelta
+        end
+        Agent-->>UI: StepEnd
+        alt has tool_calls
+            loop each tool
+                Agent-->>UI: ToolCallBegin
+                Agent->>Tools: call
+                Tools-->>Agent: output
+                Agent-->>UI: ToolResult
+            end
+            Agent-->>UI: TurnEnd(stopped=False)
+        else no tool_calls
+            Agent-->>UI: TurnEnd(stopped=True)
+        end
+    end
+    Agent-->>UI: RunEnd
+```
+
+## Consumer example
+
+```python
+async for event in agent.arun_events("Hello"):
+    match event:
+        case TextDelta(text=t):
+            print(t, end="", flush=True)
+        case ToolCallBegin(name=n):
+            print(f"\n[tool {n}]")
+        case RunEnd(content=c):
+            print(f"\n[done: {c!r}]")
+```
+
+Keep `arun()` for callers that only need text:
+
+```python
+async for chunk in agent.arun("Hello"):
+    print(chunk, end="")  # str, not Event
+```
+
+## Design notes
+
+- **Frozen dataclasses** — events are immutable snapshots; safe to queue or log.
+- **Wire protocol** — JSON-RPC 2.0 notifications + NDJSON: [wire.md](./wire.md). Use `Agent.arun_wire()` or `encode_event_line()`.
+- **Inbound control** (approval, external tools, `steer`) — not modeled; would be separate request types, not `Event`.
+- **Session vs events** — `session.messages` remains the LLM API history; events are a parallel UI timeline (compare Kimi `context.jsonl` vs `wire.jsonl`).
+
+## Source
+
+Definitions: [`src/pagent/events.py`](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/events.py)
+
+**reasoning_content examples** (run vs stream, `--zh` 鸡兔同笼): [reasoning.md](./reasoning.md)
+
+
+---
+
+<!-- source: docs/wire.md -->
+
+# Wire protocol (JSON-RPC 2.0)
+
+For **web / mobile frontends** and any transport that speaks JSON lines (HTTP chunked, SSE `data:` payloads, WebSocket text frames).
+
+This is **not** a second event system. `arun_wire()` serializes the same stream as `arun_events()`; semantics and ordering match [events.md](./events.md).
+
+### When to use Wire vs native Event
+
+| Use **Wire** (`arun_wire`, NDJSON) | Use **native Event** (`arun_events`) |
+|-------------------------------------|--------------------------------------|
+| TypeScript / Swift / Kotlin client | Python CLI, FastAPI handler, tests |
+| SSE or WebSocket to the browser | `match event:` / `isinstance` in-process |
+| Persist or replay `wire.jsonl` | Rich objects (e.g. OpenAI `usage` before encode) |
+
+| Use **`arun()`** only when you need printed answer text and nothing else (e.g. simple scripts).
+
+Python backends that talk to a browser often: `arun_events()` in the server loop, `encode_event_line(event)` per chunk to the socket — or `arun_wire()` directly if you only forward lines.
+
+Python events from `Agent.arun_events()` map 1:1 to **JSON-RPC 2.0 notifications** (no `id` — they are pushed, not request/response pairs).
+
+## Message shape
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "TextDelta",
+  "params": { "text": "Hello" }
+}
+```
+
+| Field | Value |
+|-------|--------|
+| `jsonrpc` | Always `"2.0"` |
+| `method` | Event class name: `RunBegin`, `TextDelta`, `ToolCallBegin`, `RunEnd`, … |
+| `params` | Dataclass fields as a JSON object (see [events.md](./events.md)) |
+
+There is **no** `id` field. Inbound control (approve tool, cancel) is out of scope; use your own API for that.
+
+## NDJSON stream
+
+One notification per line (newline-delimited JSON):
+
+```text
+{"jsonrpc":"2.0","method":"RunBegin","params":{"user_input":"Hi"}}
+{"jsonrpc":"2.0","method":"TextDelta","params":{"text":"4"}}
+{"jsonrpc":"2.0","method":"RunEnd","params":{"content":"4","tool_calls":[],"reasoning_content":"","usage":null}}
+```
+
+## Python
+
+```python
+from pagent import Agent, LLM, Session, encode_event_line, decode_event_line
+
+async for line in agent.arun_wire("2+2?"):
+  # line is already NDJSON (ends with \n)
+  send_to_websocket(line)
+
+# Or encode/decode manually:
+from pagent import event_to_rpc, rpc_to_event
+
+msg = event_to_rpc(TextDelta("x"))
+event = rpc_to_event(msg)
+```
+
+Exports: `event_to_rpc`, `rpc_to_event`, `encode_event`, `decode_event`, `encode_event_line`, `decode_event_line`, `JSONRPC_VERSION`.
+
+## TypeScript consumer (sketch)
+
+```typescript
+type WireMsg = { jsonrpc: "2.0"; method: string; params: Record<string, unknown> };
+
+function onLine(line: string) {
+  const msg: WireMsg = JSON.parse(line);
+  switch (msg.method) {
+    case "TextDelta":
+      appendAnswer(String(msg.params.text ?? ""));
+      break;
+    case "ReasoningDelta":
+      appendThinking(String(msg.params.text ?? ""));
+      break;
+    case "ToolCallBegin":
+      showTool(msg.params.name as string, msg.params.arguments as string);
+      break;
+    case "RunEnd":
+      finish(msg.params.content as string);
+      break;
+  }
+}
+```
+
+## `usage` in `StepEnd` / `RunEnd`
+
+When present, `params.usage` is a plain object:
+
+```json
+{ "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15 }
+```
+
+## Methods reference
+
+Same semantics as [events.md](./events.md); `method` equals the Python event class name.
+
+| `method` | `params` keys |
+|----------|----------------|
+| `RunBegin` | `user_input` |
+| `TurnBegin` | `turn` |
+| `TurnEnd` | `turn`, `stopped` |
+| `TextDelta` | `text` |
+| `ReasoningDelta` | `text` |
+| `StepEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` |
+| `ToolCallBegin` | `tool_call_id`, `name`, `arguments` |
+| `ToolResult` | `tool_call_id`, `name`, `content` |
+| `RunEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` |
+
+## Runnable demo
+
+[`examples/wire_demo/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) — FastAPI server + single-page UI. See [Wire demo](./wire-demo) on this site.
+
+## Source
+
+[`src/pagent/wire.py`](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/wire.py)
+
+
+---
+
+<!-- source: docs/reasoning.md -->
+
+# reasoning_content examples
+
+Models such as DeepSeek may return **`reasoning_content`** (chain-of-thought) alongside **`content`** (user-facing answer). pagent carries both on **`RunEnd`**; in streaming mode **`ReasoningDelta`** and **`TextDelta`** events deliver them separately.
+
+Event reference: [events.md](./events.md)
+
+## Example scripts
+
+| File | Mode | Description |
+|------|------|-------------|
+| [reasoning_run.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_run.py) | Non-streaming | `agent.run()` → `RunEnd` |
+| [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | Streaming | `agent.arun_events()` → `ReasoningDelta` + `TextDelta` |
+| [reasoning_common.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_common.py) | Shared | Questions, `make_agent()` |
+
+Also see [simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py) (tools) and [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) (interactive CLI).
+
+## Run
+
+```bash
+export DEEPSEEK_API_KEY="your-key-here"
+
+uv run examples/reasoning_run.py
+uv run examples/reasoning_stream.py
+
+# Chinese (chicken–rabbit cage problem)
+uv run examples/reasoning_run.py --zh
+uv run examples/reasoning_stream.py --zh
+```
+
+`--zh` selects a Chinese system prompt and the 鸡兔同笼 problem; the default is an English logic puzzle (mislabeled boxes).
+
+## Non-streaming: RunEnd
+
+```python
+end = await agent.run(question, reasoning_effort="medium")
+
+print(end.reasoning_content)
+print(end.content)
+```
+
+Use **`end.content`**, not `print(end)`, to avoid dumping the full `RunEnd` repr.
+
+## Streaming: arun_events
+
+```python
+answer_started = False
+async for event in agent.arun_events(question, reasoning_effort="medium"):
+    match event:
+        case ReasoningDelta(text=t):
+            print(t, end="", flush=True)
+        case TextDelta(text=t):
+            if not answer_started:
+                print("\nanswer: ", end="", flush=True)
+                answer_started = True
+            print(t, end="", flush=True)
+        case RunEnd():
+            print()
+```
+
+`agent.arun()` still yields answer text only (filters `TextDelta` internally).
+
+## Questions
+
+- **English (default):** three mislabeled boxes puzzle.
+- **Chinese (`--zh`):** 鸡兔同笼 — 35 heads, 94 legs (answer: 23 chickens, 12 rabbits).
+
+Edit `QUESTION_EN` / `QUESTION_ZH` in `reasoning_common.py`.
+
+## reasoning_effort
+
+Pass through `run_kwargs`, e.g. `reasoning_effort="medium"`. Whether `reasoning_content` appears depends on the provider and model.
+
+
+---
+
+<!-- source: docs/wire-demo.md -->
+
+# Wire demo (local browser UI)
+
+Full-stack example: **FastAPI** serves a chat UI; the browser consumes **`Agent.arun_wire()`** as `application/x-ndjson`.
+
+::: tip 在线文档站不能代替本地 demo
+GitHub Pages 只托管静态文档。要体验流式对话，请在本地启动服务。
+:::
+
+## Run
+
+```bash
+git clone https://github.com/SyncLionPaw/pagent.git
+cd pagent
+export DEEPSEEK_API_KEY="your-key"
+
+uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
+```
+
+Open **http://127.0.0.1:8765**
+
+## Stop
+
+- **Server:** `Ctrl+C` in the terminal
+- **While streaming:** click **停止** in the UI (aborts the HTTP request)
+
+## What it shows
+
+- Chat UI with tool cards and optional reasoning block
+- Side drawer with raw Wire NDJSON lines
+- Same protocol as [Wire protocol](./wire) — not a separate message system
+
+Source: [examples/wire_demo/](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) on GitHub.
+
+
+---
+
+<!-- source: docs/development.md -->
+
+# Developer guide
+
+For contributors and anyone hacking the library. End users should start at the [documentation home](/) or [Quick start](./guide/quick-start).
+
+## Layout
+
+```text
+src/pagent/     library
+examples/       runnable demos
+tests/          pytest
+docs/           documentation
+```
+
+Core: `agent.py`, `session.py`, `llm.py`, `tool.py`, `tokens.py`, `events.py`.
+
+## Capability map
+
+| Module | Notes |
+|--------|--------|
+| `Session` | OpenAI-shaped messages; `SlidingWindowSession` trims by tokens; `CompactingSession` LLM-compresses history |
+| `LLM` | `invoke` / `invoke_stream`; returns `RunEnd` |
+| `Agent` | `run` / `arun` / `arun_events` / `arun_wire` |
+| `tokens` | `count_tokens`, `count_tokens_detail`, `format_context` |
+| `events` / `wire` | UI timeline — [events.md](./events.md), [wire.md](./wire.md) |
+
+中文完整表：[开发指南](/zh/development)
+
+## Out of scope
+
+Parallel tools, RAG, MCP, built-in file/shell tools, multimodal, checkpoints — build in your app.
+
+## Local development
+
+```bash
+uv sync --group dev --extra search
+pip install -e ".[search]"
+pre-commit install
+pytest -q
+```
+
+## Documentation site
+
+Built with [VitePress](https://vitepress.dev/). Config: `docs/.vitepress/config.mts`, content: `docs/*.md`.
+
+**For coding agents / LLMs:** [agent-reference](./agent-reference), repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md), [llms.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms.txt), [llms-full.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms-full.txt) (`npm run build:llms` in `docs/` regenerates the bundle).
+
+```bash
+cd docs
+npm install
+npm run dev            # http://localhost:5173/pagent/
+npm run build          # output in docs/.vitepress/dist/
+```
+
+Node tooling lives under `docs/` (`package.json`, `package-lock.json`) so the repo root stays Python-only.
+
+Do **not** commit `docs/.vitepress/dist/` or `site/` — they are in `.gitignore`. Only Markdown sources under `docs/` live on `main`.
+
+On push to `main`, [docs.yml](https://github.com/SyncLionPaw/pagent/blob/main/.github/workflows/docs.yml) runs `npm run build` in `docs/` and publishes `docs/.vitepress/dist/` to the **`gh-pages`** branch. Enable in repo **Settings → Pages → Deploy from branch → gh-pages / root**.
+
+## Publishing
+
+`.github/workflows/publish.yml` — PyPI via Trusted Publishing on release.
+
+## See also
+
+- [events.md](./events.md)
+- [reasoning.md](./reasoning.md)

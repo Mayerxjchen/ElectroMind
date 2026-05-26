@@ -2,6 +2,9 @@
 layout: home
 
 hero:
+  image:
+    src: /logo.svg
+    alt: pagent
   name: pagent
   text: 轻量 async Agent 循环
   tagline: OpenAI 兼容 Chat Completions · 消息摆得明明白白 · 工具自己整

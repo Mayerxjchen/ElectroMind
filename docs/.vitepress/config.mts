@@ -17,8 +17,9 @@ export default defineConfig({
   base: "/pagent/",
   rewrites: zhLegacyRewrites,
   ignoreDeadLinks: [/(?:^|\/)README/, /\.\.\//, /\.py$/, /examples\//],
+  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/logo-icon.svg" }]],
   themeConfig: {
-    logo: { text: "pagent" },
+    logo: { src: "/logo-icon.svg", alt: "pagent" },
     socialLinks: [{ icon: "github", link: github }],
     search: { provider: "local" },
     editLink: {
@@ -63,6 +64,14 @@ export default defineConfig({
           {
             text: "Development",
             items: [{ text: "Developer guide", link: "/development" }],
+          },
+          {
+            text: "For agents",
+            items: [
+              { text: "Agent reference", link: "/agent-reference" },
+              { text: "llms.txt index", link: "/llms.txt", target: "_blank" },
+              { text: "llms-full.txt bundle", link: "/llms-full.txt", target: "_blank" },
+            ],
           },
         ],
       },
