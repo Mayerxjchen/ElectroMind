@@ -13,6 +13,13 @@ __pycache__/
 # build / packaging
 build/
 dist/
+node_modules/
+# VitePress (build locally; deploy via .github/workflows/docs.yml → gh-pages)
+docs/node_modules/
+docs/.vitepress/.temp/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+site/
 pip-wheel-metadata/
 *.whl
 

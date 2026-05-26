@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml/badge.svg)](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml)
 
-语言： [中文](./README.zh-CN.md) | [English](./README.en.md)
+语言： [中文](./README.zh-CN.md) | [English](./README.en.md) · [文档站](https://synclionpaw.github.io/pagent/)
 
 **pagent** 是一个轻量的 **async** Python 库：用 OpenAI 兼容的 Chat Completions API 跑 **Agent + 工具** 循环。适合脚本、实验和教学——消息列表透明、工具自己写。
 

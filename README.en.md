@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml/badge.svg)](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml)
 
-Language: [中文](./README.zh-CN.md) | [English](./README.en.md)
+Language: [中文](./README.zh-CN.md) | [English](./README.en.md) · [Docs](https://synclionpaw.github.io/pagent/)
 
 **pagent** is a small **async** Python library for an **Agent + tools** loop over **OpenAI-compatible Chat Completions**. Good for scripts, experiments, and teaching—transparent message history, your own tools.
 

@@ -2,7 +2,7 @@
 
 Language: [中文](./development.zh-CN.md) | English
 
-For contributors and anyone hacking the library. End users should read [README.md](../README.md) only.
+For contributors and anyone hacking the library. End users should read the [documentation site](https://synclionpaw.github.io/pagent/) or [README.md](../README.md).
 
 ## Layout
 
@@ -36,6 +36,23 @@ pip install -e ".[search]"
 pre-commit install
 pytest -q
 ```
+
+## Documentation site
+
+Built with [VitePress](https://vitepress.dev/). Config: `docs/.vitepress/config.mts`, content: `docs/*.md`.
+
+```bash
+cd docs
+npm install
+npm run dev            # http://localhost:5173/pagent/
+npm run build          # output in docs/.vitepress/dist/
+```
+
+Node tooling lives under `docs/` (`package.json`, `package-lock.json`) so the repo root stays Python-only.
+
+Do **not** commit `docs/.vitepress/dist/` or `site/` — they are in `.gitignore`. Only Markdown sources under `docs/` live on `main`.
+
+On push to `main`, [.github/workflows/docs.yml](../.github/workflows/docs.yml) runs `npm run build` in `docs/` and publishes `docs/.vitepress/dist/` to the **`gh-pages`** branch. Enable in repo **Settings → Pages → Deploy from branch → gh-pages / root**.
 
 ## Publishing
 

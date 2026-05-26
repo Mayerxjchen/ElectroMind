@@ -2,7 +2,7 @@
 
 语言： [中文](./development.zh-CN.md) | [English](./development.md)
 
-面向贡献者与需要改库内部的人。使用者请只看 [README.zh-CN.md](../README.zh-CN.md)。
+面向贡献者与需要改库内部的人。使用者请看 [文档站](https://synclionpaw.github.io/pagent/) 或 [README.zh-CN.md](../README.zh-CN.md)。
 
 ## 仓库结构
 
@@ -47,6 +47,23 @@ pip install -e ".[search]"
 uv run pre-commit install
 uv run pytest -q
 ```
+
+## 文档站
+
+使用 [VitePress](https://vitepress.dev/)，配置在 `docs/.vitepress/config.mts`，正文在 `docs/`。
+
+```bash
+cd docs
+npm install
+npm run dev            # http://localhost:5173/pagent/
+npm run build          # 输出到 docs/.vitepress/dist/
+```
+
+Node 依赖放在 `docs/`（`package.json`、`package-lock.json`），仓库根目录保持纯 Python。
+
+**不要**把 `docs/.vitepress/dist/`、`site/` 提交进仓库（已在 `.gitignore`）；`main` 上只保留 `docs/` 里的 Markdown 源文件。
+
+推送到 `main` 后，[docs.yml](../.github/workflows/docs.yml) 会在 `docs/` 下执行 `npm run build`，把 `docs/.vitepress/dist/` 发布到 **`gh-pages`** 分支。在仓库 **Settings → Pages** 中选择 **Deploy from branch → gh-pages / root**。
 
 ## 发布
 
