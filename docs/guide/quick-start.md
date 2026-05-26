@@ -1,6 +1,6 @@
 # Quick start
 
-Language: [中文](/zh/guide/quick-start) | English
+Language: [中文](/zh/guide/quick-start) | [日本語](/ja/guide/quick-start) | [四川话](/sc/guide/quick-start) | English
 
 ## Install
 

@@ -1,6 +1,6 @@
 # Tools & session
 
-Language: [中文](/zh/guide/tools-session) | English
+Language: [中文](/zh/guide/tools-session) | [日本語](/ja/guide/tools-session) | [四川话](/sc/guide/tools-session) | English
 
 ## Session
 

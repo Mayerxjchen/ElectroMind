@@ -1,6 +1,6 @@
 # Wire demo (local browser UI)
 
-中文读者：侧栏 **Wire demo（本地）** 或 [简体中文首页](/zh/)。命令与下文相同。
+Language: [简体中文](/zh/wire-demo) | [日本語](/ja/wire-demo) | [四川话](/sc/wire-demo) | English
 
 Full-stack example: **FastAPI** serves a chat UI; the browser consumes **`Agent.arun_wire()`** as `application/x-ndjson`.
 

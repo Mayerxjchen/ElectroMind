@@ -1,6 +1,6 @@
 # Agent events
 
-Language: [简体中文](/events.zh-CN) | English
+Language: [简体中文](/zh/events) | [日本語](/ja/events) | [四川话](/sc/events) | English
 
 For developers building custom UIs. New users: [Quick start](./guide/quick-start); internals: [development.md](./development.md).
 

@@ -1,6 +1,6 @@
 # Wire protocol (JSON-RPC 2.0)
 
-Language: [简体中文](/wire.zh-CN) | English
+Language: [简体中文](/zh/wire) | [日本語](/ja/wire) | [四川话](/sc/wire) | English
 
 For **web / mobile frontends** and any transport that speaks JSON lines (HTTP chunked, SSE `data:` payloads, WebSocket text frames).
 

@@ -1,6 +1,6 @@
 # Developer guide
 
-Language: [简体中文](/development.zh-CN) | English
+Language: [简体中文](/zh/development) | [日本語](/ja/development) | [四川话](/sc/development) | English
 
 For contributors and anyone hacking the library. End users should start at the [documentation home](/) or [Quick start](./guide/quick-start).
 
@@ -25,7 +25,7 @@ Core: `agent.py`, `session.py`, `llm.py`, `tool.py`, `tokens.py`, `events.py`.
 | `tokens` | `count_tokens`, `count_tokens_detail`, `format_context` |
 | `events` / `wire` | UI timeline — [events.md](./events.md), [wire.md](./wire.md) |
 
-中文完整表：[development.zh-CN.md](./development.zh-CN.md)
+中文完整表：[开发指南](/zh/development)
 
 ## Out of scope
 

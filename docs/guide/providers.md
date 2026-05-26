@@ -1,6 +1,6 @@
 # Providers & API keys
 
-Language: [中文](/zh/guide/providers) | English
+Language: [中文](/zh/guide/providers) | [日本語](/ja/guide/providers) | [四川话](/sc/guide/providers) | English
 
 pagent talks to any server that implements **OpenAI Chat Completions** (`/v1/chat/completions`).
 

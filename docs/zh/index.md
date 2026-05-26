@@ -11,10 +11,16 @@ hero:
       link: /zh/guide/quick-start
     - theme: alt
       text: 事件与 Wire
-      link: /events.zh-CN
+      link: /zh/events
     - theme: alt
       text: English
       link: /
+    - theme: alt
+      text: 日本語
+      link: /ja/
+    - theme: alt
+      text: 四川话
+      link: /sc/
 
 features:
   - title: 小而可嵌入

@@ -1,6 +1,6 @@
 # 工具与会话
 
-语言： [中文](/zh/guide/tools-session) | [English](/guide/tools-session)
+语言： [中文](/zh/guide/tools-session) | [English](/guide/tools-session) | [日本語](/ja/guide/tools-session) | [四川话](/sc/guide/tools-session)
 
 ## Session（会话）
 

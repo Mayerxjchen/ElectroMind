@@ -1,10 +1,10 @@
 # reasoning_content 示例
 
-语言：中文 | [English](./reasoning.md)
+语言：中文 | [English](/reasoning) | [日本語](/ja/reasoning) | [四川话](/sc/reasoning)
 
 DeepSeek 等模型可在响应中返回 **`reasoning_content`**（思考过程）和 **`content`**（面向用户的答案）。pagent 通过 **`RunEnd`** 承载这两部分，流式场景下通过 **`ReasoningDelta`** / **`TextDelta`** 事件分别推送。
 
-详见事件说明：[events.zh-CN.md](./events.zh-CN.md)
+详见事件说明：[事件流](./events)
 
 ## 示例脚本
 

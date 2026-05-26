@@ -15,6 +15,12 @@ hero:
     - theme: alt
       text: 中文文档
       link: /zh/
+    - theme: alt
+      text: 日本語
+      link: /ja/
+    - theme: alt
+      text: 四川话
+      link: /sc/
 
 features:
   - title: Small & embeddable

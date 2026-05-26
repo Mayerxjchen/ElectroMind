@@ -1,6 +1,6 @@
 # 开发者文档
 
-语言：中文 | [English](./development.md)
+语言：中文 | [English](/development) | [日本語](/ja/development) | [四川话](/sc/development)
 
 面向贡献者与需要改库内部的人。使用者请从 [文档首页](/zh/) 或 [快速开始](/zh/guide/quick-start) 看起。
 
@@ -23,7 +23,7 @@ docs/           文档
 | LLM | `invoke` / `invoke_stream`；`RunEnd` 为单次模型结果 |
 | Agent | `run` / `arun` / `arun_events` |
 | tokens | `count_tokens`、`count_tokens_detail`、`format_context` |
-| events | `RunBegin`、`TextDelta`、`StepEnd`、`RunEnd` 等 — 见 [events.zh-CN.md](./events.zh-CN.md) |
+| events | `RunBegin`、`TextDelta`、`StepEnd`、`RunEnd` 等 — 见 [事件流](./events) |
 
 ## 刻意不实现
 
@@ -71,5 +71,5 @@ Node 依赖放在 `docs/`（`package.json`、`package-lock.json`），仓库根�
 
 ## 更多设计说明
 
-- [事件类型](./events.zh-CN.md)
-- [reasoning_content 示例](./reasoning.zh-CN.md)
+- [事件类型](./events)
+- [reasoning_content 示例](./reasoning)

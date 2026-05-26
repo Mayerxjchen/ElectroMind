@@ -1,6 +1,6 @@
 # 模型与 API Key
 
-语言： [中文](/zh/guide/providers) | [English](/guide/providers)
+语言： [中文](/zh/guide/providers) | [English](/guide/providers) | [日本語](/ja/guide/providers) | [四川话](/sc/guide/providers)
 
 pagent 通过 **OpenAI Chat Completions** 兼容接口（`/v1/chat/completions`）调用模型。
 
@@ -23,7 +23,7 @@ llm = Ollama("llama3.2")   # http://127.0.0.1:11434/v1
 
 ## 思考过程（reasoning）
 
-部分模型返回 **`reasoning_content`**（如 DeepSeek）。流式时用 `ReasoningDelta`，详见 [思考过程](/reasoning.zh-CN)。
+部分模型返回 **`reasoning_content`**（如 DeepSeek）。流式时用 `ReasoningDelta`，详见 [思考过程](/zh/reasoning)。
 
 ## 可选依赖
 

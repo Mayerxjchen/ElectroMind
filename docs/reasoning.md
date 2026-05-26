@@ -1,6 +1,6 @@
 # reasoning_content examples
 
-Language: [简体中文](/reasoning.zh-CN) | English
+Language: [简体中文](/zh/reasoning) | [日本語](/ja/reasoning) | [四川话](/sc/reasoning) | English
 
 Models such as DeepSeek may return **`reasoning_content`** (chain-of-thought) alongside **`content`** (user-facing answer). pagent carries both on **`RunEnd`**; in streaming mode **`ReasoningDelta`** and **`TextDelta`** events deliver them separately.
 
