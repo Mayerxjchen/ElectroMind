@@ -131,7 +131,10 @@ tests/                   pytest
 |-------|------|
 | Quick start | `docs/guide/quick-start.md` |
 | Providers | `docs/guide/providers.md` |
-| Tools & session | `docs/guide/tools-session.md` |
+| Prompt & session | `docs/guide/prompt.md` |
+| Tools | `docs/guide/tools.md` |
+| Built-in tools | `docs/guide/defaults.md` |
+| Memory helper | `docs/guide/memory.md` |
 | Events (full) | `docs/events.md` |
 | Wire (full) | `docs/wire.md` |
 | Reasoning streams | `docs/reasoning.md` |

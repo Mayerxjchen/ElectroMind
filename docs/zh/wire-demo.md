@@ -8,6 +8,12 @@
 GitHub Pages 只托管静态文档。要体验流式对话，请在本地启动服务。
 :::
 
+## 界面预览
+
+![pagent wire demo — 聊天、思考过程与 Wire 日志](/wire-demo.png)
+
+流式回复、**思考过程**折叠块，以及 **Wire 日志** 抽屉（`arun_wire()` 吐出的 JSON-RPC 行）。
+
 ## 架构图
 
 ### 组件

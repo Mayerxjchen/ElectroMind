@@ -8,6 +8,12 @@ Full-stack example: **FastAPI** serves a chat UI; the browser consumes **`Agent.
 The docs site is static only. Run the server locally to try streaming chat.
 :::
 
+## Preview
+
+![pagent wire demo — chat UI with reasoning and Wire log](/wire-demo.png)
+
+Streaming reply, optional **reasoning** block, and **Wire log** drawer (JSON-RPC lines from `arun_wire()`).
+
 ## Architecture
 
 ### Components

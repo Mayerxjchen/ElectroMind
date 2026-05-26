@@ -2,23 +2,7 @@
 
 语言： [中文](/zh/guide/quick-start) | [English](/guide/quick-start) | [日本語](/ja/guide/quick-start) | [四川话](/sc/guide/quick-start)
 
-## 安装
-
-```bash
-pip install pagent
-pip install "pagent[search]"   # 可选 web_search
-```
-
-在 clone 的仓库里用 [uv](https://docs.astral.sh/uv/)：
-
-::: info 不了解 uv 是什么？
-请看 [**uv 官方文档**](https://docs.astral.sh/uv/) — 极速 Python 包与项目管理工具（[Astral](https://astral.sh/) / Ruff 团队出品），可替代 pip、poetry 等常见工作流。
-:::
-
-```bash
-uv sync --group dev --extra search
-uv run python -c "import pagent; print(pagent.__version__)"
-```
+前置：[安装](./install)（Python 3.11+，pip / uv / conda）。
 
 ## 最小示例
 

@@ -2,25 +2,7 @@
 
 语言：四川话 | [English](/guide/quick-start) | [普通话](/zh/guide/quick-start) | [日本語](/ja/guide/quick-start)
 
-依赖装 **归一** 了再往下搞，莫梭边边哈。
-
-## 安装
-
-```bash
-pip install pagent
-pip install "pagent[search]"   # 可选 web_search
-```
-
-仓库都 clone 起了，用 [uv](https://docs.astral.sh/uv/) 更撇脱：
-
-::: info 不晓得 uv 是啥子？
-到 [**这儿看官方文档**](https://docs.astral.sh/uv/)嘛 — 超快的 Python 包管理 / 项目管理工具（[Astral](https://astral.sh/) 出的，跟 Ruff 一家），能替代 pip、poetry 那一挂。装起、跑示例，照文档 **搞起** 就安逸。
-:::
-
-```bash
-uv sync --group dev --extra search
-uv run python -c "import pagent; print(pagent.__version__)"
-```
+前置：[安装](./install)（Python 3.11+，pip / uv / conda），装 **归一** 了再往下搞哈。
 
 ## 最小例子
 

@@ -3,18 +3,18 @@ layout: home
 
 hero:
   image:
-    src: /logo.svg
+    src: /logo.png
     alt: pagent
   name: pagent
-  text: 轻量 async Agent 循环
-  tagline: OpenAI 兼容 · 消息摆得明明白白 · 工具自己整 · 用起来巴适
+  text: 丁丁儿 智能体 架架儿，你国人捏拢
+  tagline: 么得花架子 · 眯起眼睛都看的清白 · 随在你整嘛
   actions:
     - theme: brand
       text: 架势搞起
       link: /sc/guide/quick-start
     - theme: alt
-      text: 事件跟 Wire
-      link: /sc/events
+      text: 安装
+      link: /sc/guide/install
     - theme: alt
       text: English
       link: /
@@ -28,20 +28,11 @@ hero:
 features:
   - title: 小巧好嵌
     details: Session + Agent + 工具 — 莫得文件编辑、终端、MCP 那些花架子，循环你自己捏，撇脱。
-  - title: 流式事件
-    details: Python 用 arun_events() 瞅过程；前端/插件用 arun_wire() 吐 JSON-RPC NDJSON，要得。
+  - title: 边跑边看
+    details: 支持流式输出，聊天界面巴适；要接 UI 了，文档里头一步一步摆清楚。
   - title: OpenAI 那套 API
     details: OpenAI、DeepSeek、Ollama、vLLM、SGLang 等，只要兼容 /v1/chat/completions，莫得问题。
 ---
-
-## 安装
-
-```bash
-pip install pagent
-pip install "pagent[search]"   # 可选 web_search
-```
-
-要 **Python 3.11+**，这个莫得商量哈。
 
 ## 二十几行就整一个 Agent
 
@@ -51,7 +42,7 @@ pip install "pagent[search]"   # 可选 web_search
 
 示例输出：`Sunny in Xiamen today.`（示例哈，实际看模型咋个回喃）。
 
-[赶紧上手 →](./guide/quick-start) · [事件跟 Wire →](./events)
+[安装 →](./guide/install) · [赶紧上手 →](./guide/quick-start)
 
 ::: tip 协作向四川话（文档里会冒）
 **搞起/架势** 开干 · **过一道** 检查 · **归一** 搞定 · **经佑/看到起** 照看模块 · **落教/稳当** 办得牢靠 · **攒劲** 继续冲

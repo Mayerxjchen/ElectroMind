@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/public/logo.svg" alt="pagent" width="420" />
+  <img src="docs/public/logo.png" alt="pagent" width="420" />
 </p>
 
 # pagent (English)

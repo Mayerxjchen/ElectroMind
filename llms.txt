@@ -10,7 +10,10 @@ This file helps LLMs and coding agents find pagent documentation. Prefer **agent
 - [Full doc bundle](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/llms-full.txt): All English guides concatenated (regenerate with `cd docs && npm run build:llms`)
 - [Quick start](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/quick-start.md): Install, minimal Agent, streaming APIs
 - [Providers & API keys](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/providers.md): LLM, DeepSeek, Ollama, vLLM, SGLang
-- [Tools & session](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/tools-session.md): Session, @tool, Agent loop
+- [Prompt & session](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/prompt.md): System prompt, Session, sliding window, compacting
+- [Tools](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/tools.md): @tool, tool loop
+- [Built-in tools](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/defaults.md): clock, region, web_search, DEFAULT_TOOLS
+- [Memory helper](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/memory.md): pagent.memory.Memory (experimental)
 - [Events](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/events.md): RunBegin, TextDelta, ToolCallBegin, RunEnd, sequences
 - [Wire protocol](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire.md): JSON-RPC 2.0 NDJSON for browsers and non-Python clients
 - [Reasoning streams](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/reasoning.md): reasoning_content, ReasoningDelta

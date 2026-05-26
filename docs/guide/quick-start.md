@@ -2,23 +2,7 @@
 
 Language: [中文](/zh/guide/quick-start) | [日本語](/ja/guide/quick-start) | [四川话](/sc/guide/quick-start) | English
 
-## Install
-
-```bash
-pip install pagent
-pip install "pagent[search]"   # optional web_search tool
-```
-
-With [uv](https://docs.astral.sh/uv/) in a cloned repo:
-
-::: info What is uv?
-**[uv](https://docs.astral.sh/uv/)** is a fast Python package and project manager from [Astral](https://astral.sh/) (the Ruff team). New to it? See the [official docs](https://docs.astral.sh/uv/).
-:::
-
-```bash
-uv sync --group dev --extra search
-uv run python -c "import pagent; print(pagent.__version__)"
-```
+Prerequisites: [Install](./install) (Python 3.11+, pip / uv / conda).
 
 ## Minimal agent
 

@@ -2,23 +2,7 @@
 
 言語: 日本語 | [English](/guide/quick-start) | [简体中文](/zh/guide/quick-start) | [四川话](/sc/guide/quick-start)
 
-## インストール
-
-```bash
-pip install pagent
-pip install "pagent[search]"   # 任意 web_search
-```
-
-クローンしたリポジトリで [uv](https://docs.astral.sh/uv/) を使う場合:
-
-::: info uv とは？
-[**公式ドキュメント**](https://docs.astral.sh/uv/) を参照 — 高速な Python パッケージ・プロジェクト管理ツール（[Astral](https://astral.sh/) / Ruff チーム）。pip / poetry の代替としてよく使われます。
-:::
-
-```bash
-uv sync --group dev --extra search
-uv run python -c "import pagent; print(pagent.__version__)"
-```
+前提: [インストール](./install)（Python 3.11+、pip / uv / conda）。
 
 ## 最小の Agent
 

@@ -144,7 +144,9 @@ tests/                   pytest
 |-------|------|
 | Quick start | `docs/guide/quick-start.md` |
 | Providers | `docs/guide/providers.md` |
-| Tools & session | `docs/guide/tools-session.md` |
+| Prompt & session | `docs/guide/prompt.md` |
+| Tools | `docs/guide/tools.md` |
+| Memory helper | `docs/guide/memory.md` |
 | Events (full) | `docs/events.md` |
 | Wire (full) | `docs/wire.md` |
 | Reasoning streams | `docs/reasoning.md` |
@@ -159,23 +161,7 @@ Raw URLs: prefix `https://raw.githubusercontent.com/SyncLionPaw/pagent/main/`.
 
 # Quick start
 
-## Install
-
-```bash
-pip install pagent
-pip install "pagent[search]"   # optional web_search tool
-```
-
-With [uv](https://docs.astral.sh/uv/) in a cloned repo:
-
-::: info What is uv?
-**[uv](https://docs.astral.sh/uv/)** is a fast Python package and project manager from [Astral](https://astral.sh/) (the Ruff team). New to it? See the [official docs](https://docs.astral.sh/uv/).
-:::
-
-```bash
-uv sync --group dev --extra search
-uv run python -c "import pagent; print(pagent.__version__)"
-```
+Prerequisites: [Install](./install) (Python 3.11+, pip / uv / conda).
 
 ## Minimal agent
 
@@ -283,50 +269,185 @@ pip install "pagent[tokens]"    # HuggingFace tokenizers for some models
 
 ---
 
-<!-- source: docs/guide/tools-session.md -->
+<!-- source: docs/guide/prompt.md -->
 
-# Tools & session
+# Prompt
 
-## Session
+Use `Session` for the system prompt and chat history, then pass it to `Agent`.
 
-`Session(system_prompt)` holds the message list in **OpenAI chat format**. Append with:
+## System prompt
 
 ```python
-session += {"role": "user", "content": "Hello"}
+from pagent import Session
+
+session = Session("You are a concise assistant.")
 ```
 
-Variants:
+## User message
 
-| Class | Purpose |
-|-------|---------|
-| `Session` | Basic buffer |
-| `SlidingWindowSession` | Trim by **token** budget (not message count) |
-| `CompactingSession` | LLM summary compression when context is large |
+```python
+session += {"role": "user", "content": "What's 2+2?"}
+```
 
-## Tools
+## Run
 
-Decorate a Python function with `@tool()` — schema is inferred from type hints and docstring:
+```python
+from pagent import Agent, LLM
+
+agent = Agent(llm=LLM("gpt-4o-mini"), session=session, tools=[], max_turns=8)
+await agent.run("What's 2+2?")
+```
+
+Each `run()` appends the user turn and the reply to `session`.
+
+## Long chats
+
+Too many tokens? Use `SlidingWindowSession` to drop old turns, or `CompactingSession` and `await session.compact()` to summarize.
+
+```python
+from pagent import SlidingWindowSession, CompactingSession, LLM
+
+session = SlidingWindowSession("You are helpful.", max_tokens=8000)
+
+llm = LLM("gpt-4o-mini")
+session = CompactingSession("You are helpful.", llm=llm, compact_at_tokens=6000)
+if session.should_compact:
+    await session.compact()
+```
+
+## Save
+
+```python
+session.save_to_file("chat.json")
+```
+
+## See also
+
+- [Tools](./tools) · [Memory](./memory) · [Quick start](./quick-start)
+
+
+---
+
+<!-- source: docs/guide/tools.md -->
+
+# Tools
+
+Write a Python function, add `@tool()`, pass it in `tools=[...]`.
+
+## Define a tool
+
+Docstring = what the model sees. Type hints = argument schema.
 
 ```python
 from pagent import tool
 
 @tool()
-def calculate(expression: str) -> str:
-    """Evaluate a math expression."""
-    ...
+def get_weather(city: str) -> str:
+    """Return weather for a city."""
+    return f"Sunny in {city} today."
 ```
 
-Pass callables to `Agent(..., tools=[calculate])`. The model receives OpenAI-style `tools` definitions; pagent executes matching calls and appends `role: tool` messages.
-
-Built-in optional tools: `web_search`, `clock`, `region` (see [defaults](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/defaults.py)).
-
-## Agent loop
+## Use with Agent
 
 ```python
-Agent(llm, session, tools=[], max_turns=8)
+from pagent import Agent, LLM, Session
+
+agent = Agent(
+    llm=LLM("gpt-4o-mini"),
+    session=Session("Use get_weather for weather."),
+    tools=[get_weather],
+    max_turns=8,
+)
+await agent.run("Weather in Xiamen?")
 ```
 
-Each turn: model → optional tool calls → model again until no tools or `max_turns`. Streaming: `arun_events()` / `arun_wire()`.
+Multiple tools: `tools=[a, b]`. Custom name: `@tool(name="weather", description="...")`.
+
+Built-in: [defaults](./defaults) (`clock`, `region`, `web_search`).
+
+## See also
+
+- [Prompt](./prompt) · [Memory](./memory) · [Defaults](./defaults) · [Events](/events)
+
+
+---
+
+<!-- source: docs/guide/defaults.md -->
+
+# Built-in tools
+
+Optional tools in `pagent.defaults`: `clock`, `region`, `web_search`.
+
+```python
+from pagent import Agent, LLM, Session, DEFAULT_TOOLS, clock, region, web_search
+
+agent = Agent(
+    llm=LLM("gpt-4o-mini"),
+    session=Session("You are helpful."),
+    tools=[*DEFAULT_TOOLS],  # clock + region
+    max_turns=8,
+)
+```
+
+`DEFAULT_TOOLS` is `[clock, region]`. Add `web_search` yourself (needs extra install).
+
+## clock {#clock}
+
+Current time as ISO 8601.
+
+```python
+tools=[clock]
+# utc=True (default) or utc=False for local time
+```
+
+## region {#region}
+
+OS locale and timezone hint (no GPS).
+
+```python
+tools=[region]
+```
+
+## web_search {#web-search}
+
+Web search via DuckDuckGo.
+
+```bash
+pip install 'pagent[search]'
+```
+
+```python
+tools=[web_search]
+```
+
+## See also
+
+- [Tools](./tools) (write your own `@tool`)
+
+
+---
+
+<!-- source: docs/guide/memory.md -->
+
+# Memory
+
+Not chat history — a simple note list you paste into the prompt yourself (`pagent.memory`, experimental).
+
+```python
+from pagent.memory import Memory
+from pagent import Session
+
+notes = Memory()
+notes.add("User prefers metric units.")
+
+session = Session(f"You are helpful.\n\nNotes:\n{notes.as_text()}")
+```
+
+Not wired into `Agent` automatically. Save/load: `notes.save_to_file("notes.json")`, `Memory.load_from_file(...)`.
+
+## See also
+
+- [Prompt](./prompt) · [Tools](./tools)
 
 
 ---
@@ -523,11 +644,11 @@ This is **not** a second event system. `arun_wire()` serializes the same stream 
 ### Stack: one timeline, two layers
 
 ```mermaid
-flowchart TB
-  A[Agent loop<br/>arun_events]
-  W[Wire encode<br/>NDJSON line]
-  T[Transport<br/>HTTP / SSE / WS / file]
-  U[Client UI<br/>parse method]
+flowchart LR
+  A[Agent arun_events]
+  W[Wire NDJSON]
+  T[HTTP SSE WS]
+  U[Client UI]
 
   A --> W --> T --> U
 ```
@@ -538,9 +659,9 @@ Inbound control (cancel, tool approval, steer) is **not** on this arrow — use 
 
 ```mermaid
 flowchart LR
-  E["Event<br/>TextDelta"]
-  R["JSON-RPC<br/>no id"]
-  L["NDJSON line"]
+  E[TextDelta]
+  R[JSON-RPC]
+  L[NDJSON line]
 
   E --> R --> L
 ```
@@ -795,14 +916,20 @@ Full-stack example: **FastAPI** serves a chat UI; the browser consumes **`Agent.
 The docs site is static only. Run the server locally to try streaming chat.
 :::
 
+## Preview
+
+![pagent wire demo — chat UI with reasoning and Wire log](/wire-demo.png)
+
+Streaming reply, optional **reasoning** block, and **Wire log** drawer (JSON-RPC lines from `arun_wire()`).
+
 ## Architecture
 
 ### Components
 
-**Browser ↔ server** (no crossing arrows — easier to read):
+#### Browser and server
 
 ```mermaid
-flowchart LR
+flowchart TB
   B[Browser]
   S[FastAPI]
 
@@ -810,7 +937,9 @@ flowchart LR
   S -->|NDJSON stream| B
 ```
 
-**Inside FastAPI** (`Agent.arun_wire`, tools, session **小帕**):
+#### Inside FastAPI
+
+`Agent.arun_wire`, tools, session **小帕**:
 
 ```mermaid
 flowchart LR

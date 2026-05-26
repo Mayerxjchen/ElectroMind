@@ -3,6 +3,7 @@ import { withMermaid } from "vitepress-plugin-mermaid";
 
 const github = "https://github.com/SyncLionPaw/pagent";
 const site = "https://synclionpaw.github.io/pagent";
+const base = "/pagent/";
 
 /** Keep old *.zh-CN.md URLs working after move to docs/zh/ */
 const zhLegacyRewrites: Record<string, string> = {
@@ -10,6 +11,10 @@ const zhLegacyRewrites: Record<string, string> = {
   "wire.zh-CN.md": "zh/wire.md",
   "reasoning.zh-CN.md": "zh/reasoning.md",
   "development.zh-CN.md": "zh/development.md",
+  "guide/tools-session.md": "guide/concepts.md",
+  "zh/guide/tools-session.md": "zh/guide/concepts.md",
+  "ja/guide/tools-session.md": "ja/guide/concepts.md",
+  "sc/guide/tools-session.md": "sc/guide/concepts.md",
 };
 
 export default withMermaid(
@@ -17,7 +22,7 @@ export default withMermaid(
   title: "pagent",
   description:
     "Minimal async Python agent over OpenAI-compatible Chat Completions",
-  base: "/pagent/",
+  base,
   mermaid: {
     fontSize: 15,
     flowchart: {
@@ -41,9 +46,12 @@ export default withMermaid(
   },
   rewrites: zhLegacyRewrites,
   ignoreDeadLinks: [/(?:^|\/)README/, /\.\.\//, /\.py$/, /examples\//],
-  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/logo-icon.svg" }]],
+  head: [
+    ["link", { rel: "icon", type: "image/png", href: `${base}logo-icon.png` }],
+    ["link", { rel: "apple-touch-icon", href: `${base}logo-icon.png` }],
+  ],
   themeConfig: {
-    logo: { src: "/logo-icon.svg", alt: "pagent" },
+    logo: { src: "/logo-icon.png", alt: "pagent" },
     socialLinks: [{ icon: "github", link: github }],
     search: { provider: "local" },
     editLink: {
@@ -71,9 +79,25 @@ export default withMermaid(
             text: "Getting started",
             items: [
               { text: "Introduction", link: "/" },
+              { text: "Install", link: "/guide/install" },
               { text: "Quick start", link: "/guide/quick-start" },
-              { text: "Providers & API keys", link: "/guide/providers" },
-              { text: "Tools & session", link: "/guide/tools-session" },
+            ],
+          },
+          {
+            text: "Core concepts",
+            items: [
+              { text: "Prompt", link: "/guide/prompt" },
+              { text: "Tools", link: "/guide/tools" },
+              { text: "Memory", link: "/guide/memory" },
+            ],
+          },
+          {
+            text: "Built-in tools",
+            items: [
+              { text: "Overview", link: "/guide/defaults" },
+              { text: "clock", link: "/guide/defaults#clock" },
+              { text: "region", link: "/guide/defaults#region" },
+              { text: "web_search", link: "/guide/defaults#web-search" },
             ],
           },
           {
@@ -97,6 +121,12 @@ export default withMermaid(
               { text: "llms-full.txt bundle", link: `${site}/llms-full.txt`, target: "_blank" },
             ],
           },
+          {
+            text: "Compatibility",
+            items: [
+              { text: "Providers & API keys", link: "/guide/providers" },
+            ],
+          },
         ],
       },
     },
@@ -116,9 +146,16 @@ export default withMermaid(
             text: "入门",
             items: [
               { text: "简介", link: "/zh/" },
+              { text: "安装", link: "/zh/guide/install" },
               { text: "快速开始", link: "/zh/guide/quick-start" },
-              { text: "模型与 API Key", link: "/zh/guide/providers" },
-              { text: "工具与会话", link: "/zh/guide/tools-session" },
+            ],
+          },
+          {
+            text: "核心概念",
+            items: [
+              { text: "提示词", link: "/zh/guide/prompt" },
+              { text: "工具", link: "/zh/guide/tools" },
+              { text: "记忆", link: "/zh/guide/memory" },
             ],
           },
           {
@@ -131,8 +168,23 @@ export default withMermaid(
             ],
           },
           {
+            text: "内置工具",
+            items: [
+              { text: "概览", link: "/zh/guide/defaults" },
+              { text: "clock", link: "/zh/guide/defaults#clock" },
+              { text: "region", link: "/zh/guide/defaults#region" },
+              { text: "web_search", link: "/zh/guide/defaults#web-search" },
+            ],
+          },
+          {
             text: "开发",
             items: [{ text: "开发指南", link: "/zh/development" }],
+          },
+          {
+            text: "兼容性",
+            items: [
+              { text: "模型与 API Key", link: "/zh/guide/providers" },
+            ],
           },
         ],
         editLink: {
@@ -157,9 +209,25 @@ export default withMermaid(
             text: "はじめに",
             items: [
               { text: "概要", link: "/ja/" },
+              { text: "インストール", link: "/ja/guide/install" },
               { text: "クイックスタート", link: "/ja/guide/quick-start" },
-              { text: "プロバイダと API Key", link: "/ja/guide/providers" },
-              { text: "ツールとセッション", link: "/ja/guide/tools-session" },
+            ],
+          },
+          {
+            text: "基本概念",
+            items: [
+              { text: "プロンプト", link: "/ja/guide/prompt" },
+              { text: "ツール", link: "/ja/guide/tools" },
+              { text: "メモリ", link: "/ja/guide/memory" },
+            ],
+          },
+          {
+            text: "組み込みツール",
+            items: [
+              { text: "概要", link: "/ja/guide/defaults" },
+              { text: "clock", link: "/ja/guide/defaults#clock" },
+              { text: "region", link: "/ja/guide/defaults#region" },
+              { text: "web_search", link: "/ja/guide/defaults#web-search" },
             ],
           },
           {
@@ -174,6 +242,12 @@ export default withMermaid(
           {
             text: "開発",
             items: [{ text: "開発者ガイド", link: "/ja/development" }],
+          },
+          {
+            text: "互換性",
+            items: [
+              { text: "プロバイダと API Key", link: "/ja/guide/providers" },
+            ],
           },
         ],
         editLink: {
@@ -198,9 +272,25 @@ export default withMermaid(
             text: "先晓得",
             items: [
               { text: "简介", link: "/sc/" },
+              { text: "安装", link: "/sc/guide/install" },
               { text: "架势搞起", link: "/sc/guide/quick-start" },
-              { text: "模型跟 Key", link: "/sc/guide/providers" },
-              { text: "工具跟会话", link: "/sc/guide/tools-session" },
+            ],
+          },
+          {
+            text: "核心概念",
+            items: [
+              { text: "提示词", link: "/sc/guide/prompt" },
+              { text: "工具", link: "/sc/guide/tools" },
+              { text: "记忆", link: "/sc/guide/memory" },
+            ],
+          },
+          {
+            text: "内置工具🔋",
+            items: [
+              { text: "概览", link: "/sc/guide/defaults" },
+              { text: "clock", link: "/sc/guide/defaults#clock" },
+              { text: "region", link: "/sc/guide/defaults#region" },
+              { text: "web_search", link: "/sc/guide/defaults#web-search" },
             ],
           },
           {
@@ -215,6 +305,12 @@ export default withMermaid(
           {
             text: "改代码",
             items: [{ text: "开发指南", link: "/sc/development" }],
+          },
+          {
+            text: "兼容性",
+            items: [
+              { text: "模型跟 Key", link: "/sc/guide/providers" },
+            ],
           },
         ],
         editLink: {

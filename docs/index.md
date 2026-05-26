@@ -3,18 +3,18 @@ layout: home
 
 hero:
   image:
-    src: /logo.svg
+    src: /logo.png
     alt: pagent
   name: pagent
-  text: Minimal async Agent loop
-  tagline: OpenAI-compatible Chat Completions · transparent messages · your own tools
+  text: Your minimal agent framework
+  tagline: Small · transparent · you extend it
   actions:
     - theme: brand
       text: Quick start
       link: /guide/quick-start
     - theme: alt
-      text: Events & Wire
-      link: /events
+      text: Install
+      link: /guide/install
     - theme: alt
       text: 中文文档
       link: /zh/
@@ -28,20 +28,11 @@ hero:
 features:
   - title: Small & embeddable
     details: Session + Agent + tools — no file editor, no shell, no MCP. You own the loop.
-  - title: Streaming events
-    details: arun_events() for Python UIs; arun_wire() emits JSON-RPC NDJSON for web and IDE plugins.
+  - title: Stream as it runs
+    details: Incremental output for chat UIs — wire up your own frontend when you are ready; the docs walk you through it.
   - title: OpenAI-shaped API
     details: Works with OpenAI, DeepSeek, Ollama, vLLM, SGLang — any /v1/chat/completions compatible server.
 ---
-
-## Install
-
-```bash
-pip install pagent
-pip install "pagent[search]"   # optional web_search
-```
-
-Python **3.11+**.
 
 ## A full agent in ~25 lines
 
@@ -51,4 +42,4 @@ Set `OPENAI_API_KEY`, save as `demo.py`, run `python demo.py`. The model can cal
 
 Example output: `Sunny in Xiamen today.` (actual text depends on the model).
 
-[Quick start guide →](./guide/quick-start) · [Streaming & Wire →](./events)
+[Install →](./guide/install) · [Quick start →](./guide/quick-start)

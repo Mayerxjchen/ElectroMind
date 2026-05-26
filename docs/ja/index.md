@@ -3,18 +3,18 @@ layout: home
 
 hero:
   image:
-    src: /logo.svg
+    src: /logo.png
     alt: pagent
   name: pagent
-  text: 軽量 async Agent ループ
-  tagline: OpenAI 互換 Chat Completions · 透明なメッセージ · 自作ツール
+  text: あなたの軽量 Agent フレームワーク
+  tagline: 小さく · 透ける · あなたが足す
   actions:
     - theme: brand
       text: クイックスタート
       link: /ja/guide/quick-start
     - theme: alt
-      text: イベントと Wire
-      link: /ja/events
+      text: インストール
+      link: /ja/guide/install
     - theme: alt
       text: English
       link: /
@@ -28,20 +28,11 @@ hero:
 features:
   - title: 小さく埋め込み可能
     details: Session + Agent + ツール — ファイル編集やシェル、MCP は含みません。ループはあなたが握ります。
-  - title: ストリーミングイベント
-    details: Python は arun_events()、フロントは arun_wire() の JSON-RPC NDJSON。
+  - title: 流しながら表示
+    details: ストリーミング出力に対応。UI を足すときはドキュメントで順を追って説明します。
   - title: OpenAI 形式 API
     details: OpenAI、DeepSeek、Ollama、vLLM、SGLang など /v1/chat/completions 互換サーバーに対応。
 ---
-
-## インストール
-
-```bash
-pip install pagent
-pip install "pagent[search]"   # 任意 web_search
-```
-
-**Python 3.11+**。
 
 ## 25 行足らずで Agent が動く
 
@@ -51,4 +42,4 @@ pip install "pagent[search]"   # 任意 web_search
 
 出力例：`Sunny in Xiamen today.`（実際の出力はモデル次第）。
 
-[クイックスタート →](./guide/quick-start) · [イベントと Wire →](./events)
+[インストール →](./guide/install) · [クイックスタート →](./guide/quick-start)
