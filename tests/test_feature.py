@@ -1,6 +1,6 @@
 import asyncio
 
-from pagent import JUDGER_SYSTEM, Agent, RunResult, Session
+from pagent import JUDGER_SYSTEM, Agent, RunEnd, Session
 
 
 class FakeLLM:
@@ -13,7 +13,7 @@ class FakeLLM:
 
 
 def test_agent_with_judger_system_prompt():
-    llm = FakeLLM([RunResult(content="fail: wrong", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="fail: wrong", tool_calls=[])])
     agent = Agent(llm, Session(JUDGER_SYSTEM), tools=[], max_turns=4)
     out = asyncio.run(agent.run("Is sqrt(2) rational?"))
     assert out.content == "fail: wrong"

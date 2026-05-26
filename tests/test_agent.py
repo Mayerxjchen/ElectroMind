@@ -3,7 +3,14 @@ from types import SimpleNamespace
 
 import pytest
 
-from pagent import Agent, RunResult, Session, tool
+from pagent import (
+    Agent,
+    RunEnd,
+    Session,
+    ToolCallBegin,
+    ToolResult,
+    tool,
+)
 
 
 @tool()
@@ -61,7 +68,7 @@ def test_agent_rejects_duplicate_tool_names():
 
 
 def test_agent_single_turn_no_tools():
-    llm = FakeLLM([RunResult(content="ok", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="ok", tool_calls=[])])
     session = Session("sys")
     agent = Agent(llm, session, tools=[], max_turns=4)
     out = asyncio.run(agent.run("hello"))
@@ -81,8 +88,8 @@ def test_agent_tool_round_trip():
     }
     llm = FakeLLM(
         [
-            RunResult(content="", tool_calls=[tool_call]),
-            RunResult(content="done", tool_calls=[]),
+            RunEnd(content="", tool_calls=[tool_call]),
+            RunEnd(content="done", tool_calls=[]),
         ]
     )
     session = Session("")
@@ -103,8 +110,8 @@ def test_agent_unknown_tool():
     }
     llm = FakeLLM(
         [
-            RunResult(content="", tool_calls=[tool_call]),
-            RunResult(content="sorry", tool_calls=[]),
+            RunEnd(content="", tool_calls=[tool_call]),
+            RunEnd(content="sorry", tool_calls=[]),
         ]
     )
     agent = Agent(llm, Session(""), tools=[], max_turns=4)
@@ -114,12 +121,60 @@ def test_agent_unknown_tool():
 
 
 def test_agent_keeps_reasoning_content_in_session():
-    llm = FakeLLM([RunResult(content="ok", reasoning_content="think", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="ok", reasoning_content="think", tool_calls=[])])
     session = Session("")
     agent = Agent(llm, session, tools=[], max_turns=2)
     out = asyncio.run(agent.run("hello"))
     assert out.content == "ok"
     assert session.messages[-1]["reasoning_content"] == "think"
+
+
+def test_agent_arun_events_plain_text():
+    llm = FakeStreamLLM([[make_chunk(content="hi")]])
+    agent = Agent(llm, Session(""), tools=[], max_turns=2)
+
+    async def collect():
+        return [e async for e in agent.arun_events("hello")]
+
+    events = asyncio.run(collect())
+    kinds = [type(e).__name__ for e in events]
+    assert kinds == [
+        "RunBegin",
+        "TurnBegin",
+        "TextDelta",
+        "StepEnd",
+        "TurnEnd",
+        "RunEnd",
+    ]
+    assert events[0].user_input == "hello"
+    assert events[2].text == "hi"
+    assert events[3].content == "hi"
+    assert events[4].stopped is True
+    assert events[5].content == "hi"
+
+
+def test_agent_arun_events_with_tools():
+    tc = SimpleNamespace(
+        index=0,
+        id="c1",
+        type="function",
+        function=SimpleNamespace(name="echo", arguments='{"msg":"x"}'),
+    )
+    llm = FakeStreamLLM(
+        [
+            [make_chunk(tool_calls=[tc])],
+            [make_chunk(content="ok")],
+        ]
+    )
+    agent = Agent(llm, Session(""), tools=[echo], max_turns=4)
+
+    async def collect():
+        return [e async for e in agent.arun_events("go")]
+
+    events = asyncio.run(collect())
+    assert any(isinstance(e, ToolCallBegin) and e.name == "echo" for e in events)
+    assert any(isinstance(e, ToolResult) and e.content == "echo:x" for e in events)
+    assert events[-1].content == "ok"
 
 
 def test_agent_arun_stream_plain_text():
@@ -195,7 +250,7 @@ def test_agent_deepseek_v4_pro_reasoning():
         "3. The answer is 5."
     )
     llm = FakeLLM(
-        [RunResult(content="2 + 3 = 5", reasoning_content=reasoning, tool_calls=[])]
+        [RunEnd(content="2 + 3 = 5", reasoning_content=reasoning, tool_calls=[])]
     )
     session = Session("You are a helpful assistant.")
     agent = Agent(llm, session, tools=[], max_turns=2)
@@ -240,7 +295,7 @@ def test_agent_arun_stream_deepseek_v4_pro_reasoning():
 
 
 def test_agent_run_passes_reasoning_effort():
-    llm = FakeLLM([RunResult(content="ok", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="ok", tool_calls=[])])
     agent = Agent(llm, Session(""), tools=[], max_turns=2)
     out = asyncio.run(agent.run("hello", reasoning_effort="low"))
     assert out.content == "ok"
@@ -248,7 +303,7 @@ def test_agent_run_passes_reasoning_effort():
 
 
 def test_agent_run_without_run_kwargs_is_empty():
-    llm = FakeLLM([RunResult(content="ok", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="ok", tool_calls=[])])
     agent = Agent(llm, Session(""), tools=[], max_turns=2)
     asyncio.run(agent.run("hello"))
     assert llm.invoke_calls[0][2] == {}

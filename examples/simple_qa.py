@@ -54,17 +54,17 @@ async def main():
     # Simple Q&A without tools
     reply = await agent.run("What is the capital of France?")
     print("Q: What is the capital of France?")
-    print(f"A: {reply}\n")
+    print(f"A: {reply.content}\n")
 
     # Q&A with tool use
     reply = await agent.run("How's the weather in Beijing?")
     print("Q: How's the weather in Beijing?")
-    print(f"A: {reply}\n")
+    print(f"A: {reply.content}\n")
 
     # Math calculation via tool
     reply = await agent.run("What is 123 * 456?")
     print("Q: What is 123 * 456?")
-    print(f"A: {reply}")
+    print(f"A: {reply.content}")
 
 
 if __name__ == "__main__":

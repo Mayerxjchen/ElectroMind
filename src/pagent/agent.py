@@ -1,6 +1,16 @@
 from collections.abc import AsyncIterator
 
-from .llm import RunResult
+from .events import (
+    ReasoningDelta,
+    RunBegin,
+    StepEnd,
+    TextDelta,
+    ToolCallBegin,
+    ToolResult,
+    TurnBegin,
+    TurnEnd,
+)
+from .llm import RunEnd
 from .tool import to_openai_tools
 
 
@@ -44,20 +54,37 @@ class Agent:
         self.max_turns = max_turns
         self.stats = AgentStats()
 
+    def _tool_result_content(self, tool_call):
+        function_call = tool_call["function"]
+        name = function_call["name"]
+        tc = self.tool_map.get(name)
+        if tc is None:
+            return f"error: unknown tool {name!r}; available: {sorted(self.tool_map)}"
+        return tc.call(function_call["arguments"])
+
     def _execute_tool_calls(self, tool_calls):
         for tool_call in tool_calls:
-            function_call = tool_call["function"]
-            name = function_call["name"]
-            tc = self.tool_map.get(name)
             self.session += {
                 "role": "tool",
                 "tool_call_id": tool_call["id"],
-                "content": (
-                    f"error: unknown tool {name!r}; available: {sorted(self.tool_map)}"
-                    if tc is None
-                    else tc.call(function_call["arguments"])
-                ),
+                "content": self._tool_result_content(tool_call),
             }
+
+    async def _emit_tool_events(self, tool_calls):
+        for tool_call in tool_calls:
+            function_call = tool_call["function"]
+            name = function_call["name"]
+            arguments = function_call["arguments"]
+            if not isinstance(arguments, str):
+                arguments = str(arguments)
+            yield ToolCallBegin(tool_call["id"], name, arguments)
+            content = self._tool_result_content(tool_call)
+            self.session += {
+                "role": "tool",
+                "tool_call_id": tool_call["id"],
+                "content": content,
+            }
+            yield ToolResult(tool_call["id"], name, content)
 
     def reset(self):
         self.session.reset()
@@ -71,7 +98,7 @@ class Agent:
             message["reasoning_content"] = result.reasoning_content
         return message
 
-    async def _invoke_stream_once(self, **run_kwargs) -> AsyncIterator[str]:
+    async def _stream_step_events(self, **run_kwargs) -> AsyncIterator:
         content_parts = []
         reasoning_content_parts = []
         tool_calls_by_idx = {}
@@ -94,10 +121,11 @@ class Agent:
             content = getattr(delta, "content", None)
             if content:
                 content_parts.append(content)
-                yield content
+                yield TextDelta(content)
             reasoning_content = getattr(delta, "reasoning_content", None)
             if reasoning_content:
                 reasoning_content_parts.append(reasoning_content)
+                yield ReasoningDelta(reasoning_content)
 
             for tc_delta in getattr(delta, "tool_calls", None) or []:
                 idx = getattr(tc_delta, "index", 0)
@@ -130,7 +158,7 @@ class Agent:
         tool_calls = [
             tc for _, tc in sorted(tool_calls_by_idx.items(), key=lambda item: item[0])
         ]
-        result = RunResult(
+        result = RunEnd(
             content="".join(content_parts),
             tool_calls=tool_calls,
             reasoning_content="".join(reasoning_content_parts),
@@ -138,13 +166,16 @@ class Agent:
         )
         self.session += self._assistant_message(result)
         self.stats.add_usage(result.usage)
-
-        if result.has_tool_calls:
-            self._execute_tool_calls(result.tool_calls)
+        yield StepEnd(
+            content=result.content,
+            tool_calls=result.tool_calls,
+            reasoning_content=result.reasoning_content,
+            usage=result.usage,
+        )
 
     async def run(self, user_input, **run_kwargs):
         self.session += {"role": "user", "content": user_input}
-        result = RunResult(content="")
+        result = RunEnd(content="")
 
         for _ in range(self.max_turns):
             result = await self.llm.invoke(
@@ -162,15 +193,57 @@ class Agent:
 
         return result
 
-    async def arun(self, user_input, **run_kwargs):
+    async def arun_events(self, user_input, **run_kwargs) -> AsyncIterator:
         self.session += {"role": "user", "content": user_input}
-        for _ in range(self.max_turns):
+        yield RunBegin(user_input)
+        last_result = RunEnd(content="")
+
+        for turn in range(self.max_turns):
+            yield TurnBegin(turn)
             turn_start = len(self.session.messages)
-            async for content in self._invoke_stream_once(**run_kwargs):
-                yield content
+            step_end = None
+            async for event in self._stream_step_events(**run_kwargs):
+                yield event
+                if isinstance(event, StepEnd):
+                    step_end = event
+
+            if step_end is None:
+                yield TurnEnd(turn, stopped=True)
+                yield last_result
+                return
+
+            last_result = RunEnd(
+                content=step_end.content,
+                tool_calls=step_end.tool_calls,
+                reasoning_content=step_end.reasoning_content,
+                usage=step_end.usage,
+            )
 
             if turn_start >= len(self.session.messages):
+                yield TurnEnd(turn, stopped=True)
+                yield last_result
                 return
+
             assistant_message = self.session.messages[turn_start]
             if not assistant_message.get("tool_calls"):
+                yield TurnEnd(turn, stopped=True)
+                yield last_result
                 return
+
+            async for event in self._emit_tool_events(assistant_message["tool_calls"]):
+                yield event
+            yield TurnEnd(turn, stopped=False)
+
+        yield last_result
+
+    async def arun_wire(self, user_input, **run_kwargs) -> AsyncIterator[str]:
+        """Yield NDJSON lines (JSON-RPC 2.0 notifications). See :mod:`pagent.wire`."""
+        from .wire import encode_event_line
+
+        async for event in self.arun_events(user_input, **run_kwargs):
+            yield encode_event_line(event)
+
+    async def arun(self, user_input, **run_kwargs) -> AsyncIterator[str]:
+        async for event in self.arun_events(user_input, **run_kwargs):
+            if isinstance(event, TextDelta):
+                yield event.text

@@ -1,7 +1,18 @@
 from .agent import Agent, AgentStats
 from .defaults import DEFAULT_TOOLS, clock, region, web_search
+from .events import (
+    Event,
+    ReasoningDelta,
+    RunBegin,
+    StepEnd,
+    TextDelta,
+    ToolCallBegin,
+    ToolResult,
+    TurnBegin,
+    TurnEnd,
+)
 from .feature import JUDGER_SYSTEM
-from .llm import LLM, DeepSeek, Ollama, RunResult, Sglang, Vllm
+from .llm import LLM, DeepSeek, Ollama, RunEnd, Sglang, Vllm
 from .session import (
     COMPACTOR_SYSTEM,
     CompactingSession,
@@ -21,6 +32,19 @@ from .tokens import (
     tools_tokens,
 )
 from .tool import FunctionTool, to_openai_tools, tool
+from .wire import (
+    JSONRPC_VERSION,
+    aiter_event_lines,
+    decode_event,
+    decode_event_line,
+    encode_event,
+    encode_event_line,
+    event_to_params,
+    event_to_rpc,
+    iter_event_lines,
+    rpc_to_event,
+    usage_to_dict,
+)
 
 __all__ = [
     "Agent",
@@ -35,9 +59,20 @@ __all__ = [
     "count_tokens_detail",
     "DEFAULT_TOOLS",
     "format_context",
+    "ReasoningDelta",
     "DeepSeek",
+    "Event",
     "FunctionTool",
     "get_encoder",
+    "JSONRPC_VERSION",
+    "aiter_event_lines",
+    "decode_event",
+    "decode_event_line",
+    "encode_event",
+    "encode_event_line",
+    "event_to_params",
+    "event_to_rpc",
+    "iter_event_lines",
     "JUDGER_SYSTEM",
     "LLM",
     "message_tokens",
@@ -45,9 +80,18 @@ __all__ = [
     "tools_tokens",
     "Ollama",
     "region",
+    "rpc_to_event",
+    "usage_to_dict",
     "web_search",
-    "RunResult",
+    "RunBegin",
+    "RunEnd",
     "Sglang",
+    "StepEnd",
+    "TextDelta",
+    "ToolCallBegin",
+    "ToolResult",
+    "TurnBegin",
+    "TurnEnd",
     "Session",
     "SlidingWindowSession",
     "Vllm",

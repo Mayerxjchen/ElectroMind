@@ -1,0 +1,95 @@
+"""Wire protocol demo: FastAPI + NDJSON stream from ``Agent.arun_wire``.
+
+Usage (from repo root):
+
+    export DEEPSEEK_API_KEY="your-key"
+    uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
+
+Open http://127.0.0.1:8765
+"""
+
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+from fastapi import FastAPI, HTTPException
+from fastapi.responses import FileResponse, StreamingResponse
+from pydantic import BaseModel
+
+from pagent import Agent, DeepSeek, Session, tool
+
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+SYSTEM_PROMPT = """你是「小帕」，运行在 pagent wire demo 里的对话助手。这是你的人设，必须始终遵守。
+
+【怎么答】
+- 用户用中文则用中文，用英文则用英文；默认中文。
+- 自我介绍示例：「你好，我是小帕，这个 demo 里的助手，可以聊天、做简单计算。需要算什么或想了解 Wire，直接说就行。」
+- 段落宜短，避免冗长套话。"""
+
+
+@tool()
+def calculate(expression: str) -> str:
+    """Evaluate a math expression and return the result.
+
+    Args:
+        expression: A Python math expression, e.g. "2 + 3 * 4".
+    """
+    try:
+        return str(eval(expression, {"__builtins__": {}}, {}))
+    except Exception as e:
+        return f"Error: {e}"
+
+
+def make_agent() -> Agent:
+    return Agent(
+        llm=DeepSeek("deepseek-v4-flash"),
+        session=Session(SYSTEM_PROMPT),
+        tools=[calculate],
+        max_turns=8,
+    )
+
+
+app = FastAPI(title="pagent wire demo")
+
+
+class ChatRequest(BaseModel):
+    message: str
+
+
+@app.get("/")
+async def index():
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.post("/api/chat")
+async def chat(body: ChatRequest):
+    message = body.message.strip()
+    if not message:
+        raise HTTPException(status_code=400, detail="message is required")
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        raise HTTPException(
+            status_code=503,
+            detail="DEEPSEEK_API_KEY is not set on the server",
+        )
+
+    agent = make_agent()
+
+    async def ndjson_stream():
+        async for line in agent.arun_wire(message):
+            yield line
+
+    return StreamingResponse(ndjson_stream(), media_type="application/x-ndjson")
+
+
+def main():
+    import uvicorn
+
+    host = os.getenv("PAGENT_WIRE_HOST", "127.0.0.1")
+    port = int(os.getenv("PAGENT_WIRE_PORT", "8765"))
+    uvicorn.run(app, host=host, port=port)
+
+
+if __name__ == "__main__":
+    main()

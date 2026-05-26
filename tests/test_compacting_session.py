@@ -1,7 +1,7 @@
 import asyncio
 import json
 
-from pagent import CompactingSession, RunResult, compactor
+from pagent import CompactingSession, RunEnd, compactor
 from pagent.tokens import count_tokens
 
 
@@ -16,7 +16,7 @@ class FakeLLM:
 
 
 def test_compactor_returns_agent():
-    llm = FakeLLM([RunResult(content="summary text", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="summary text", tool_calls=[])])
     agent = compactor(llm)
     out = asyncio.run(agent.run("history blob"))
     assert out.content == "summary text"
@@ -25,7 +25,7 @@ def test_compactor_returns_agent():
 
 
 def test_compact_replaces_conversation_keeps_system():
-    llm = FakeLLM([RunResult(content="User asked about X.", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="User asked about X.", tool_calls=[])])
     session = CompactingSession("SYS", llm=llm)
     session += {"role": "user", "content": "long " * 50}
     session += {"role": "assistant", "content": "reply " * 50}
@@ -45,7 +45,7 @@ def test_compact_replaces_conversation_keeps_system():
 
 
 def test_compact_empty_conversation_is_noop():
-    llm = FakeLLM([RunResult(content="unused", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="unused", tool_calls=[])])
     session = CompactingSession("SYS", llm=llm)
     asyncio.run(session.compact())
     assert session.messages == [{"role": "system", "content": "SYS"}]
@@ -53,7 +53,7 @@ def test_compact_empty_conversation_is_noop():
 
 
 def test_should_compact_when_over_threshold():
-    llm = FakeLLM([RunResult(content="ok", tool_calls=[])])
+    llm = FakeLLM([RunEnd(content="ok", tool_calls=[])])
     session = CompactingSession("", llm=llm, compact_at_tokens=10)
     session += {"role": "user", "content": "x" * 200}
     assert count_tokens(session.messages) > 10

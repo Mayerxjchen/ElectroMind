@@ -2,95 +2,45 @@
 
 [![CI](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml/badge.svg)](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml)
 
-语言切换： [中文](./README.zh-CN.md) | [English](./README.en.md)
+语言： [中文](./README.zh-CN.md) | [English](./README.en.md)
 
-**pagent** 是一个很小的 **async** Python 库：在 **OpenAI 兼容的 Chat Completions**（`messages` + function tools）上跑一个 `Agent` 循环。适合论文实验、评测脚本、教学演示——你能看清完整消息列表、自己写工具；不是开箱即用的「编程 Agent」产品，也不是 LangChain 那种大框架。
-
-## 已实现什么
-
-| 模块 | 能力 |
-|------|------|
-| **对话** | `Session` 保存 API 形状的消息 dict；`session += {...}`；`reset()`；`save_to_file()` |
-| **调模型** | `LLM.invoke(messages, tools=...)` 无状态；历史由 `Session` 组装 |
-| **Provider** | `LLM`、`DeepSeek`、`Ollama`、`Vllm`、`Sglang`（OpenAI SDK + `base_url`） |
-| **工具** | `@tool()` / `FunctionTool`，docstring 转 JSON schema；`to_openai_tools()` |
-| **Agent 循环** | 用户消息 → 模型 → 若有 tool calls 则执行并写回 session → 重复，直到无工具或达到 `max_turns` |
-| **统计** | `AgentStats`：token 用量与轮次 |
-| **内置工具** | `clock`、`region`（地区/时区线索，非 GPS）；可选 `web_search`（extra：`search`） |
-| **提示词辅助** | `JUDGER_SYSTEM`：评判类任务的示例 system prompt |
-| **实验性** | `pagent.memory.Memory`：纯文本行列表（未从顶层 `pagent` 导出） |
-
-典型数据流：
-
-```text
-user → [Session] → LLM → assistant（含 tool_calls?）→ 执行工具 → tool 消息 → LLM → … → 最终文本
-```
-
-## 刻意不实现什么
-
-以下**不在库内**，请在业务里自己加，或换别的工具：
-
-- **流式输出** — `LLM.invoke` 固定 `stream=False`；`Agent.run` 无 token 流接口
-- **并行 / 异步工具** — 同一轮多个 tool call 顺序执行，无 `asyncio.gather`
-- **工具异常兜底** — 工具函数抛错会打断 `Agent.run`（仅「未知工具」和 `web_search` 部分错误会写成字符串）
-- **RAG、向量库、文档加载、Chain、Planner、LangGraph 式状态图**
-- **内置读文件 / Shell / IDE 工具** — 不改仓库、不跑终端、无沙箱
-- **MCP、多 Agent 协作、人工确认、检查点、持久记忆**
-- **多模态** — 仅文本 Chat Completions
-- **鉴权、限流、可观测性** — 自备
-- **非 Chat Completions 协议** — 无原生 Anthropic Messages / Gemini（除非网关转成 OpenAI 形状）
-
-后端需兼容 **OpenAI Chat Completions**（`/v1/chat/completions`），否则请改网关或重写 `LLM.invoke`。
-
-## 和 LangChain、Claude Code 对比
-
-定位对比，不是功能打分表：
-
-| | **pagent** | **LangChain** | **Claude Code** |
-|---|------------|---------------|-----------------|
-| **是什么** | 可嵌入的微型库（核心约几百行） | 大型框架 + 生态（Chain、Agent、各类集成） | 用 Claude 写代码的终端 / IDE **产品** |
-| **你写什么** | Python：`Agent`、`Session`、`@tool()` | Python/JS；LCEL、LangGraph 等大量抽象 | 主要是提示与权限；工具多为内置 |
-| **模型接口** | OpenAI Chat Completions（及兼容服务） | 多 Provider、多封装 | 产品内接 Anthropic（Claude） |
-| **工具** | 仅你自己的 Python 函数 | 海量集成 + 自定义 | 改文件、bash、搜索、MCP 等 |
-| **Agent 循环** | `agent.py` 里一条简单循环，可读可改 | ReAct、图、监督者等多种模式 | 产品内闭环，面向写代码优化 |
-| **流式 / RAG / 记忆** | 无 / 无 / 仅实验性 `Memory` | 有（视模块而定） | 产品内处理上下文与工具 |
-| **更适合** | 论文、评测、教学、要完全掌控循环 | 需要「电池Included」集成的应用 | 日常在仓库里编程 |
-| **不适合** | 拿来就当生产级编程 Agent | 「我只要几十行且全透明」 | 当作 pip 库嵌进你的 Python 包 |
-
-**LangChain** — 需要向量库、文档加载、LangGraph 工作流等集成，能接受框架体积时用。
-
-**Claude Code** — 需要能直接改项目、跑命令的编码 Agent；不能替代在库里 `pip install pagent` 嵌入。
-
-**pagent** — 需要循环简单透明、消息可 JSON 序列化、工具与部署自己接时用。
+**pagent** 是一个轻量的 **async** Python 库：用 OpenAI 兼容的 Chat Completions API 跑 **Agent + 工具** 循环。适合脚本、实验和教学——消息列表透明、工具自己写。
 
 ## 安装
 
+需要 **Python 3.11+**。
+
+### pip
+
 ```bash
 pip install pagent
-```
 
-可选网页搜索（`ddgs`）：
-
-```bash
+# 可选：内置 web_search 工具
 pip install "pagent[search]"
 ```
 
-源码开发：
+### uv
 
 ```bash
-cd pagent
-uv sync --group dev --extra search   # 开发依赖 + search，便于测 web_search
-pip install -e ".[search]"
+uv pip install pagent
+uv pip install "pagent[search]"
+
+# 或在已有 uv 项目中
+uv add pagent
+uv add "pagent[search]"
 ```
 
-### Pre-commit
+### conda
 
 ```bash
-uv sync --group dev
-pre-commit install
+# 先进入你的环境
+conda activate your-env
+
+pip install pagent
+pip install "pagent[search]"
 ```
 
-每次提交会运行 ruff（检查与格式化）、pytest 以及基础文件检查。
+Conda 生态里通常用 **pip 安装 PyPI 包**（在激活的环境中执行即可）。若使用 `conda-forge`，以频道里是否提供 `pagent` 为准。
 
 ## 快速开始
 
@@ -126,69 +76,116 @@ async def main() -> None:
 asyncio.run(main())
 ```
 
-## 终端流式小助手
+`run()` 返回 `RunEnd`，用 `.content` 取回答。
 
-仓库提供了一个最小 CLI 示例：`examples/cli.py`。
+## 流式输出与事件
 
-```bash
-python examples/cli.py
+**同一套 Agent 时间线**，按场景选 API（不是两套事件定义）：
+
+| API | 得到什么 | 适合 |
+|-----|----------|------|
+| `agent.run(prompt)` | 最终 `RunEnd` | 不要流式、只要结果 |
+| `agent.arun(prompt)` | 答案文本 `str` | 脚本里只要打字机效果 |
+| `agent.arun_events(prompt)` | Python **`Event`** dataclass | **Python 内**消费：CLI、服务、`match` / 类型检查 |
+| `agent.arun_wire(prompt)` | **NDJSON** 行（JSON-RPC 2.0） | **跨语言 / 前端**：SSE、WebSocket、TS 按 `method` 分支 |
+
+Wire 是 Event 的 JSON 序列化；字段含义见 [docs/events.zh-CN.md](docs/events.zh-CN.md)，线格式见 [docs/wire.zh-CN.md](docs/wire.zh-CN.md)。
+
+消费事件流的最小示例（可接自己的 UI 或日志）：
+
+```python
+import asyncio
+
+from pagent import (
+    Agent,
+    LLM,
+    RunEnd,
+    Session,
+    TextDelta,
+    ToolCallBegin,
+    ToolResult,
+)
+
+
+async def main():
+    agent = Agent(LLM("gpt-4o-mini"), Session("You are helpful."), tools=[])
+
+    async for event in agent.arun_events("2 + 3 等于多少？"):
+        if isinstance(event, TextDelta):
+            print(event.text, end="", flush=True)
+        elif isinstance(event, ToolCallBegin):
+            print(f"\n[调用工具 {event.name}]", flush=True)
+        elif isinstance(event, ToolResult):
+            print(f" {event.content}", flush=True)
+        elif isinstance(event, RunEnd):
+            print(f"\n\n(结束: {event.content!r})")
+
+
+asyncio.run(main())
 ```
 
-支持命令：
+常见事件：`TextDelta`（回答流）、`ReasoningDelta`（思考流，视模型而定）、`ToolCallBegin` / `ToolResult`、`RunEnd`（完整结果，含 `.content`、`.reasoning_content`）。
 
-- `/help` 查看命令
-- `/reset` 清空会话历史
-- `/stats` 查看当前 token/turn 统计
-- `/exit` 退出
+事件一览：[docs/events.zh-CN.md](docs/events.zh-CN.md)。**前端 / JSON：** [docs/wire.zh-CN.md](docs/wire.zh-CN.md) — 每行形如 `{"jsonrpc":"2.0","method":"TextDelta","params":{...}}`。
 
-需要先设置 `DEEPSEEK_API_KEY`。
+```python
+async for line in agent.arun_wire("你好"):
+    # 经 SSE / WebSocket 发送 line（已带末尾 \n）
+    ...
+```
 
-内置搜索（需 `pagent[search]`）：
+可运行示例：`examples/reasoning_stream.py`、`examples/cli.py`（内部用 `arun` 打文本）。
+
+## 模型与 API Key
+
+| 用法 | 环境变量 |
+|------|----------|
+| `LLM("gpt-4o-mini")` | `OPENAI_API_KEY` |
+| `DeepSeek()` | `DEEPSEEK_API_KEY` |
+| `Ollama("llama3.2")` 等本地服务 | 可选 `OLLAMA_API_KEY` 等 |
+
+```python
+from pagent import DeepSeek, Ollama
+
+llm = DeepSeek("deepseek-v4-flash")   # 默认模型见 DeepSeek 文档
+llm = Ollama("llama3.2")             # http://127.0.0.1:11434/v1
+```
+
+本地服务需暴露 OpenAI 兼容的 `/v1/chat/completions`。也支持 `Vllm`、`Sglang`。
+
+## 示例
+
+| 命令 | 说明 |
+|------|------|
+| `uv run examples/cli.py` | 交互式 CLI（需 `DEEPSEEK_API_KEY`），支持 `/context` 看上下文占用 |
+| `uv run examples/simple_qa.py` | 工具调用 |
+| `uv run examples/reasoning_run.py` | 读取模型的思考过程（非流式） |
+| `uv run examples/reasoning_stream.py` | 流式输出思考 + 回答 |
+| `uv run --with fastapi --with uvicorn python examples/wire_demo/server.py` | Wire NDJSON + 浏览器单页 UI |
+
+思考过程（`reasoning_content`）说明：[docs/reasoning.zh-CN.md](docs/reasoning.zh-CN.md)。Wire 全栈 demo：[examples/wire_demo/](examples/wire_demo/)。
+
+```bash
+export DEEPSEEK_API_KEY="your-key"
+uv run examples/reasoning_stream.py --zh   # 中文鸡兔同笼题
+```
+
+## 内置工具（可选）
 
 ```python
 from pagent import Agent, LLM, Session, web_search
 
-agent = Agent(LLM("gpt-4o-mini"), Session("事实不确定时用 web_search。"), tools=[web_search])
+agent = Agent(
+    LLM("gpt-4o-mini"),
+    Session("事实不确定时用 web_search。"),
+    tools=[web_search],  # 需 pip install "pagent[search]"
+)
 ```
 
-## 环境变量
+还有 `clock`、`region` 等，见 `pagent.defaults`。
 
-- `LLM(...)` 默认读取 `OPENAI_API_KEY`
-- `DeepSeek(...)` 默认读取 `DEEPSEEK_API_KEY`
-- 本地 provider 可选：`OLLAMA_API_KEY` / `VLLM_API_KEY` / `SGLANG_API_KEY`（未设置时使用占位 key）
+## 说明
 
-## DeepSeek
-
-- 文档： [DeepSeek API Docs](https://api-docs.deepseek.com/zh-cn/)
-- `base_url`: `https://api.deepseek.com`
-- 默认模型： `deepseek-v4-flash`
-
-```python
-from pagent import DeepSeek
-
-llm = DeepSeek()  # or DeepSeek("deepseek-v4-pro")
-```
-
-高级参数可通过 `request_kwargs` 透传给 `chat.completions.create`。
-
-## 本地部署
-
-只要服务提供 OpenAI-compatible `/v1/chat/completions`，即可直接使用：
-
-- `Ollama`: `http://127.0.0.1:11434/v1`
-- `Vllm`: `http://127.0.0.1:8000/v1`
-- `Sglang`: `http://127.0.0.1:30000/v1`
-
-```python
-from pagent import Ollama
-
-llm = Ollama("llama3.2")
-```
-
-## 维护者：发布到 PyPI
-
-仓库内置：`.github/workflows/publish.yml`（release 发布触发）。
-
-建议使用 Trusted Publishing（OIDC）：
-
-- Docs: <https://docs.pypi.org/trusted-publishers/>
+- 需要 **OpenAI Chat Completions** 兼容接口。
+- 适合嵌入自己的小循环；不是带文件编辑/终端的完整编程 Agent 产品。
+- 参与开发、内部实现：[docs/development.zh-CN.md](docs/development.zh-CN.md)

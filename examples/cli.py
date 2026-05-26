@@ -2,6 +2,7 @@ import asyncio
 import os
 import sys
 
+import pagent
 from pagent import (
     BACKEND_TIKTOKEN,
     DEFAULT_TOOLS,
@@ -30,6 +31,77 @@ HELP_TEXT = """Commands:
   /effort <val>  set reasoning_effort (e.g. low, medium, high, 0.5, none to clear)
   /exit          quit
 """
+
+BANNER_WIDTH = 76
+LEFT_COL = 38
+RIGHT_COL = 30
+MASCOT = (
+    "  .---.",
+    "  | P |",
+    "  '---'",
+)
+
+
+def _fit(text, width):
+    if len(text) > width:
+        return text[: width - 1] + "…"
+    return text.ljust(width)
+
+
+def _banner_row(left, right="", *, use_color, left_color=None, right_color=None):
+    left_cell = _fit(left, LEFT_COL)
+    right_cell = _fit(right, RIGHT_COL)
+    if use_color:
+        if left_color:
+            left_cell = f"{left_color}{left_cell}{RESET}"
+        if right_color:
+            right_cell = f"{right_color}{right_cell}{RESET}"
+        return f"{CYAN}│{RESET} {left_cell} {CYAN}│{RESET} {right_cell} {CYAN}│{RESET}"
+    return f"│ {left_cell} │ {right_cell} │"
+
+
+def print_banner(*, version, model_id, cwd, tools_count):
+    use_color = sys.stdout.isatty()
+    inner = BANNER_WIDTH - 2
+    title = f"─ pagent v{version} "
+    top = "┌" + title + "─" * (inner - len(title)) + "┐"
+    bottom = "└" + "─" * inner + "┘"
+
+    if use_color:
+        top = f"{CYAN}{top}{RESET}"
+        bottom = f"{CYAN}{bottom}{RESET}"
+
+    tips_header = "Tips for getting started"
+    tips = (
+        "• /help — show commands",
+        "• /context — token usage",
+        "• /reset — clear session",
+        "• /stats — run statistics",
+        "• Set DEEPSEEK_API_KEY",
+    )
+    model_line = f'Model: DeepSeek("{model_id}")'
+    cwd_line = f"cwd: {cwd}"
+    tools_line = f"Tools: {tools_count}"
+
+    rows = [
+        ("Welcome!", tips_header, GREEN, YELLOW),
+        ("", tips[0], None, None),
+        (MASCOT[0], tips[1], CYAN, None),
+        (MASCOT[1], tips[2], CYAN, None),
+        (MASCOT[2], tips[3], CYAN, None),
+        ("", tips[4], None, None),
+        (model_line, "Recent activity", None, YELLOW),
+        (cwd_line, "No recent activity", None, None),
+        (tools_line, "", None, None),
+    ]
+
+    print(top)
+    for left, right, lc, rc in rows:
+        print(
+            _banner_row(left, right, use_color=use_color, left_color=lc, right_color=rc)
+        )
+    print(bottom)
+    print()
 
 
 def show_context(agent):
@@ -66,8 +138,12 @@ async def main():
         max_turns=8,
     )
 
-    print(f"{CYAN}pagent CLI (streaming){RESET}")
-    print(f"{YELLOW}Type /help for commands.{RESET}")
+    print_banner(
+        version=pagent.__version__,
+        model_id=agent.llm.model_id,
+        cwd=os.getcwd(),
+        tools_count=len(agent.tool_schemas),
+    )
 
     run_kwargs = {}
 

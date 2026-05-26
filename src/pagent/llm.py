@@ -3,8 +3,10 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 
 
-@dataclass
-class RunResult:
+@dataclass(frozen=True, slots=True)
+class RunEnd:
+    """One LLM step outcome, or the final result of ``Agent.run`` / ``arun_events``."""
+
     content: str
     tool_calls: list = field(default_factory=list)
     reasoning_content: str = ""
@@ -52,13 +54,13 @@ class LLM:
 
         response = await self.client.chat.completions.create(**kwargs)
         if not response.choices:
-            return RunResult(content="", tool_calls=[], usage=response.usage)
+            return RunEnd(content="", tool_calls=[], usage=response.usage)
 
         message = response.choices[0].message
         content = message.content or ""
         reasoning_content = getattr(message, "reasoning_content", None) or ""
         if not message.tool_calls:
-            return RunResult(
+            return RunEnd(
                 content=content,
                 tool_calls=[],
                 reasoning_content=reasoning_content,
@@ -76,7 +78,7 @@ class LLM:
             }
             for tc in message.tool_calls
         ]
-        return RunResult(
+        return RunEnd(
             content=content,
             tool_calls=tool_calls,
             reasoning_content=reasoning_content,
