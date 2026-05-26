@@ -1,6 +1,8 @@
 import { defineConfig } from "vitepress";
+import { withMermaid } from "vitepress-plugin-mermaid";
 
 const github = "https://github.com/SyncLionPaw/pagent";
+const site = "https://synclionpaw.github.io/pagent";
 
 /** Keep old *.zh-CN.md URLs working after move to docs/zh/ */
 const zhLegacyRewrites: Record<string, string> = {
@@ -10,11 +12,33 @@ const zhLegacyRewrites: Record<string, string> = {
   "development.zh-CN.md": "zh/development.md",
 };
 
-export default defineConfig({
+export default withMermaid(
+  defineConfig({
   title: "pagent",
   description:
     "Minimal async Python agent over OpenAI-compatible Chat Completions",
   base: "/pagent/",
+  mermaid: {
+    fontSize: 15,
+    flowchart: {
+      useMaxWidth: false,
+      htmlLabels: false,
+      padding: 24,
+      nodeSpacing: 72,
+      rankSpacing: 80,
+      curve: "basis",
+      wrappingWidth: 140,
+    },
+    sequence: {
+      diagramMarginX: 48,
+      diagramMarginY: 24,
+      actorMargin: 88,
+      messageMargin: 48,
+      boxMargin: 12,
+      noteMargin: 14,
+      width: 180,
+    },
+  },
   rewrites: zhLegacyRewrites,
   ignoreDeadLinks: [/(?:^|\/)README/, /\.\.\//, /\.py$/, /examples\//],
   head: [["link", { rel: "icon", type: "image/svg+xml", href: "/logo-icon.svg" }]],
@@ -69,8 +93,8 @@ export default defineConfig({
             text: "For agents",
             items: [
               { text: "Agent reference", link: "/agent-reference" },
-              { text: "llms.txt index", link: "/llms.txt", target: "_blank" },
-              { text: "llms-full.txt bundle", link: "/llms-full.txt", target: "_blank" },
+              { text: "llms.txt index", link: `${site}/llms.txt`, target: "_blank" },
+              { text: "llms-full.txt bundle", link: `${site}/llms-full.txt`, target: "_blank" },
             ],
           },
         ],
@@ -200,4 +224,5 @@ export default defineConfig({
       },
     },
   },
-});
+  }),
+);

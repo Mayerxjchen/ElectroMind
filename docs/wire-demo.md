@@ -12,34 +12,30 @@ The docs site is static only. Run the server locally to try streaming chat.
 
 ### Components
 
+#### Browser and server
+
 ```mermaid
 flowchart TB
-  subgraph browser [Browser — static/index.html]
-    UI[Chat UI + Wire drawer]
-    PARSE[Line parser<br/>switch method / params]
-    UI --> PARSE
-  end
+  B[Browser]
+  S[FastAPI]
 
-  subgraph server [FastAPI — server.py :8765]
-    GET["GET / → index.html"]
-    POST["POST /api/chat<br/>{ message }"]
-    AG[Agent + Session 小帕]
-    TOOL["@tool calculate"]
-    WIRE[arun_wire]
-    GET --> UI
-    POST --> AG
-    AG --> TOOL
-    AG --> WIRE
-  end
-
-  subgraph external [External]
-    DS[(DeepSeek API<br/>/v1/chat/completions)]
-  end
-
-  PARSE <-->|fetch stream<br/>application/x-ndjson| POST
-  WIRE -->|NDJSON lines| PARSE
-  AG <-->|OpenAI-compatible| DS
+  B -->|POST /api/chat| S
+  S -->|NDJSON stream| B
 ```
+
+#### Inside FastAPI
+
+`Agent.arun_wire`, tools, session **小帕**:
+
+```mermaid
+flowchart LR
+  A[Agent]
+  L[DeepSeek]
+
+  A <-->|chat API| L
+```
+
+`GET /` serves `index.html`. The browser parses each Wire line (`method` + `params`) for the UI and drawer.
 
 | Piece | File | Role |
 |-------|------|------|
@@ -53,42 +49,30 @@ Each chat request creates a **new** `Agent` (demo simplicity; a real app would r
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  participant User
-  participant UI as index.html
-  participant API as FastAPI
-  participant Agent as Agent.arun_wire
-  participant LLM as DeepSeek
+  participant U as User
+  participant UI
+  participant API
+  participant A as Agent
+  participant LLM
 
-  User->>UI: type message, Send
-  UI->>API: POST /api/chat { message }
-  API->>Agent: arun_wire(message)
-  Agent-->>UI: RunBegin (line)
-  loop turns / stream
-    Agent->>LLM: chat completions
-    LLM-->>Agent: deltas
-    Agent-->>UI: TextDelta / ReasoningDelta …
-    opt tool_calls
-      Agent-->>UI: ToolCallBegin
-      Note over Agent: calculate()
-      Agent-->>UI: ToolResult
-    end
-    Agent-->>UI: StepEnd, TurnEnd …
-  end
-  Agent-->>UI: RunEnd (line)
-  UI->>User: final bubble + drawer log
-
-  Note over User,UI: Stop → AbortController<br/>aborts fetch (not Wire inbound)
+  U->>UI: send
+  UI->>API: POST /api/chat
+  API->>A: arun_wire
+  A->>LLM: completions
+  LLM-->>A: deltas
+  A-->>UI: Wire events
+  UI->>U: bubble + drawer
 ```
+
+Turns, `TextDelta` / `ToolResult`, and `RunEnd` are more events on the same `A-->>UI` arrow (see [events](./events)). **Stop** uses `AbortController` on fetch — not a Wire `method`.
 
 ### Cancel / stop
 
 ```mermaid
 flowchart LR
-  STOP[UI: Stop] --> ABORT[AbortController.abort]
-  ABORT --> HTTP[HTTP connection closed]
-  HTTP --> SR[StreamingResponse ends]
-  SR --> AGENT[Agent generator stops yielding]
+  S[Stop] --> A[AbortController]
+  A --> H[HTTP closed]
+  H --> E[Stream ends]
 ```
 
 Wire has **no** cancel `method` — stopping generation closes the HTTP stream. Tool approval is also out of scope in this demo.

@@ -15,7 +15,7 @@
 
 Dense API reference for **coding agents** and LLM tools. Human docs: <https://synclionpaw.github.io/pagent/>.
 
-**Machine indexes:** [llms.txt](/llms.txt) (page list) · [llms-full.txt](/llms-full.txt) (single-file bundle) · repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md)
+**Machine indexes:** [llms.txt](https://synclionpaw.github.io/pagent/llms.txt) (page list) · [llms-full.txt](https://synclionpaw.github.io/pagent/llms-full.txt) (single-file bundle) · [raw llms.txt](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/llms.txt) · repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md)
 
 ## What it is
 
@@ -451,34 +451,27 @@ Last `TurnEnd` may have `stopped=False`; the final `RunEnd` event reflects the l
 
 ```mermaid
 sequenceDiagram
-    participant UI
-    participant Agent
-    participant LLM
-    participant Tools
+  participant UI
+  participant Agent
+  participant LLM
+  participant Tools
 
-    UI->>Agent: user_input
-    Agent-->>UI: RunBegin
-    loop max_turns
-        Agent-->>UI: TurnBegin
-        Agent->>LLM: invoke / invoke_stream
-        loop stream
-            LLM-->>Agent: delta
-            Agent-->>UI: TextDelta / ReasoningDelta
-        end
-        Agent-->>UI: StepEnd
-        alt has tool_calls
-            loop each tool
-                Agent-->>UI: ToolCallBegin
-                Agent->>Tools: call
-                Tools-->>Agent: output
-                Agent-->>UI: ToolResult
-            end
-            Agent-->>UI: TurnEnd(stopped=False)
-        else no tool_calls
-            Agent-->>UI: TurnEnd(stopped=True)
-        end
+  UI->>Agent: user_input
+  Agent-->>UI: RunBegin
+  loop each turn
+    Agent-->>UI: TurnBegin
+    Agent->>LLM: invoke_stream
+    LLM-->>Agent: chunks
+    Agent-->>UI: TextDelta
+    Agent-->>UI: StepEnd
+    opt tool_calls
+      Agent-->>UI: ToolCallBegin
+      Agent->>Tools: call
+      Agent-->>UI: ToolResult
     end
-    Agent-->>UI: RunEnd
+    Agent-->>UI: TurnEnd
+  end
+  Agent-->>UI: RunEnd
 ```
 
 ## Consumer example
@@ -531,33 +524,12 @@ This is **not** a second event system. `arun_wire()` serializes the same stream 
 
 ```mermaid
 flowchart TB
-  subgraph loop [Agent loop — same as arun_events]
-    A[Agent]
-    E[Event stream]
-    A --> E
-  end
+  A[Agent loop<br/>arun_events]
+  W[Wire encode<br/>NDJSON line]
+  T[Transport<br/>HTTP / SSE / WS / file]
+  U[Client UI<br/>parse method]
 
-  subgraph wire [Wire layer — serialization only]
-    W[arun_wire]
-    ENC[encode_event_line]
-    W --> ENC
-  end
-
-  E --> ENC
-  ENC --> NDJSON[NDJSON lines<br/>one JSON-RPC notification per line]
-
-  NDJSON --> T{Transport}
-  T --> H[HTTP chunked<br/>application/x-ndjson]
-  T --> S[SSE data:]
-  T --> WS[WebSocket text]
-  T --> F[File wire.jsonl]
-
-  H --> C[Browser / IDE / any language]
-  S --> C
-  WS --> C
-  F --> C
-
-  C --> UI[UI: switch on method,<br/>render params]
+  A --> W --> T --> U
 ```
 
 Inbound control (cancel, tool approval, steer) is **not** on this arrow — use your own HTTP/API beside the stream.
@@ -566,34 +538,33 @@ Inbound control (cancel, tool approval, steer) is **not** on this arrow — use 
 
 ```mermaid
 flowchart LR
-  EV["Python Event<br/>TextDelta(text='Hi')"]
-  RPC["JSON-RPC notification<br/>jsonrpc: 2.0<br/>method: TextDelta<br/>params: text: Hi<br/><i>no id</i>"]
-  LINE["NDJSON line + \\n"]
+  E["Event<br/>TextDelta"]
+  R["JSON-RPC<br/>no id"]
+  L["NDJSON line"]
 
-  EV -->|event_to_rpc| RPC
-  RPC -->|json.dumps| LINE
+  E --> R --> L
 ```
 
 ### Typical stream (single turn, text only)
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  participant App as Your server
-  participant Agent as Agent
-  participant Client as Client UI
+  participant App as Server
+  participant Agent
+  participant Client
 
-  App->>Agent: arun_wire(user_input)
+  App->>Agent: arun_wire
   Agent-->>Client: RunBegin
-  Agent-->>Client: TurnBegin turn=0
-  loop LLM stream
+  Agent-->>Client: TurnBegin
+  loop stream
     Agent-->>Client: TextDelta
   end
   Agent-->>Client: StepEnd
-  Agent-->>Client: TurnEnd stopped=true
+  Agent-->>Client: TurnEnd
   Agent-->>Client: RunEnd
-  Note over Client: Parse each line;<br/>append TextDelta to answer pane
 ```
+
+Client: parse each NDJSON line; append `TextDelta` to the answer pane.
 
 ### With tools (two turns)
 
@@ -828,34 +799,28 @@ The docs site is static only. Run the server locally to try streaming chat.
 
 ### Components
 
+**Browser ↔ server** (no crossing arrows — easier to read):
+
 ```mermaid
-flowchart TB
-  subgraph browser [Browser — static/index.html]
-    UI[Chat UI + Wire drawer]
-    PARSE[Line parser<br/>switch method / params]
-    UI --> PARSE
-  end
+flowchart LR
+  B[Browser]
+  S[FastAPI]
 
-  subgraph server [FastAPI — server.py :8765]
-    GET["GET / → index.html"]
-    POST["POST /api/chat<br/>{ message }"]
-    AG[Agent + Session 小帕]
-    TOOL["@tool calculate"]
-    WIRE[arun_wire]
-    GET --> UI
-    POST --> AG
-    AG --> TOOL
-    AG --> WIRE
-  end
-
-  subgraph external [External]
-    DS[(DeepSeek API<br/>/v1/chat/completions)]
-  end
-
-  PARSE <-->|fetch stream<br/>application/x-ndjson| POST
-  WIRE -->|NDJSON lines| PARSE
-  AG <-->|OpenAI-compatible| DS
+  B -->|POST /api/chat| S
+  S -->|NDJSON stream| B
 ```
+
+**Inside FastAPI** (`Agent.arun_wire`, tools, session **小帕**):
+
+```mermaid
+flowchart LR
+  A[Agent]
+  L[DeepSeek]
+
+  A <-->|chat API| L
+```
+
+`GET /` serves `index.html`. The browser parses each Wire line (`method` + `params`) for the UI and drawer.
 
 | Piece | File | Role |
 |-------|------|------|
@@ -869,42 +834,30 @@ Each chat request creates a **new** `Agent` (demo simplicity; a real app would r
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  participant User
-  participant UI as index.html
-  participant API as FastAPI
-  participant Agent as Agent.arun_wire
-  participant LLM as DeepSeek
+  participant U as User
+  participant UI
+  participant API
+  participant A as Agent
+  participant LLM
 
-  User->>UI: type message, Send
-  UI->>API: POST /api/chat { message }
-  API->>Agent: arun_wire(message)
-  Agent-->>UI: RunBegin (line)
-  loop turns / stream
-    Agent->>LLM: chat completions
-    LLM-->>Agent: deltas
-    Agent-->>UI: TextDelta / ReasoningDelta …
-    opt tool_calls
-      Agent-->>UI: ToolCallBegin
-      Note over Agent: calculate()
-      Agent-->>UI: ToolResult
-    end
-    Agent-->>UI: StepEnd, TurnEnd …
-  end
-  Agent-->>UI: RunEnd (line)
-  UI->>User: final bubble + drawer log
-
-  Note over User,UI: Stop → AbortController<br/>aborts fetch (not Wire inbound)
+  U->>UI: send
+  UI->>API: POST /api/chat
+  API->>A: arun_wire
+  A->>LLM: completions
+  LLM-->>A: deltas
+  A-->>UI: Wire events
+  UI->>U: bubble + drawer
 ```
+
+Turns, `TextDelta` / `ToolResult`, and `RunEnd` are more events on the same `A-->>UI` arrow (see [events](./events)). **Stop** uses `AbortController` on fetch — not a Wire `method`.
 
 ### Cancel / stop
 
 ```mermaid
 flowchart LR
-  STOP[UI: Stop] --> ABORT[AbortController.abort]
-  ABORT --> HTTP[HTTP connection closed]
-  HTTP --> SR[StreamingResponse ends]
-  SR --> AGENT[Agent generator stops yielding]
+  S[Stop] --> A[AbortController]
+  A --> H[HTTP closed]
+  H --> E[Stream ends]
 ```
 
 Wire has **no** cancel `method` — stopping generation closes the HTTP stream. Tool approval is also out of scope in this demo.
@@ -987,7 +940,7 @@ pytest -q
 
 ## Documentation site
 
-Built with [VitePress](https://vitepress.dev/). Config: `docs/.vitepress/config.mts`, content: `docs/*.md`.
+Built with [VitePress](https://vitepress.dev/). Config: `docs/.vitepress/config.mts`, content: `docs/*.md`. Mermaid diagrams use [vitepress-plugin-mermaid](https://github.com/emersonbottero/vitepress-plugin-mermaid) (fenced ` ```mermaid ` blocks).
 
 **For coding agents / LLMs:** [agent-reference](./agent-reference), repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md), [llms.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms.txt), [llms-full.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms-full.txt) (`npm run build:llms` in `docs/` regenerates the bundle).
 

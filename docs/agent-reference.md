@@ -2,7 +2,7 @@
 
 Dense API reference for **coding agents** and LLM tools. Human docs: <https://synclionpaw.github.io/pagent/>.
 
-**Machine indexes:** [llms.txt](/llms.txt) (page list) · [llms-full.txt](/llms-full.txt) (single-file bundle) · repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md)
+**Machine indexes:** [llms.txt](https://synclionpaw.github.io/pagent/llms.txt) (page list) · [llms-full.txt](https://synclionpaw.github.io/pagent/llms-full.txt) (single-file bundle) · [raw llms.txt](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/llms.txt) · repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md)
 
 ## What it is
 

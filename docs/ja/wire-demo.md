@@ -12,34 +12,30 @@ FastAPI がチャット UI を提供し、ブラウザが **`Agent.arun_wire()`*
 
 ### コンポーネント
 
+#### ブラウザとサーバー
+
 ```mermaid
 flowchart TB
-  subgraph browser [ブラウザ — static/index.html]
-    UI[チャット UI + Wire ドロワー]
-    PARSE[行パーサ<br/>switch method / params]
-    UI --> PARSE
-  end
+  B[Browser]
+  S[FastAPI]
 
-  subgraph server [FastAPI — server.py :8765]
-    GET["GET / → index.html"]
-    POST["POST /api/chat<br/>{ message }"]
-    AG[Agent + Session 小帕]
-    TOOL["@tool calculate"]
-    WIRE[arun_wire]
-    GET --> UI
-    POST --> AG
-    AG --> TOOL
-    AG --> WIRE
-  end
-
-  subgraph external [外部]
-    DS[(DeepSeek API<br/>/v1/chat/completions)]
-  end
-
-  PARSE <-->|fetch ストリーム<br/>application/x-ndjson| POST
-  WIRE -->|NDJSON 行| PARSE
-  AG <-->|OpenAI 互換| DS
+  B -->|POST /api/chat| S
+  S -->|NDJSON stream| B
 ```
+
+#### FastAPI 内部
+
+`Agent.arun_wire`、ツール、セッション **小帕**：
+
+```mermaid
+flowchart LR
+  A[Agent]
+  L[DeepSeek]
+
+  A <-->|chat API| L
+```
+
+`GET /` で `index.html` を配信。ブラウザは各行の `method` + `params` を UI / ドロワー用にパースします。
 
 | 部分 | ファイル | 役割 |
 |------|----------|------|
@@ -53,42 +49,30 @@ flowchart TB
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  participant User as ユーザー
-  participant UI as index.html
-  participant API as FastAPI
-  participant Agent as Agent.arun_wire
-  participant LLM as DeepSeek
+  participant U as User
+  participant UI
+  participant API
+  participant A as Agent
+  participant LLM
 
-  User->>UI: 送信
-  UI->>API: POST /api/chat { message }
-  API->>Agent: arun_wire(message)
-  Agent-->>UI: RunBegin
-  loop ターン / ストリーム
-    Agent->>LLM: chat completions
-    LLM-->>Agent: delta
-    Agent-->>UI: TextDelta / ReasoningDelta …
-    opt tool_calls
-      Agent-->>UI: ToolCallBegin
-      Note over Agent: calculate()
-      Agent-->>UI: ToolResult
-    end
-    Agent-->>UI: StepEnd, TurnEnd …
-  end
-  Agent-->>UI: RunEnd
-  UI->>User: バブル + ドロワー
-
-  Note over User,UI: 停止 → AbortController<br/>（Wire インバウンドではない）
+  U->>UI: send
+  UI->>API: POST /api/chat
+  API->>A: arun_wire
+  A->>LLM: completions
+  LLM-->>A: deltas
+  A-->>UI: Wire events
+  UI->>U: bubble + drawer
 ```
+
+ターンや `ToolResult`、`RunEnd` も同じ `A-->>UI` の流れ（[イベント](./events) 参照）。**停止**は fetch の `AbortController` — Wire の `method` ではありません。
 
 ### 停止
 
 ```mermaid
 flowchart LR
-  STOP[UI: 停止] --> ABORT[AbortController.abort]
-  ABORT --> HTTP[HTTP 切断]
-  HTTP --> SR[StreamingResponse 終了]
-  SR --> AGENT[Agent 生成停止]
+  S[Stop] --> A[AbortController]
+  A --> H[HTTP closed]
+  H --> E[Stream ends]
 ```
 
 Wire にキャンセル `method` は **なし** — HTTP ストリームを閉じて停止。

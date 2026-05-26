@@ -46,7 +46,7 @@ pytest -q
 
 ## Documentation site
 
-Built with [VitePress](https://vitepress.dev/). Config: `docs/.vitepress/config.mts`, content: `docs/*.md`.
+Built with [VitePress](https://vitepress.dev/). Config: `docs/.vitepress/config.mts`, content: `docs/*.md`. Mermaid diagrams use [vitepress-plugin-mermaid](https://github.com/emersonbottero/vitepress-plugin-mermaid) (fenced ` ```mermaid ` blocks).
 
 **For coding agents / LLMs:** [agent-reference](./agent-reference), repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md), [llms.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms.txt), [llms-full.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms-full.txt) (`npm run build:llms` in `docs/` regenerates the bundle).
 

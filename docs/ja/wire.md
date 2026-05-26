@@ -11,34 +11,13 @@
 ### 全体：同じタイムライン + シリアライズ層
 
 ```mermaid
-flowchart TB
-  subgraph loop [Agent ループ — arun_events と同じ]
-    A[Agent]
-    E[Event ストリーム]
-    A --> E
-  end
+flowchart LR
+  A[Agent arun_events]
+  W[Wire NDJSON]
+  T[HTTP SSE WS]
+  U[Client UI]
 
-  subgraph wire [Wire 層 — シリアライズのみ]
-    W[arun_wire]
-    ENC[encode_event_line]
-    W --> ENC
-  end
-
-  E --> ENC
-  ENC --> NDJSON[NDJSON 行<br/>1 行 = 1 JSON-RPC 通知]
-
-  NDJSON --> T{トランスポート}
-  T --> H[HTTP chunked<br/>application/x-ndjson]
-  T --> S[SSE data:]
-  T --> WS[WebSocket]
-  T --> F[wire.jsonl]
-
-  H --> C[ブラウザ / IDE / 任意言語]
-  S --> C
-  WS --> C
-  F --> C
-
-  C --> UI[UI: method で分岐<br/>params を描画]
+  A --> W --> T --> U
 ```
 
 インバウンド制御（キャンセル、ツール承認）はこの矢印の外 — 独自 API を使用。
@@ -47,33 +26,33 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  EV["Python Event<br/>TextDelta(text='Hi')"]
-  RPC["JSON-RPC 通知<br/>jsonrpc: 2.0<br/>method: TextDelta<br/>params: text: Hi<br/><i>id なし</i>"]
-  LINE["NDJSON 行 + \\n"]
+  E[TextDelta]
+  R[JSON-RPC]
+  L[NDJSON 行]
 
-  EV -->|event_to_rpc| RPC
-  RPC -->|json.dumps| LINE
+  E --> R --> L
 ```
 
 ### 典型ストリーム（1 ターン、テキストのみ）
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  participant App as サーバー
-  participant Agent as Agent
-  participant Client as クライアント UI
+  participant App as Server
+  participant Agent
+  participant Client
 
-  App->>Agent: arun_wire(user_input)
+  App->>Agent: arun_wire
   Agent-->>Client: RunBegin
-  Agent-->>Client: TurnBegin turn=0
-  loop LLM ストリーム
+  Agent-->>Client: TurnBegin
+  loop stream
     Agent-->>Client: TextDelta
   end
   Agent-->>Client: StepEnd
-  Agent-->>Client: TurnEnd stopped=true
+  Agent-->>Client: TurnEnd
   Agent-->>Client: RunEnd
 ```
+
+クライアント：各行をパースし、`TextDelta` を回答欄に連結。
 
 ### ツールあり（2 ターン）
 

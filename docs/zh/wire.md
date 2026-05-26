@@ -11,34 +11,13 @@
 ### 整体：同一时间线，多一层序列化
 
 ```mermaid
-flowchart TB
-  subgraph loop [Agent 循环 — 与 arun_events 相同]
-    A[Agent]
-    E[Event 流]
-    A --> E
-  end
+flowchart LR
+  A[Agent arun_events]
+  W[Wire NDJSON]
+  T[HTTP SSE WS]
+  U[客户端 UI]
 
-  subgraph wire [Wire 层 — 仅序列化]
-    W[arun_wire]
-    ENC[encode_event_line]
-    W --> ENC
-  end
-
-  E --> ENC
-  ENC --> NDJSON[NDJSON 行<br/>每行一条 JSON-RPC 通知]
-
-  NDJSON --> T{传输}
-  T --> H[HTTP 分块<br/>application/x-ndjson]
-  T --> S[SSE data:]
-  T --> WS[WebSocket]
-  T --> F[文件 wire.jsonl]
-
-  H --> C[浏览器 / IDE / 任意语言]
-  S --> C
-  WS --> C
-  F --> C
-
-  C --> UI[UI：按 method 分支<br/>渲染 params]
+  A --> W --> T --> U
 ```
 
 入站控制（取消、工具审批、steer）**不走**这条箭头，请用你自己的 HTTP/API。
@@ -47,33 +26,33 @@ flowchart TB
 
 ```mermaid
 flowchart LR
-  EV["Python Event<br/>TextDelta(text='你好')"]
-  RPC["JSON-RPC 通知<br/>jsonrpc: 2.0<br/>method: TextDelta<br/>params: text: 你好<br/><i>无 id</i>"]
-  LINE["NDJSON 行 + \\n"]
+  E[TextDelta]
+  R[JSON-RPC]
+  L[NDJSON 行]
 
-  EV -->|event_to_rpc| RPC
-  RPC -->|json.dumps| LINE
+  E --> R --> L
 ```
 
 ### 典型流（单轮，仅文本）
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  participant App as 你的服务
-  participant Agent as Agent
-  participant Client as 客户端 UI
+  participant App as Server
+  participant Agent
+  participant Client
 
-  App->>Agent: arun_wire(user_input)
+  App->>Agent: arun_wire
   Agent-->>Client: RunBegin
-  Agent-->>Client: TurnBegin turn=0
-  loop LLM 流式
+  Agent-->>Client: TurnBegin
+  loop stream
     Agent-->>Client: TextDelta
   end
   Agent-->>Client: StepEnd
-  Agent-->>Client: TurnEnd stopped=true
+  Agent-->>Client: TurnEnd
   Agent-->>Client: RunEnd
 ```
+
+客户端：逐行解析 NDJSON，把 `TextDelta` 拼到答案区。
 
 ### 带工具（两轮）
 

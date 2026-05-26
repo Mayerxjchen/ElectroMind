@@ -12,34 +12,30 @@ GitHub Pages 只托管静态文档。要体验流式对话，请在本地启动�
 
 ### 组件
 
+#### 浏览器与服务端
+
 ```mermaid
 flowchart TB
-  subgraph browser [浏览器 — static/index.html]
-    UI[聊天 UI + Wire 抽屉]
-    PARSE[按行解析<br/>switch method / params]
-    UI --> PARSE
-  end
+  B[Browser]
+  S[FastAPI]
 
-  subgraph server [FastAPI — server.py :8765]
-    GET["GET / → index.html"]
-    POST["POST /api/chat<br/>{ message }"]
-    AG[Agent + Session 小帕]
-    TOOL["@tool calculate"]
-    WIRE[arun_wire]
-    GET --> UI
-    POST --> AG
-    AG --> TOOL
-    AG --> WIRE
-  end
-
-  subgraph external [外部]
-    DS[(DeepSeek API<br/>/v1/chat/completions)]
-  end
-
-  PARSE <-->|fetch 流式<br/>application/x-ndjson| POST
-  WIRE -->|NDJSON 行| PARSE
-  AG <-->|OpenAI 兼容| DS
+  B -->|POST /api/chat| S
+  S -->|NDJSON stream| B
 ```
+
+#### FastAPI 内部
+
+`Agent.arun_wire`、工具、会话 **小帕**：
+
+```mermaid
+flowchart LR
+  A[Agent]
+  L[DeepSeek]
+
+  A <-->|chat API| L
+```
+
+`GET /` 提供 `index.html`。浏览器按 Wire 行解析 `method` + `params`，用于 UI 与抽屉。
 
 | 部分 | 文件 | 作用 |
 |------|------|------|
@@ -53,42 +49,30 @@ flowchart TB
 
 ```mermaid
 sequenceDiagram
-  autonumber
-  participant User as 用户
-  participant UI as index.html
-  participant API as FastAPI
-  participant Agent as Agent.arun_wire
-  participant LLM as DeepSeek
+  participant U as User
+  participant UI
+  participant API
+  participant A as Agent
+  participant LLM
 
-  User->>UI: 输入并发送
-  UI->>API: POST /api/chat { message }
-  API->>Agent: arun_wire(message)
-  Agent-->>UI: RunBegin
-  loop 轮次 / 流式
-    Agent->>LLM: chat completions
-    LLM-->>Agent: 增量
-    Agent-->>UI: TextDelta / ReasoningDelta …
-    opt 工具调用
-      Agent-->>UI: ToolCallBegin
-      Note over Agent: calculate()
-      Agent-->>UI: ToolResult
-    end
-    Agent-->>UI: StepEnd, TurnEnd …
-  end
-  Agent-->>UI: RunEnd
-  UI->>User: 气泡 + 抽屉原始行
-
-  Note over User,UI: 停止 → AbortController<br/>中断 fetch（非 Wire 入站）
+  U->>UI: send
+  UI->>API: POST /api/chat
+  API->>A: arun_wire
+  A->>LLM: completions
+  LLM-->>A: deltas
+  A-->>UI: Wire events
+  UI->>U: bubble + drawer
 ```
+
+多轮、`TextDelta` / `ToolResult`、`RunEnd` 仍是同一方向的 Wire 行（见 [事件流](./events)）。**停止** 用 `AbortController` 中断 fetch，不是 Wire `method`。
 
 ### 停止生成
 
 ```mermaid
 flowchart LR
-  STOP[UI: 停止] --> ABORT[AbortController.abort]
-  ABORT --> HTTP[关闭 HTTP 连接]
-  HTTP --> SR[StreamingResponse 结束]
-  SR --> AGENT[Agent 生成器停止]
+  S[Stop] --> A[AbortController]
+  A --> H[HTTP closed]
+  H --> E[Stream ends]
 ```
 
 Wire **没有** 取消类 `method` — 停止靠断开 HTTP。工具审批本 demo 也不做。

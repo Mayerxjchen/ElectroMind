@@ -118,34 +118,27 @@ Last `TurnEnd` may have `stopped=False`; the final `RunEnd` event reflects the l
 
 ```mermaid
 sequenceDiagram
-    participant UI
-    participant Agent
-    participant LLM
-    participant Tools
+  participant UI
+  participant Agent
+  participant LLM
+  participant Tools
 
-    UI->>Agent: user_input
-    Agent-->>UI: RunBegin
-    loop max_turns
-        Agent-->>UI: TurnBegin
-        Agent->>LLM: invoke / invoke_stream
-        loop stream
-            LLM-->>Agent: delta
-            Agent-->>UI: TextDelta / ReasoningDelta
-        end
-        Agent-->>UI: StepEnd
-        alt has tool_calls
-            loop each tool
-                Agent-->>UI: ToolCallBegin
-                Agent->>Tools: call
-                Tools-->>Agent: output
-                Agent-->>UI: ToolResult
-            end
-            Agent-->>UI: TurnEnd(stopped=False)
-        else no tool_calls
-            Agent-->>UI: TurnEnd(stopped=True)
-        end
+  UI->>Agent: user_input
+  Agent-->>UI: RunBegin
+  loop each turn
+    Agent-->>UI: TurnBegin
+    Agent->>LLM: invoke_stream
+    LLM-->>Agent: chunks
+    Agent-->>UI: TextDelta
+    Agent-->>UI: StepEnd
+    opt tool_calls
+      Agent-->>UI: ToolCallBegin
+      Agent->>Tools: call
+      Agent-->>UI: ToolResult
     end
-    Agent-->>UI: RunEnd
+    Agent-->>UI: TurnEnd
+  end
+  Agent-->>UI: RunEnd
 ```
 
 ## Consumer example
