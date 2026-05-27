@@ -33,7 +33,7 @@ await agent.run("Weather in Xiamen?")
 
 Multiple tools: `tools=[a, b]`. Custom name: `@tool(name="weather", description="...")`.
 
-Built-in: [defaults](./defaults) (`clock`, `region`, `web_search`).
+Built-in: [defaults](./defaults) (`clock`, `region`, `readfile`, `web_search`, `bash`).
 
 ## See also
 

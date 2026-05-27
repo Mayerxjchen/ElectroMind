@@ -38,7 +38,8 @@ class FakeUsage:
         ReasoningDelta("think"),
         StepEnd("c", [{"id": "1"}], "r", FakeUsage()),
         ToolCallBegin("id1", "echo", "{}"),
-        ToolResult("id1", "echo", "ok"),
+        ToolResult("id1", "echo", "ok", ok=True),
+        ToolResult("id2", "echo", "fail", ok=False),
         RunEnd(content="done", reasoning_content="why", usage=FakeUsage()),
     ],
 )

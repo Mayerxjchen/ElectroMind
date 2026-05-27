@@ -2,10 +2,10 @@
 
 语言： [中文](/zh/guide/defaults) | [English](/guide/defaults) | [日本語](/ja/guide/defaults) | [四川话](/sc/guide/defaults)
 
-`pagent.defaults` 提供可选工具：`clock`、`region`、`web_search`。
+`pagent.defaults` 提供可选工具：`clock`、`region`、`readfile`、`web_search`、`bash`。
 
 ```python
-from pagent import Agent, LLM, Session, DEFAULT_TOOLS, clock, region, web_search
+from pagent import Agent, LLM, Session, DEFAULT_TOOLS, bash, clock, readfile, region, web_search
 
 agent = Agent(
     llm=LLM("gpt-4o-mini"),
@@ -32,6 +32,22 @@ tools=[clock]
 
 ```python
 tools=[region]
+```
+
+## readfile {#readfile}
+
+用**绝对路径**读取当前工作目录下的 UTF-8 文本。相对路径会报错。最多 **500 个 Unicode 码点**（默认 `max_chars=500`）。
+
+```python
+tools=[readfile]
+```
+
+## bash {#bash}
+
+在进程 `cwd`（工作区）内执行**白名单**命令（不走 shell）。目前仅允许 **`ls`**；路径参数须落在工作区内（规则同 `readfile`）。
+
+```python
+tools=[bash]
 ```
 
 ## web_search {#web-search}

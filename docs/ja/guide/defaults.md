@@ -2,10 +2,10 @@
 
 言語: [日本語](/ja/guide/defaults) | [English](/guide/defaults) | [简体中文](/zh/guide/defaults) | [四川话](/sc/guide/defaults)
 
-`pagent.defaults` の任意ツール: `clock`、`region`、`web_search`。
+`pagent.defaults` の任意ツール: `clock`、`region`、`readfile`、`web_search`。
 
 ```python
-from pagent import Agent, LLM, Session, DEFAULT_TOOLS, clock, region, web_search
+from pagent import Agent, LLM, Session, DEFAULT_TOOLS, clock, readfile, region, web_search
 
 agent = Agent(
     llm=LLM("gpt-4o-mini"),
@@ -31,6 +31,14 @@ OS のロケール / タイムゾーン（GPS なし）。
 
 ```python
 tools=[region]
+```
+
+## readfile {#readfile}
+
+**絶対パス**でプロセスの `cwd` 以下の UTF-8 を読む。相対パスは不可。最大 **500 コードポイント**。
+
+```python
+tools=[readfile]
 ```
 
 ## web_search {#web-search}

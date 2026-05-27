@@ -11,7 +11,7 @@ from .events import (
     TurnEnd,
 )
 from .llm import RunEnd
-from .tool import to_openai_tools
+from .tool import ToolOutput, to_openai_tools
 
 
 class AgentStats:
@@ -54,20 +54,23 @@ class Agent:
         self.max_turns = max_turns
         self.stats = AgentStats()
 
-    def _tool_result_content(self, tool_call):
+    def _run_tool(self, tool_call) -> ToolOutput:
         function_call = tool_call["function"]
         name = function_call["name"]
         tc = self.tool_map.get(name)
         if tc is None:
-            return f"error: unknown tool {name!r}; available: {sorted(self.tool_map)}"
+            return ToolOutput.fail(
+                f"error: unknown tool {name!r}; available: {sorted(self.tool_map)}"
+            )
         return tc.call(function_call["arguments"])
 
     def _execute_tool_calls(self, tool_calls):
         for tool_call in tool_calls:
+            output = self._run_tool(tool_call)
             self.session += {
                 "role": "tool",
                 "tool_call_id": tool_call["id"],
-                "content": self._tool_result_content(tool_call),
+                "content": output.content,
             }
 
     async def _emit_tool_events(self, tool_calls):
@@ -78,13 +81,13 @@ class Agent:
             if not isinstance(arguments, str):
                 arguments = str(arguments)
             yield ToolCallBegin(tool_call["id"], name, arguments)
-            content = self._tool_result_content(tool_call)
+            output = self._run_tool(tool_call)
             self.session += {
                 "role": "tool",
                 "tool_call_id": tool_call["id"],
-                "content": content,
+                "content": output.content,
             }
-            yield ToolResult(tool_call["id"], name, content)
+            yield ToolResult(tool_call["id"], name, output.content, ok=output.ok)
 
     def reset(self):
         self.session.reset()

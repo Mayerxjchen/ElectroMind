@@ -16,28 +16,32 @@ def test_web_search_formats_results():
         ddgs_cls.return_value.text.return_value = fake
         out = web_search.call({"query": "sodium symbol", "max_results": 3})
 
-    assert "1. Sodium" in out
-    assert "https://example.com/na" in out
-    assert "Sodium is a chemical element." in out
+    assert out.ok is True
+    assert "1. Sodium" in out.content
+    assert "https://example.com/na" in out.content
+    assert "Sodium is a chemical element." in out.content
 
 
 def test_web_search_empty_query():
     out = web_search.call({"query": "  "})
-    assert "empty query" in out
+    assert out.ok is False
+    assert "empty query" in out.content
 
 
 def test_web_search_no_results():
     with patch("ddgs.DDGS") as ddgs_cls:
         ddgs_cls.return_value.text.return_value = []
         out = web_search.call({"query": "xyznonexistentquery123"})
-    assert out == "No results found."
+    assert out.ok is True
+    assert out.content == "No results found."
 
 
 def test_web_search_api_error():
     with patch("ddgs.DDGS") as ddgs_cls:
         ddgs_cls.return_value.text.side_effect = RuntimeError("network down")
         out = web_search.call({"query": "test"})
-    assert "web_search error: network down" in out
+    assert out.ok is False
+    assert "web_search error: network down" in out.content
 
 
 def test_web_search_missing_ddgs():
@@ -50,4 +54,5 @@ def test_web_search_missing_ddgs():
 
     with patch.object(builtins, "__import__", block_ddgs):
         out = web_search.call({"query": "test"})
-    assert "pagent[search]" in out
+    assert out.ok is False
+    assert "pagent[search]" in out.content

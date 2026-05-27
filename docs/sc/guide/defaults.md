@@ -2,10 +2,10 @@
 
 语言：四川话 | [English](/guide/defaults) | [普通话](/zh/guide/defaults) | [日本語](/ja/guide/defaults)
 
-`pagent.defaults` 可选工具：`clock`、`region`、`web_search`。
+`pagent.defaults` 可选工具：`clock`、`region`、`readfile`、`web_search`。
 
 ```python
-from pagent import Agent, LLM, Session, DEFAULT_TOOLS, clock, region, web_search
+from pagent import Agent, LLM, Session, DEFAULT_TOOLS, clock, readfile, region, web_search
 
 agent = Agent(
     llm=LLM("gpt-4o-mini"),
@@ -31,6 +31,14 @@ tools=[clock]
 
 ```python
 tools=[region]
+```
+
+## readfile {#readfile}
+
+必须用**完整绝对路径**读当前工作目录下的 UTF-8 文本，相对路径不行。最多 **500 个码点**。
+
+```python
+tools=[readfile]
 ```
 
 ## web_search {#web-search}

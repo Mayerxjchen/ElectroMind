@@ -1,5 +1,3 @@
-import pytest
-
 from pagent import FunctionTool, to_openai_tools, tool
 
 
@@ -15,22 +13,39 @@ def add(a: int, b: int) -> int:
 
 
 def test_tool_call_json_string():
-    assert add.call('{"a": 2, "b": 3}') == "5"
+    out = add.call('{"a": 2, "b": 3}')
+    assert out.content == "5"
+    assert out.ok is True
 
 
 def test_tool_call_dict():
-    assert add.call({"a": 1, "b": 1}) == "2"
+    out = add.call({"a": 1, "b": 1})
+    assert out.content == "2"
+    assert out.ok is True
 
 
 def test_tool_call_invalid_json():
     out = add.call("{not json")
-    assert "Invalid JSON" in out
+    assert out.ok is False
+    assert "Invalid JSON" in out.content
 
 
 def test_tool_no_func_errors():
     ft = FunctionTool("x", "", {"type": "object", "properties": {}})
-    with pytest.raises(ValueError, match="no bound function"):
-        ft.call()
+    out = ft.call()
+    assert out.ok is False
+    assert "no bound function" in out.content
+
+
+@tool()
+def boom():
+    raise RuntimeError("kaboom")
+
+
+def test_tool_call_catches_exception():
+    out = boom.call("{}")
+    assert out.ok is False
+    assert "kaboom" in out.content
 
 
 def test_to_openai_tools():

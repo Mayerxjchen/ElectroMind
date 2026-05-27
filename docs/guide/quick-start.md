@@ -65,7 +65,8 @@ uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
 
 | Script | Description |
 |--------|-------------|
-| [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) | Interactive CLI, `/context` |
+| [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) | Interactive CLI (`arun`, text only) |
+| [cli_events.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli_events.py) | CLI with tools/reasoning via `arun_events` |
 | [simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py) | Tools demo |
 | [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | Reasoning + answer stream |
 | [wire_demo](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) | FastAPI + browser UI |

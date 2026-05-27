@@ -1,5 +1,5 @@
 from .agent import Agent, AgentStats
-from .defaults import DEFAULT_TOOLS, clock, region, web_search
+from .defaults import DEFAULT_TOOLS, bash, clock, readfile, region, web_search
 from .events import (
     Event,
     ReasoningDelta,
@@ -31,7 +31,7 @@ from .tokens import (
     message_tokens,
     tools_tokens,
 )
-from .tool import FunctionTool, to_openai_tools, tool
+from .tool import FunctionTool, ToolOutput, to_openai_tools, tool
 from .wire import (
     JSONRPC_VERSION,
     aiter_event_lines,
@@ -49,6 +49,7 @@ from .wire import (
 __all__ = [
     "Agent",
     "AgentStats",
+    "bash",
     "BACKEND_HUGGINGFACE",
     "BACKEND_TIKTOKEN",
     "clock",
@@ -79,6 +80,7 @@ __all__ = [
     "TokenBreakdown",
     "tools_tokens",
     "Ollama",
+    "readfile",
     "region",
     "rpc_to_event",
     "usage_to_dict",
@@ -95,8 +97,9 @@ __all__ = [
     "Session",
     "SlidingWindowSession",
     "Vllm",
+    "ToolOutput",
     "to_openai_tools",
     "tool",
 ]
 
-__version__ = "0.1.2"
+__version__ = "0.2.0"

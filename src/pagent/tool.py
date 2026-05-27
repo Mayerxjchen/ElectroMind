@@ -2,10 +2,33 @@ from __future__ import annotations
 
 import inspect
 import json
+from dataclasses import dataclass
 from functools import reduce
 from typing import Any, Union, get_args, get_origin, get_type_hints
 
 from docstring_parser import parse
+
+
+@dataclass(frozen=True, slots=True)
+class ToolOutput:
+    """Tool return value: ``content`` goes to the model; ``ok`` drives UI events."""
+
+    content: str
+    ok: bool = True
+
+    @classmethod
+    def succeed(cls, content: str):
+        return cls(content=str(content), ok=True)
+
+    @classmethod
+    def fail(cls, message: str):
+        return cls(content=str(message), ok=False)
+
+
+def normalize_tool_output(value) -> ToolOutput:
+    if isinstance(value, ToolOutput):
+        return value
+    return ToolOutput.succeed(value)
 
 
 class FunctionTool:
@@ -25,24 +48,27 @@ class FunctionTool:
             },
         }
 
-    def call(self, arguments=None):
+    def call(self, arguments=None) -> ToolOutput:
         if self.func is None:
-            raise ValueError(f"tool {self.name} has no bound function")
+            return ToolOutput.fail(f"tool {self.name} has no bound function")
 
-        if arguments is None:
-            return str(self.func(**{}))
+        try:
+            if arguments is None:
+                return normalize_tool_output(self.func(**{}))
 
-        if isinstance(arguments, str):
-            stripped = arguments.strip()
-            if not stripped:
-                return str(self.func(**{}))
-            try:
-                payload = json.loads(stripped)
-            except json.JSONDecodeError as e:
-                return f"Invalid JSON in tool arguments: {e}"
-            return str(self.func(**payload))
+            if isinstance(arguments, str):
+                stripped = arguments.strip()
+                if not stripped:
+                    return normalize_tool_output(self.func(**{}))
+                try:
+                    payload = json.loads(stripped)
+                except json.JSONDecodeError as e:
+                    return ToolOutput.fail(f"Invalid JSON in tool arguments: {e}")
+                return normalize_tool_output(self.func(**payload))
 
-        return str(self.func(**arguments))
+            return normalize_tool_output(self.func(**arguments))
+        except Exception as e:
+            return ToolOutput.fail(f"{self.name} error: {e}")
 
 
 def unwrap_optional(type_hint):

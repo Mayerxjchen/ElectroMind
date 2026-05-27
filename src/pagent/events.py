@@ -82,6 +82,7 @@ class ToolResult:
     tool_call_id: str
     name: str
     content: str
+    ok: bool = True
 
 
 Event: TypeAlias = (

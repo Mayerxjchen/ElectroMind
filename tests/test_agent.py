@@ -103,21 +103,30 @@ def test_agent_tool_round_trip():
 
 
 def test_agent_unknown_tool():
-    tool_call = {
-        "id": "c1",
-        "type": "function",
-        "function": {"name": "missing", "arguments": "{}"},
-    }
-    llm = FakeLLM(
+    tc = SimpleNamespace(
+        index=0,
+        id="c1",
+        type="function",
+        function=SimpleNamespace(name="missing", arguments="{}"),
+    )
+    llm = FakeStreamLLM(
         [
-            RunEnd(content="", tool_calls=[tool_call]),
-            RunEnd(content="sorry", tool_calls=[]),
+            [make_chunk(tool_calls=[tc])],
+            [make_chunk(content="sorry")],
         ]
     )
     agent = Agent(llm, Session(""), tools=[], max_turns=4)
-    out = asyncio.run(agent.run("x"))
-    assert out.content == "sorry"
-    assert "unknown tool" in llm.invoke_calls[1][0][-1]["content"]
+    events = []
+
+    async def collect():
+        async for e in agent.arun_events("x"):
+            events.append(e)
+
+    asyncio.run(collect())
+    tr = next(e for e in events if isinstance(e, ToolResult))
+    assert tr.ok is False
+    assert "unknown tool" in tr.content
+    assert "unknown tool" in llm.invoke_stream_calls[1][0][-1]["content"]
 
 
 def test_agent_keeps_reasoning_content_in_session():
@@ -173,7 +182,9 @@ def test_agent_arun_events_with_tools():
 
     events = asyncio.run(collect())
     assert any(isinstance(e, ToolCallBegin) and e.name == "echo" for e in events)
-    assert any(isinstance(e, ToolResult) and e.content == "echo:x" for e in events)
+    tr = next(e for e in events if isinstance(e, ToolResult))
+    assert tr.content == "echo:x"
+    assert tr.ok is True
     assert events[-1].content == "ok"
 
 
