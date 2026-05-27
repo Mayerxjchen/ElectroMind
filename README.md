@@ -10,6 +10,10 @@ Language: [中文](./README.zh-CN.md) | [English](./README.en.md) · [Docs](http
 
 **pagent** is a small **async** Python library for an **Agent + tools** loop over **OpenAI-compatible Chat Completions**. Good for scripts, experiments, and teaching—transparent message history, your own tools.
 
+## Documentation
+
+**https://synclionpaw.github.io/pagent/** — install, quick start, tools, events, Wire, providers.
+
 ## Install
 
 Requires **Python 3.11+**.
