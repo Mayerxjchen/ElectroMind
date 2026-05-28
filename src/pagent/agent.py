@@ -11,7 +11,7 @@ from .events import (
     TurnEnd,
 )
 from .llm import RunEnd
-from .tool import ToolOutput, to_openai_tools
+from .tool import FunctionTool, ToolOutput, to_openai_tools
 
 
 class AgentStats:
@@ -48,7 +48,7 @@ class Agent:
         names = [t.name for t in self.tools]
         if len(names) != len(set(names)):
             raise ValueError(f"duplicate tool names: {names}")
-        self.tool_map = {t.name: t for t in self.tools}
+        self.tool_map: dict[str, FunctionTool] = {t.name: t for t in self.tools}
         if max_turns < 1:
             raise ValueError("max_turns must be >= 1")
         self.max_turns = max_turns
