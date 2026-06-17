@@ -7,10 +7,11 @@ Requires the optional ``agent-client-protocol`` package (``pagent[acp]``).
 from __future__ import annotations
 
 import asyncio
+import inspect
 import json
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Protocol
 from uuid import uuid4
 
 from acp import (
@@ -31,16 +32,23 @@ from acp.schema import (
     PromptResponse,
 )
 
-from pagent import Agent, __version__
-from pagent.events import (
-    Event,
-    ReasoningDelta,
-    TextDelta,
-    ToolCallBegin,
-    ToolResult,
-)
+from pagent import __version__
 
-AgentFactory = Callable[[str], Agent]
+
+def iter_events(agent: Any, user_input: str, **kwargs: Any) -> AsyncIterator[Any]:
+    arun = getattr(agent, "arun", None)
+    if arun is not None and "return_type" in inspect.signature(arun).parameters:
+        return arun(user_input, return_type="event", **kwargs)
+    if hasattr(agent, "events"):
+        return agent.events(user_input, **kwargs)
+    return agent.arun_events(user_input, **kwargs)
+
+
+class EventSource(Protocol):
+    def arun(self, user_input: str, **kwargs: Any) -> AsyncIterator[Any]: ...
+
+
+AgentFactory = Callable[[str], EventSource]
 
 
 def prompt_to_text(blocks: list[ContentBlock]) -> str:
@@ -73,7 +81,7 @@ def parse_raw_input(arguments: str) -> Any:
 @dataclass
 class SessionState:
     cwd: str
-    agent: Agent
+    agent: EventSource
     run_task: asyncio.Task | None = field(default=None, repr=False)
 
 
@@ -149,7 +157,7 @@ class PagentACPAgent:
             state.run_task = current
 
         try:
-            async for event in state.agent.arun_events(user_text):
+            async for event in iter_events(state.agent, user_text):
                 await self._emit(session_id, event)
         except asyncio.CancelledError:
             return PromptResponse(stop_reason="cancelled", user_message_id=message_id)
@@ -158,23 +166,25 @@ class PagentACPAgent:
 
         return PromptResponse(stop_reason="end_turn", user_message_id=message_id)
 
-    async def _emit(self, session_id: str, event: Event) -> None:
+    async def _emit(self, session_id: str, event: Any) -> None:
         if self._conn is None:
             return
 
-        if isinstance(event, TextDelta):
+        kind = type(event).__name__
+
+        if kind == "TextDelta":
             await self._conn.session_update(
                 session_id, update_agent_message_text(event.text)
             )
             return
 
-        if isinstance(event, ReasoningDelta):
+        if kind == "ReasoningDelta":
             await self._conn.session_update(
                 session_id, update_agent_thought_text(event.text)
             )
             return
 
-        if isinstance(event, ToolCallBegin):
+        if kind == "ToolCallBegin":
             await self._conn.session_update(
                 session_id,
                 start_tool_call(
@@ -187,7 +197,7 @@ class PagentACPAgent:
             )
             return
 
-        if isinstance(event, ToolResult):
+        if kind == "ToolResult":
             await self._conn.session_update(
                 session_id,
                 update_tool_call(
