@@ -15,10 +15,12 @@ import sys
 from pagentv2 import (
     Agent,
     DeepSeek,
+    ReasoningDelta,
     TextDelta,
     ToolCallBegin,
     ToolResult,
-    TurnResult,
+    TurnBegin,
+    TurnEnd,
     tool,
 )
 
@@ -62,7 +64,7 @@ def calc(expression: str) -> str:
     if not all(c in allowed for c in expression):
         return "error: only basic arithmetic"
     try:
-        return str(eval(expression, {"__builtins__": {}}, {}))
+        return str(eval(expression, {"__builtins__": {}}, {"abs": abs}))
     except Exception as exc:
         return f"error: {exc}"
 
@@ -89,11 +91,29 @@ async def main():
 
     print(f"Q: {QUESTION}\n")
 
-    answer_parts: list[str] = []
     turns = 0
+    answer = ""
+    turn_text: list[str] = []
+    in_reasoning = False
 
     async for event in agent.arun(QUESTION):
-        if isinstance(event, ToolCallBegin):
+        if isinstance(event, TurnBegin):
+            turn_text = []
+            in_reasoning = False
+
+        elif isinstance(event, ReasoningDelta):
+            if not in_reasoning:
+                in_reasoning = True
+                if color:
+                    sys.stdout.write(DIM)
+                print("reasoning: ", end="", flush=True)
+            sys.stdout.write(event.text)
+            sys.stdout.flush()
+
+        elif isinstance(event, ToolCallBegin):
+            if in_reasoning and color:
+                sys.stdout.write(RESET)
+            in_reasoning = False
             prefix = (
                 f"{CYAN}tool → {event.name}({event.arguments}){RESET}"
                 if color
@@ -111,21 +131,28 @@ async def main():
                 print(f"  {mark}: {line}")
 
         elif isinstance(event, TextDelta):
-            if color:
-                sys.stdout.write(event.text)
-            else:
-                sys.stdout.write(event.text)
+            if in_reasoning:
+                if color:
+                    sys.stdout.write(RESET)
+                print()
+                in_reasoning = False
+            sys.stdout.write(event.text)
             sys.stdout.flush()
-            answer_parts.append(event.text)
+            turn_text.append(event.text)
 
-        elif isinstance(event, TurnResult):
+        elif isinstance(event, TurnEnd):
+            if in_reasoning and color:
+                sys.stdout.write(RESET)
+            in_reasoning = False
             turns += 1
+            if event.stop_reason == "no_tool_calls":
+                answer = "".join(turn_text)
             if color:
                 print(f"\n{DIM}── turn {turns} done ──{RESET}")
             else:
                 print(f"\n── turn {turns} done ──")
 
-    print(f"\nAnswer: {''.join(answer_parts)}")
+    print(f"\nAnswer: {answer}")
     print(f"Turns: {turns}  |  Messages: {len(agent.messages)}")
 
 
