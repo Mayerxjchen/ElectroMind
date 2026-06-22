@@ -50,7 +50,7 @@ class Agent:
             data=[m for m in self.messages.data if m.role == "system"]
         )
 
-    def run_tool_call(self, tool_call: dict) -> ToolOutput:
+    async def run_tool_call(self, tool_call: dict) -> ToolOutput:
         function_call = tool_call["function"]
         name = function_call["name"]
         tc = self.tool_map.get(name)
@@ -58,7 +58,7 @@ class Agent:
             return ToolOutput.fail(
                 f"error: unknown tool {name!r}; available: {sorted(self.tool_map)}"
             )
-        return tc.call(function_call["arguments"])
+        return await tc.acall(function_call["arguments"])
 
     async def emit_tool_events(self, tool_calls: list[dict]) -> AsyncIterator:
         for tool_call in tool_calls:
@@ -68,7 +68,7 @@ class Agent:
             if not isinstance(arguments, str):
                 arguments = str(arguments)
             yield ToolCallBegin(tool_call["id"], name, arguments)
-            output = self.run_tool_call(tool_call)
+            output = await self.run_tool_call(tool_call)
             self.messages += Message.tool_result(tool_call["id"], output.content)
             yield ToolResult(tool_call["id"], name, output.content, ok=output.ok)
 
@@ -134,18 +134,15 @@ class Agent:
             self.messages += message
             yield message
 
-    def _project_event(self, event, return_type):
+    def project_event(self, event, return_type):
         if return_type == "event":
             return event
-
         if return_type == "text":
-            if isinstance(event, TextDelta):
-                return event.text
-            return None
-
+            if not isinstance(event, TextDelta):
+                return None
+            return event.text
         if return_type == "acp":
             return encode_event_line(event)
-
         if return_type == "message":
             if isinstance(event, TextDelta):
                 return Message.assistant({"type": "text", "text": event.text})
@@ -164,7 +161,6 @@ class Agent:
             if isinstance(event, ToolResult):
                 return Message.tool_result(event.tool_call_id, event.content)
             return None
-
         raise ValueError(f"unknown return_type: {return_type!r}")
 
     async def arun(
@@ -178,9 +174,10 @@ class Agent:
             raise ValueError(f"unknown return_type: {return_type!r}")
 
         async for event in self.events(user_input, **run_kwargs):
-            projected = self._project_event(event, return_type)
-            if projected is not None:
-                yield projected
+            projected = self.project_event(event, return_type)
+            if projected is None:
+                continue
+            yield projected
 
     async def events(self, user_input: str, **run_kwargs) -> AsyncIterator:
         self.messages += Message.user(user_input)
@@ -201,13 +198,18 @@ class Agent:
             yield result
 
             if turn_start >= len(self.messages.data):
-                yield TurnEnd(turn, stopped=True)
+                yield TurnEnd(turn, stopped=True, stop_reason="empty_response")
                 return
 
             if not result.has_tool_calls:
-                yield TurnEnd(turn, stopped=True)
+                yield TurnEnd(turn, stopped=True, stop_reason="no_tool_calls")
                 return
 
             async for event in self.emit_tool_events(result.tool_calls):
                 yield event
-            yield TurnEnd(turn, stopped=False)
+
+            if turn + 1 >= self.max_turns:
+                yield TurnEnd(turn, stopped=True, stop_reason="max_turns")
+                return
+
+            yield TurnEnd(turn, stopped=False, stop_reason="continuing")

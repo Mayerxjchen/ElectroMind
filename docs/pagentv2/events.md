@@ -14,7 +14,7 @@ projects that same stream into one of four return types.
 | `TurnResult` | `content`, `tool_calls`, `reasoning_content` | One model turn finished |
 | `ToolCallBegin` | `tool_call_id`, `name`, `arguments` | About to execute one tool |
 | `ToolResult` | `tool_call_id`, `name`, `content`, `ok` | Tool output appended |
-| `TurnEnd` | `turn`, `stopped` | Turn finished |
+| `TurnEnd` | `turn`, `stopped`, `stop_reason` | Turn finished; see `StopReason` below |
 
 ## Typical sequence
 
@@ -28,11 +28,11 @@ RunBegin
     TurnResult(tool_calls=[...])
     ToolCallBegin(...)
     ToolResult(...)
-  TurnEnd(0, stopped=False)
+  TurnEnd(0, stopped=False, stop_reason="continuing")
   TurnBegin(1)
     TextDelta*
     TurnResult(tool_calls=[])
-  TurnEnd(1, stopped=True)
+  TurnEnd(1, stopped=True, stop_reason="no_tool_calls")
 ```
 
 Without tools:
@@ -42,8 +42,17 @@ RunBegin
   TurnBegin(0)
     TextDelta*
     TurnResult(tool_calls=[])
-  TurnEnd(0, stopped=True)
+  TurnEnd(0, stopped=True, stop_reason="no_tool_calls")
 ```
+
+## `StopReason`
+
+| Value | `stopped` | Meaning |
+|-------|---------|---------|
+| `continuing` | `False` | Tools ran; another model turn will follow |
+| `no_tool_calls` | `True` | Model replied without tools; run ends |
+| `empty_response` | `True` | Model produced no assistant messages; run ends |
+| `max_turns` | `True` | `max_turns` limit reached after tool execution; run ends |
 
 ## Consumers
 

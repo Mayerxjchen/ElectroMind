@@ -4,7 +4,7 @@ import pytest
 from acp import text_block
 
 from pagent_acp.adapter import PagentACPAgent, prompt_to_text
-from pagentv2 import Agent, TextChunk, ToolCallBegin, ToolResult, TurnResult
+from pagentv2 import Agent, TextChunk, ToolCallBegin, ToolResult, TurnEnd, TurnResult
 from pagentv2.acp_adapter import decode_event_line
 from pagentv2.tool import tool
 
@@ -148,6 +148,7 @@ async def test_events_plain_text():
     assert events[2].text == "hi"
     assert events[3].content == "hi"
     assert events[4].stopped is True
+    assert events[4].stop_reason == "no_tool_calls"
 
 
 @pytest.mark.asyncio
@@ -172,6 +173,7 @@ async def test_events_with_tools():
     assert tr.content == "echo:x"
     assert tr.ok is True
     assert events[-1].stopped is True
+    assert events[-1].stop_reason == "no_tool_calls"
     last_turn = next(e for e in reversed(events) if isinstance(e, TurnResult))
     assert last_turn.content == "ok"
 
@@ -232,6 +234,49 @@ async def test_events_turn_result_with_tools():
             result = event
     assert result is not None
     assert result.content == "ok"
+
+
+@pytest.mark.asyncio
+async def test_turn_end_continuing_after_tools():
+    tc = SimpleNamespace(
+        index=0,
+        id="c1",
+        type="function",
+        function=SimpleNamespace(name="echo", arguments='{"msg":"x"}'),
+    )
+    provider = FakeProvider(
+        [
+            [FakeStreamChunk(tool_calls=[tc])],
+            [FakeStreamChunk(content="ok")],
+        ]
+    )
+    agent = Agent(provider, system="test", tools=[echo], max_turns=4)
+
+    turn_ends = [e async for e in agent.arun("go") if isinstance(e, TurnEnd)]
+
+    assert len(turn_ends) == 2
+    assert turn_ends[0].stopped is False
+    assert turn_ends[0].stop_reason == "continuing"
+    assert turn_ends[1].stopped is True
+    assert turn_ends[1].stop_reason == "no_tool_calls"
+
+
+@pytest.mark.asyncio
+async def test_turn_end_max_turns():
+    tc = SimpleNamespace(
+        index=0,
+        id="c1",
+        type="function",
+        function=SimpleNamespace(name="echo", arguments='{"msg":"x"}'),
+    )
+    provider = FakeProvider([[FakeStreamChunk(tool_calls=[tc])]])
+    agent = Agent(provider, system="test", tools=[echo], max_turns=1)
+
+    turn_ends = [e async for e in agent.arun("go") if isinstance(e, TurnEnd)]
+
+    assert len(turn_ends) == 1
+    assert turn_ends[0].stopped is True
+    assert turn_ends[0].stop_reason == "max_turns"
 
 
 def test_prompt_to_text():

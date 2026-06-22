@@ -47,11 +47,12 @@ class FunctionTool:
     def call(self, arguments=None) -> ToolOutput:
         if self.func is None:
             return ToolOutput.fail(f"tool {self.name} has no bound function")
+        if inspect.iscoroutinefunction(self.func):
+            return ToolOutput.fail(f"tool {self.name!r} is async; use acall() instead")
 
         try:
             if arguments is None:
                 return normalize_tool_output(self.func())
-
             if not isinstance(arguments, str):
                 return normalize_tool_output(self.func(**arguments))
 
@@ -63,8 +64,31 @@ class FunctionTool:
                 payload = json.loads(stripped)
             except json.JSONDecodeError as e:
                 return ToolOutput.fail(f"Invalid JSON in tool arguments: {e}")
-
             return normalize_tool_output(self.func(**payload))
+        except Exception as e:
+            return ToolOutput.fail(f"{self.name} error: {e}")
+
+    async def acall(self, arguments=None) -> ToolOutput:
+        if self.func is None:
+            return ToolOutput.fail(f"tool {self.name} has no bound function")
+
+        try:
+            if arguments is None:
+                result = self.func()
+            elif not isinstance(arguments, str):
+                result = self.func(**arguments)
+            elif not arguments.strip():
+                result = self.func()
+            else:
+                try:
+                    payload = json.loads(arguments.strip())
+                except json.JSONDecodeError as e:
+                    return ToolOutput.fail(f"Invalid JSON in tool arguments: {e}")
+                result = self.func(**payload)
+
+            if inspect.isawaitable(result):
+                result = await result
+            return normalize_tool_output(result)
         except Exception as e:
             return ToolOutput.fail(f"{self.name} error: {e}")
 

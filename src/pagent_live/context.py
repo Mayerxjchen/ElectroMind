@@ -13,22 +13,15 @@ from .live_events import CancelRun, HumanInputRequired, HumanReply
 if TYPE_CHECKING:
     from .agent import LiveAgent
 
-_published_owire: set[int] = set()
 _waiters: dict[str, asyncio.Future[str]] = {}
 
 
 def publish_owire(bus: DuplexBus, event: Event) -> None:
-    if id(event) not in _published_owire:
-        bus.push_owire(event)
-        _published_owire.add(id(event))
+    bus.push_owire(event)
 
 
 def drain_owire_yield(bus: DuplexBus) -> Iterator[Event]:
-    seen: set[int] = set()
     while (event := bus.get_owire()) is not None:
-        if id(event) in seen:
-            continue
-        seen.add(id(event))
         yield event
 
 
@@ -40,7 +33,6 @@ def flush_bus(bus: DuplexBus) -> None:
 
 
 def reset_live(bus: DuplexBus | None = None, *, flush: bool = True) -> None:
-    _published_owire.clear()
     cancel_waits()
     if bus is not None and flush:
         flush_bus(bus)
@@ -48,7 +40,6 @@ def reset_live(bus: DuplexBus | None = None, *, flush: bool = True) -> None:
 
 def end_run(bus: DuplexBus | None = None) -> None:
     """End of ``arun_events``: cancel rendezvous waits, keep owire for UI drain."""
-    _published_owire.clear()
     cancel_waits()
 
 

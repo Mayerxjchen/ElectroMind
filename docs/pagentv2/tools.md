@@ -55,13 +55,28 @@ def calc(expression: str) -> ToolOutput:
 
 ## Argument handling
 
-`FunctionTool.call()` accepts:
+`FunctionTool.call()` and `FunctionTool.acall()` accept:
 
 - `None`: call the tool with no arguments
 - JSON string: parse then call with `**payload`
 - mapping: call directly with `**arguments`
 
 Invalid JSON is converted into a failed `ToolOutput`.
+
+`call()` is synchronous and only supports plain functions. Async tools must
+use `acall()`; `Agent` does this automatically during a run.
+
+## Async tools
+
+```python
+@tool()
+async def fetch(city: str) -> str:
+    """Fetch weather asynchronously."""
+    return f"Sunny in {city}"
+```
+
+Register the tool on `Agent` as usual. Tool execution inside `Agent.events()`
+and `Agent.arun()` goes through `acall()`.
 
 ## Duplicate names
 

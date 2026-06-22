@@ -1,7 +1,9 @@
 from dataclasses import dataclass
-from typing import TypeAlias
+from typing import Literal, TypeAlias
 
 from .turn_result import TurnResult
+
+StopReason = Literal["continuing", "no_tool_calls", "empty_response", "max_turns"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -16,8 +18,11 @@ class TurnBegin:
 
 @dataclass(frozen=True, slots=True)
 class TurnEnd:
+    """One model turn finished (assistant messages written to ``messages``)."""
+
     turn: int
     stopped: bool
+    stop_reason: StopReason
 
 
 @dataclass(frozen=True, slots=True)
