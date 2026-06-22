@@ -8,8 +8,6 @@ Usage (from repo root):
 Open http://127.0.0.1:8765
 """
 
-from __future__ import annotations
-
 import os
 from pathlib import Path
 

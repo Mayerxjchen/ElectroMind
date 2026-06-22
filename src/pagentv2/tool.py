@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import inspect
 import json
 from dataclasses import dataclass
@@ -52,19 +50,21 @@ class FunctionTool:
 
         try:
             if arguments is None:
-                return normalize_tool_output(self.func(**{}))
+                return normalize_tool_output(self.func())
 
-            if isinstance(arguments, str):
-                stripped = arguments.strip()
-                if not stripped:
-                    return normalize_tool_output(self.func(**{}))
-                try:
-                    payload = json.loads(stripped)
-                except json.JSONDecodeError as e:
-                    return ToolOutput.fail(f"Invalid JSON in tool arguments: {e}")
-                return normalize_tool_output(self.func(**payload))
+            if not isinstance(arguments, str):
+                return normalize_tool_output(self.func(**arguments))
 
-            return normalize_tool_output(self.func(**arguments))
+            stripped = arguments.strip()
+            if not stripped:
+                return normalize_tool_output(self.func())
+
+            try:
+                payload = json.loads(stripped)
+            except json.JSONDecodeError as e:
+                return ToolOutput.fail(f"Invalid JSON in tool arguments: {e}")
+
+            return normalize_tool_output(self.func(**payload))
         except Exception as e:
             return ToolOutput.fail(f"{self.name} error: {e}")
 

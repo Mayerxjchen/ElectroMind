@@ -2,6 +2,7 @@ import pytest
 
 from pagentv2 import Agent
 from pagentv2.message import (
+    AudioUrl,
     ImageUrl,
     Message,
     Messages,
@@ -10,6 +11,7 @@ from pagentv2.message import (
     ToolCall,
     ToolResult,
 )
+from pagentv2.provider import Provider
 
 
 class FakeStreamChunk:
@@ -110,9 +112,48 @@ def test_messages_to_openai_user_image():
     ]
 
 
+def test_messages_to_openai_user_audio():
+    msgs = Messages()
+    msgs += Message(
+        role="user",
+        content=AudioUrl(
+            type="audio_url",
+            url="https://example.com/voice.wav",
+            text="语音转写文本",
+        ),
+    )
+
+    api = msgs.to_openai()
+    assert api == [
+        {
+            "role": "user",
+            "content": [
+                {
+                    "type": "audio_url",
+                    "audio_url": {"url": "https://example.com/voice.wav"},
+                },
+                {"type": "text", "text": "语音转写文本"},
+            ],
+        }
+    ]
+
+
 def test_image_url_rejected_on_assistant():
     with pytest.raises(ValueError, match="assistant message"):
         Message(role="assistant", content=ImageUrl(type="image_url", url="http://x"))
+
+
+def test_provider_rejects_reserved_request_kwargs():
+    with pytest.raises(TypeError, match="reserved keys"):
+        Provider("test-model", apikey="dummy", request_kwargs={"stream": False})
+
+
+@pytest.mark.asyncio
+async def test_provider_rejects_reserved_run_kwargs():
+    provider = Provider("test-model", apikey="dummy")
+
+    with pytest.raises(TypeError, match="reserved keys"):
+        await provider.complete([], stream=False)
 
 
 @pytest.mark.asyncio

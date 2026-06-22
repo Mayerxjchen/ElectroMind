@@ -1,7 +1,5 @@
 """Tool ``context`` and owire / iwire helpers."""
 
-from __future__ import annotations
-
 import asyncio
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -94,7 +92,7 @@ def cancel_waits() -> None:
 
 @dataclass(slots=True)
 class ToolContext:
-    agent: LiveAgent
+    agent: "LiveAgent"
     tool_call_id: str
 
     def emit(self, event: Event) -> None:

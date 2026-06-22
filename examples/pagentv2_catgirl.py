@@ -8,8 +8,6 @@ Usage:
     PAGENTV2_CAT_LINE="今天好累呀" uv run python -m examples.pagentv2_catgirl
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os

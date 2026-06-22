@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import AsyncIterator
 from typing import Literal
 
@@ -136,6 +134,39 @@ class Agent:
             self.messages += message
             yield message
 
+    def _project_event(self, event, return_type):
+        if return_type == "event":
+            return event
+
+        if return_type == "text":
+            if isinstance(event, TextDelta):
+                return event.text
+            return None
+
+        if return_type == "acp":
+            return encode_event_line(event)
+
+        if return_type == "message":
+            if isinstance(event, TextDelta):
+                return Message.assistant({"type": "text", "text": event.text})
+            if isinstance(event, ReasoningDelta):
+                return Message.assistant({"type": "thinking", "text": event.text})
+            if isinstance(event, ToolCallBegin):
+                return Message(
+                    role="assistant",
+                    content=ToolCall(
+                        type="function",
+                        id=event.tool_call_id,
+                        name=event.name,
+                        arguments=event.arguments,
+                    ),
+                )
+            if isinstance(event, ToolResult):
+                return Message.tool_result(event.tool_call_id, event.content)
+            return None
+
+        raise ValueError(f"unknown return_type: {return_type!r}")
+
     async def arun(
         self,
         user_input: str,
@@ -143,22 +174,13 @@ class Agent:
         return_type: ArunReturnType = "event",
         **run_kwargs,
     ) -> AsyncIterator:
-        if return_type == "message":
-            self.messages += Message.user(user_input)
-            async for message in self.stream_messages(**run_kwargs):
-                yield message
-            return
+        if return_type not in {"event", "text", "acp", "message"}:
+            raise ValueError(f"unknown return_type: {return_type!r}")
 
         async for event in self.events(user_input, **run_kwargs):
-            if return_type == "event":
-                yield event
-            elif return_type == "text":
-                if isinstance(event, TextDelta):
-                    yield event.text
-            elif return_type == "acp":
-                yield encode_event_line(event)
-            else:
-                raise ValueError(f"unknown return_type: {return_type!r}")
+            projected = self._project_event(event, return_type)
+            if projected is not None:
+                yield projected
 
     async def events(self, user_input: str, **run_kwargs) -> AsyncIterator:
         self.messages += Message.user(user_input)

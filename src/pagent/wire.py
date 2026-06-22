@@ -10,8 +10,6 @@ One JSON object per line (NDJSON) is typical for HTTP/SSE or WebSocket bridges.
 See ``docs/wire.md``.
 """
 
-from __future__ import annotations
-
 import json
 from collections.abc import AsyncIterator, Iterator
 from dataclasses import fields

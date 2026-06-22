@@ -1,6 +1,7 @@
 import pytest
 
 from pagentv2 import Agent, Message, TurnResult, reply_text
+from pagentv2.tool import tool
 
 
 class FakeStreamChunk:
@@ -32,6 +33,16 @@ class FakeProvider:
                 yield chunk
 
         return stream()
+
+
+@tool()
+def echo(msg: str) -> str:
+    """Echo.
+
+    Args:
+        msg: Text.
+    """
+    return f"echo:{msg}"
 
 
 @pytest.mark.asyncio
@@ -101,3 +112,93 @@ def test_turn_result_from_slice():
     turn = TurnResult.from_slice(messages)
     assert turn.content == "ok"
     assert turn.reasoning_content == "hmm"
+
+
+@pytest.mark.asyncio
+async def test_message_mode_runs_tools_across_turns():
+    tc = type(
+        "ToolCallDelta",
+        (),
+        {
+            "index": 0,
+            "id": "c1",
+            "type": "function",
+            "function": type(
+                "FunctionDelta",
+                (),
+                {"name": "echo", "arguments": '{"msg":"x"}'},
+            )(),
+        },
+    )()
+    provider = FakeProvider(
+        [
+            [FakeStreamChunk(tool_calls=[tc])],
+            [FakeStreamChunk(content="done")],
+        ]
+    )
+    agent = Agent(provider, system="test", tools=[echo], max_turns=4)
+
+    messages = [m async for m in agent.arun("go", return_type="message")]
+
+    assert [m.role for m in messages] == ["assistant", "tool", "assistant"]
+    assert messages[0].content.type == "function"
+    assert messages[1].content.type == "tool_result"
+    assert messages[1].content.text == "echo:x"
+    assert messages[2].content.type == "text"
+    assert messages[2].content.text == "done"
+    assert len(provider.calls) == 2
+    assert [m.role for m in agent.messages.data] == [
+        "system",
+        "user",
+        "assistant",
+        "tool",
+        "assistant",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_message_mode_projects_reasoning_tool_and_text():
+    tc = type(
+        "ToolCallDelta",
+        (),
+        {
+            "index": 0,
+            "id": "c1",
+            "type": "function",
+            "function": type(
+                "FunctionDelta",
+                (),
+                {"name": "echo", "arguments": '{"msg":"x"}'},
+            )(),
+        },
+    )()
+    provider = FakeProvider(
+        [
+            [FakeStreamChunk(reasoning="think"), FakeStreamChunk(tool_calls=[tc])],
+            [FakeStreamChunk(content="done")],
+        ]
+    )
+    agent = Agent(provider, system="test", tools=[echo], max_turns=4)
+
+    messages = [m async for m in agent.arun("go", return_type="message")]
+
+    assert [m.role for m in messages] == ["assistant", "assistant", "tool", "assistant"]
+    assert messages[0].content.type == "thinking"
+    assert messages[0].content.text == "think"
+    assert messages[1].content.type == "function"
+    assert messages[2].content.type == "tool_result"
+    assert messages[2].content.text == "echo:x"
+    assert messages[3].content.type == "text"
+    assert messages[3].content.text == "done"
+
+
+@pytest.mark.asyncio
+async def test_arun_rejects_unknown_return_type_before_running():
+    provider = FakeProvider([[FakeStreamChunk(content="unused")]])
+    agent = Agent(provider, system="test")
+
+    with pytest.raises(ValueError, match="unknown return_type"):
+        async for _ in agent.arun("hi", return_type="bad"):  # type: ignore[arg-type]
+            pass
+
+    assert provider.calls == []

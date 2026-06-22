@@ -53,3 +53,10 @@ Pick a provider tab, set the API key, save as `demo.py`, run `python demo.py`. T
 Example output: `Sunny in Xiamen today.` (actual text depends on the model). More providers: [Providers & API keys](./guide/providers).
 
 [Install →](./guide/install) · [Quick start →](./guide/quick-start)
+
+## Looking For pagentv2?
+
+The repo now also contains a newer typed API built around `Provider`,
+`Message`, and `Messages`.
+
+[pagentv2 overview →](./pagentv2/) · [pagentv2 quick start →](./pagentv2/quick-start)

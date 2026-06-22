@@ -121,14 +121,21 @@ def user_part_to_openai(chunk: UserChunk) -> dict:
         return {"type": "image_url", "image_url": {"url": chunk.url}}
     if isinstance(chunk, AudioUrl):
         return {
-            "type": "input_audio",
-            "input_audio": {"data": str(chunk.url), "format": "wav"},
+            "type": "audio_url",
+            "audio_url": {"url": str(chunk.url)},
         }
     raise TypeError(f"not a user content part: {chunk!r}")
 
 
 def user_content_to_openai(chunks: list[UserChunk]) -> str | list[dict]:
-    parts = [user_part_to_openai(c) for c in chunks]
+    parts: list[dict] = []
+    for chunk in chunks:
+        parts.append(user_part_to_openai(chunk))
+        if isinstance(chunk, AudioUrl):
+            # TODO: Add a dedicated media parsing/adaptation layer. Our supported
+            # media types and the media types accepted by OpenAI-compatible APIs
+            # do not fully align yet, so this remains a fallback mapping for now.
+            parts.append({"type": "text", "text": chunk.text})
     if len(parts) == 1 and parts[0]["type"] == "text":
         return parts[0]["text"]
     return parts

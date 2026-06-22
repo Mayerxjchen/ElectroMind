@@ -4,8 +4,6 @@ Bridges :class:`~pagent.agent.Agent` to editors such as Zed over stdio JSON-RPC.
 Requires the optional ``agent-client-protocol`` package (``pagent[acp]``).
 """
 
-from __future__ import annotations
-
 import asyncio
 import inspect
 import json

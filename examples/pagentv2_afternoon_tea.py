@@ -11,8 +11,6 @@ Usage:
     PAGENTV2_TEA_PROMPT="..." uv run python -m examples.pagentv2_afternoon_tea
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os

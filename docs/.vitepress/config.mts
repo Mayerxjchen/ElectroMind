@@ -70,6 +70,7 @@ export default withMermaid(
       themeConfig: {
         nav: [
           { text: "Guide", link: "/guide/quick-start", activeMatch: "/guide/" },
+          { text: "pagentv2", link: "/pagentv2/" },
           { text: "Events", link: "/events" },
           { text: "Wire", link: "/wire" },
           { text: "Dev", link: "/development" },
@@ -81,6 +82,18 @@ export default withMermaid(
               { text: "Introduction", link: "/" },
               { text: "Install", link: "/guide/install" },
               { text: "Quick start", link: "/guide/quick-start" },
+            ],
+          },
+          {
+            text: "pagentv2",
+            items: [
+              { text: "Overview", link: "/pagentv2/" },
+              { text: "Quick start", link: "/pagentv2/quick-start" },
+              { text: "Core types", link: "/pagentv2/core-types" },
+              { text: "Messages", link: "/pagentv2/messages" },
+              { text: "Tools", link: "/pagentv2/tools" },
+              { text: "Events", link: "/pagentv2/events" },
+              { text: "Provider", link: "/pagentv2/provider" },
             ],
           },
           {

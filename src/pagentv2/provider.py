@@ -1,17 +1,34 @@
 """OpenAI-compatible provider — stateless HTTP only."""
 
-from __future__ import annotations
-
 import os
+from collections.abc import Mapping
+from typing import Any
+
+from openai import AsyncOpenAI
+
+RESERVED_KEYS = frozenset({"model", "messages", "stream", "tools"})
+
+
+def check_run_kwargs(kwargs: Mapping[str, Any]) -> None:
+    reserved = kwargs.keys() & RESERVED_KEYS
+    if reserved:
+        raise TypeError(
+            f"run_kwargs must not include {sorted(reserved)}; "
+            f"reserved keys: {sorted(RESERVED_KEYS)}"
+        )
 
 
 class Provider:
     API_KEY_ENV_VAR = "OPENAI_API_KEY"
     BASE_URL = "https://api.openai.com"
 
-    def __init__(self, model_id: str, base_url=None, apikey=None, request_kwargs=None):
-        from openai import AsyncOpenAI
-
+    def __init__(
+        self,
+        model_id: str,
+        base_url: str | None = None,
+        apikey: str | None = None,
+        request_kwargs: Mapping[str, Any] | None = None,
+    ) -> None:
         resolved_base_url = (base_url or self.BASE_URL).strip()
         resolved_apikey = (
             apikey if apikey is not None else os.getenv(self.API_KEY_ENV_VAR) or ""
@@ -21,17 +38,24 @@ class Provider:
         self.apikey = resolved_apikey
         self.client = AsyncOpenAI(api_key=self.apikey, base_url=self.base_url)
         self.model_id = model_id
-        self.request_kwargs = request_kwargs or {}
+        self.request_kwargs = dict(request_kwargs) if request_kwargs is not None else {}
+        check_run_kwargs(self.request_kwargs)
 
-    async def complete(self, messages: list[dict], tools=None, **run_kwargs):
-        kwargs = {
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        **run_kwargs: Any,
+    ):
+        check_run_kwargs(run_kwargs)
+        kwargs: dict[str, Any] = {
+            **self.request_kwargs,
+            **run_kwargs,
             "model": self.model_id,
             "messages": messages,
             "stream": True,
-            **self.request_kwargs,
-            **run_kwargs,
         }
-        if tools:
+        if tools is not None:
             kwargs["tools"] = tools
 
         return await self.client.chat.completions.create(**kwargs)

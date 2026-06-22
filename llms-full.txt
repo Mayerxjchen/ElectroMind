@@ -225,7 +225,8 @@ uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
 
 | Script | Description |
 |--------|-------------|
-| [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) | Interactive CLI, `/context` |
+| [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) | Interactive CLI (`arun`, text only) |
+| [cli_events.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli_events.py) | CLI with tools/reasoning via `arun_events` |
 | [simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py) | Tools demo |
 | [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | Reasoning + answer stream |
 | [wire_demo](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) | FastAPI + browser UI |
@@ -364,7 +365,7 @@ await agent.run("Weather in Xiamen?")
 
 Multiple tools: `tools=[a, b]`. Custom name: `@tool(name="weather", description="...")`.
 
-Built-in: [defaults](./defaults) (`clock`, `region`, `web_search`).
+Built-in: [defaults](./defaults) (`clock`, `region`, `readfile`, `web_search`, `bash`).
 
 ## See also
 
@@ -377,10 +378,10 @@ Built-in: [defaults](./defaults) (`clock`, `region`, `web_search`).
 
 # Built-in tools
 
-Optional tools in `pagent.defaults`: `clock`, `region`, `web_search`.
+Optional tools in `pagent.defaults`: `clock`, `region`, `readfile`, `web_search`, `bash`.
 
 ```python
-from pagent import Agent, LLM, Session, DEFAULT_TOOLS, clock, region, web_search
+from pagent import Agent, LLM, Session, DEFAULT_TOOLS, bash, clock, readfile, region, web_search
 
 agent = Agent(
     llm=LLM("gpt-4o-mini"),
@@ -407,6 +408,26 @@ OS locale and timezone hint (no GPS).
 
 ```python
 tools=[region]
+```
+
+## readfile {#readfile}
+
+Read a UTF-8 text file under process `cwd` (absolute or relative path; `~` expanded). Up to **500 code points** per call (`max_chars`). Use **`offset`** to read the next window when the header says `continues at offset N`.
+
+```python
+tools=[readfile]
+# readfile("src/pagent/defaults.py", max_chars=500, offset=0)
+# readfile("src/pagent/defaults.py", max_chars=500, offset=500)
+```
+
+## bash {#bash}
+
+Run a **whitelisted** command in process `cwd` (no shell). Currently only **`ls`** is allowed; path arguments must resolve under the workspace (same rules as `readfile`).
+
+```python
+tools=[bash]
+# bash("ls")
+# bash("ls -la src")
 ```
 
 ## web_search {#web-search}
@@ -1095,3 +1116,565 @@ On push to `main`, [docs.yml](https://github.com/SyncLionPaw/pagent/blob/main/.g
 
 - [events.md](./events.md)
 - [reasoning.md](./reasoning.md)
+
+
+---
+
+<!-- source: docs/pagentv2/index.md -->
+
+# pagentv2
+
+`pagentv2` is the newer typed API in this repository.
+
+Use these pages if you want:
+
+- `Provider` instead of `LLM`
+- `Message` / `Messages` instead of `Session`
+- `Agent.arun(..., return_type=...)` projections over one canonical event stream
+
+## Pages
+
+- [Quick start](./quick-start)
+- [Core types](./core-types)
+- [Messages](./messages)
+- [Tools](./tools)
+- [Events](./events)
+- [Provider](./provider)
+
+## Status
+
+This documentation set is additive for now. The existing top-level `pagent`
+docs still describe the stable `Session + LLM + arun_events()` API.
+
+
+---
+
+<!-- source: docs/pagentv2/quick-start.md -->
+
+# pagentv2 Quick Start
+
+`pagentv2` is the newer message-centric API in this repo. It keeps the same
+small runtime shape, but replaces `Session` / `LLM` with `Message` / `Provider`.
+
+Prerequisites: [Install](../guide/install) (Python 3.11+, pip / uv / conda).
+
+## Minimal agent
+
+```python
+import asyncio
+import os
+
+from pagentv2 import Agent, Provider, tool
+
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for a city."""
+    return f"Sunny in {city} today."
+
+
+async def main():
+    if not os.getenv("OPENAI_API_KEY"):
+        raise SystemExit("Set OPENAI_API_KEY first.")
+
+    agent = Agent(
+        Provider("gpt-4o-mini"),
+        system="You are helpful. Use tools when needed.",
+        tools=[get_weather],
+        max_turns=8,
+    )
+
+    answer_parts: list[str] = []
+    async for text in agent.arun("Weather in Xiamen?", return_type="text"):
+        answer_parts.append(text)
+
+    print("".join(answer_parts))
+
+
+asyncio.run(main())
+```
+
+## Streaming modes
+
+Unlike `pagent.Agent.arun()`, `pagentv2.Agent.arun()` defaults to
+`return_type="event"`.
+
+| API | Returns | Use when |
+|-----|---------|----------|
+| `agent.arun(..., return_type="event")` | `Event` objects | Full timeline, Python UI |
+| `agent.arun(..., return_type="text")` | `str` chunks | Answer text only |
+| `agent.arun(..., return_type="message")` | `Message` objects | Observe assistant/tool messages |
+| `agent.arun(..., return_type="acp")` | NDJSON lines | Socket / ACP / JSON consumers |
+
+## Built-in providers
+
+```python
+from pagentv2 import DeepSeek, Ollama, Vllm, Sglang
+
+deepseek = DeepSeek("deepseek-v4-flash")
+ollama = Ollama("qwen3:8b")
+vllm = Vllm("my-model")
+sglang = Sglang("my-model")
+```
+
+`Provider` and the built-in subclasses forward to
+OpenAI-compatible `/v1/chat/completions`.
+
+## Next
+
+- [Core types](./core-types)
+- [Messages](./messages)
+- [Tools](./tools)
+- [Events](./events)
+- [Provider](./provider)
+
+
+---
+
+<!-- source: docs/pagentv2/core-types.md -->
+
+# pagentv2 Core Types
+
+`pagentv2` is built around explicit message objects and a small provider layer.
+
+## Main symbols
+
+| Symbol | Role |
+|--------|------|
+| `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang` | OpenAI-compatible streaming clients |
+| `Agent(provider, messages=None, system=None, tools=None, max_turns=8)` | Runs the tool loop |
+| `Message` | One typed message item with `role` + `content` |
+| `Messages` | In-memory message list with `to_openai()` conversion |
+| `TextChunk`, `ThinkingChunk`, `ImageUrl`, `AudioUrl` | Content variants |
+| `ToolCall` | Assistant tool call chunk |
+| `ToolResult` | Tool output message content |
+| `TurnResult` | One model turn summary: `content`, `tool_calls`, `reasoning_content` |
+| `Event` | Union of the event dataclasses emitted by the run loop |
+
+## Agent constructor
+
+```python
+from pagentv2 import Agent, Provider
+
+agent = Agent(
+    Provider("gpt-4o-mini"),
+    system="You are concise.",
+    tools=[],
+    max_turns=8,
+)
+```
+
+Notes:
+
+- `messages` is optional. If omitted, the agent starts with an empty `Messages()`.
+- `system=` is inserted as a system `Message` if one is not already present.
+- Duplicate tool names are rejected.
+- `max_turns` must be `>= 1`.
+
+## Runtime surfaces
+
+| Method | Returns | Notes |
+|--------|---------|-------|
+| `agent.stream_messages(**run_kwargs)` | `AsyncIterator[Message]` | One provider call only |
+| `agent.events(user_input, **run_kwargs)` | `AsyncIterator[Event]` | Full multi-turn loop |
+| `agent.arun(user_input, return_type=...)` | projected stream | `event`, `text`, `message`, or `acp` |
+| `agent.reset()` | `None` | Keeps system messages, drops later messages |
+
+## `arun()` return types
+
+```python
+from pagentv2 import ArunReturnType
+```
+
+Valid values:
+
+- `"event"`: raw events
+- `"text"`: `TextDelta.text` only
+- `"message"`: `Message` projection over the event stream
+- `"acp"`: NDJSON JSON-RPC notifications
+
+## Differences from `pagent`
+
+`pagentv2` intentionally shifts the center of gravity:
+
+- no `Session`
+- no `LLM`
+- typed `Message` objects instead of raw OpenAI-shaped dicts
+- `Provider.complete()` owns the low-level request
+- `TurnResult` replaces the old `RunEnd` / `StepEnd` shape for the per-turn summary
+
+If you want the older `Session + LLM + arun_events()` API, stay on the main
+`pagent` docs. If you want the newer typed message model, use the `pagentv2`
+pages.
+
+
+---
+
+<!-- source: docs/pagentv2/messages.md -->
+
+# pagentv2 Messages
+
+`pagentv2` stores conversation state as typed `Message` objects rather than raw
+OpenAI-shaped dicts.
+
+## Roles and content types
+
+| Role | Allowed content |
+|------|-----------------|
+| `system` | `TextChunk` |
+| `user` | `TextChunk`, `ImageUrl`, `AudioUrl` |
+| `assistant` | `TextChunk`, `ThinkingChunk`, `ToolCall` |
+| `tool` | `ToolResult` |
+
+The role/content pairing is validated in `Message`.
+
+## Constructors
+
+```python
+from pagentv2 import Message
+
+system = Message.system("You are helpful.")
+user = Message.user("Describe this image.")
+image = Message.user_image("https://example.com/cat.png")
+tool = Message.tool_result("call_1", "ok")
+```
+
+Assistant messages are often created from streamed events:
+
+```python
+Message.assistant({"type": "text", "text": "hello"})
+Message.assistant({"type": "thinking", "text": "let me think"})
+```
+
+## `Messages`
+
+`Messages` is a thin wrapper around `list[Message]`:
+
+```python
+from pagentv2 import Message, Messages
+
+msgs = Messages()
+msgs += Message.system("You are concise.")
+msgs += Message.user("Hello")
+```
+
+Useful methods:
+
+- `len(msgs)`
+- iteration over `Message`
+- `msgs.to_openai()` to export provider payloads
+
+## Conversion to provider payloads
+
+`Messages.to_openai()` performs a few important merges:
+
+- consecutive `user` chunks become one OpenAI user message
+- consecutive `assistant` chunks become one assistant message
+- assistant `ThinkingChunk` values are joined into `reasoning_content`
+- assistant `ToolCall` values are exported into `tool_calls`
+
+## Multimedia
+
+### Image
+
+```python
+from pagentv2 import ImageUrl, Message
+
+msg = Message(role="user", content=ImageUrl(type="image_url", url="https://..."))
+```
+
+Exports to:
+
+```python
+{"type": "image_url", "image_url": {"url": "..."}}
+```
+
+### Audio
+
+```python
+from pagentv2 import AudioUrl, Message
+
+msg = Message(
+    role="user",
+    content=AudioUrl(
+        type="audio_url",
+        url="https://example.com/voice.wav",
+        text="transcribed text",
+    ),
+)
+```
+
+Current intent:
+
+- `url` is the remote audio resource
+- `text` is the transcript or extracted text for that resource
+
+Current export is a fallback mapping:
+
+- one media part for the remote audio URL
+- one text part for the transcript
+
+This is intentional for now. Media types supported by `pagentv2` and media
+types accepted by OpenAI-compatible APIs do not fully align yet, so a dedicated
+media parsing / adaptation layer is still planned.
+
+
+---
+
+<!-- source: docs/pagentv2/tools.md -->
+
+# pagentv2 Tools
+
+Tools in `pagentv2` are still ordinary Python functions decorated with
+`@tool()`.
+
+## Define a tool
+
+```python
+from pagentv2 import tool
+
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for a city."""
+    return f"Sunny in {city} today."
+```
+
+The decorator derives:
+
+- tool name from the function name
+- description from the docstring
+- argument schema from type hints
+
+## Use with `Agent`
+
+```python
+from pagentv2 import Agent, Provider
+
+agent = Agent(
+    Provider("gpt-4o-mini"),
+    system="Use tools when needed.",
+    tools=[get_weather],
+)
+```
+
+## Tool outputs
+
+Plain return values are wrapped into `ToolOutput(content=..., ok=True)`.
+
+If you want to signal failure explicitly:
+
+```python
+from pagentv2 import ToolOutput, tool
+
+
+@tool()
+def calc(expression: str) -> ToolOutput:
+    """Evaluate a simple arithmetic expression."""
+    if not expression.strip():
+        return ToolOutput.fail("empty expression")
+    return ToolOutput.succeed("42")
+```
+
+`ToolResult.ok` is then exposed on the event stream.
+
+## Argument handling
+
+`FunctionTool.call()` accepts:
+
+- `None`: call the tool with no arguments
+- JSON string: parse then call with `**payload`
+- mapping: call directly with `**arguments`
+
+Invalid JSON is converted into a failed `ToolOutput`.
+
+## Duplicate names
+
+Tool names must be unique inside one `Agent`. Duplicate names raise
+`ValueError` at construction time.
+
+## Notes
+
+- Keep docstrings short and concrete. The model sees them.
+- Keep argument types simple unless you are sure the target model handles the
+  resulting schema well.
+- `pagentv2` currently models tool calls in the OpenAI function-call shape.
+
+
+---
+
+<!-- source: docs/pagentv2/events.md -->
+
+# pagentv2 Events
+
+`pagentv2.Agent.events()` emits the full multi-turn timeline. `Agent.arun()`
+projects that same stream into one of four return types.
+
+## Event types
+
+| Event | Fields | Meaning |
+|-------|--------|---------|
+| `RunBegin` | `user_input` | A new run starts |
+| `TurnBegin` | `turn` | One provider call starts |
+| `TextDelta` | `text` | Assistant text chunk |
+| `ReasoningDelta` | `text` | Assistant reasoning chunk |
+| `TurnResult` | `content`, `tool_calls`, `reasoning_content` | One model turn finished |
+| `ToolCallBegin` | `tool_call_id`, `name`, `arguments` | About to execute one tool |
+| `ToolResult` | `tool_call_id`, `name`, `content`, `ok` | Tool output appended |
+| `TurnEnd` | `turn`, `stopped` | Turn finished |
+
+## Typical sequence
+
+With tools:
+
+```text
+RunBegin
+  TurnBegin(0)
+    TextDelta*
+    ReasoningDelta*
+    TurnResult(tool_calls=[...])
+    ToolCallBegin(...)
+    ToolResult(...)
+  TurnEnd(0, stopped=False)
+  TurnBegin(1)
+    TextDelta*
+    TurnResult(tool_calls=[])
+  TurnEnd(1, stopped=True)
+```
+
+Without tools:
+
+```text
+RunBegin
+  TurnBegin(0)
+    TextDelta*
+    TurnResult(tool_calls=[])
+  TurnEnd(0, stopped=True)
+```
+
+## Consumers
+
+### Raw event stream
+
+```python
+from pagentv2 import TextDelta, ToolCallBegin, ToolResult
+
+async for event in agent.events("Hello"):
+    if isinstance(event, TextDelta):
+        print(event.text, end="")
+    elif isinstance(event, ToolCallBegin):
+        print(f"\n[tool {event.name}]")
+    elif isinstance(event, ToolResult):
+        print(f"\n[result {event.ok}: {event.content}]")
+```
+
+### `arun(return_type="event")`
+
+```python
+async for event in agent.arun("Hello", return_type="event"):
+    ...
+```
+
+This is just a thin projection over the same stream.
+
+## Other `return_type` projections
+
+`Agent.arun()` supports:
+
+- `"event"`: raw event objects
+- `"text"`: `TextDelta.text` only
+- `"message"`: `Message` objects projected from `TextDelta`, `ReasoningDelta`,
+  `ToolCallBegin`, and `ToolResult`
+- `"acp"`: NDJSON JSON-RPC notifications via `encode_event_line()`
+
+This means the event stream is the canonical source of truth in `pagentv2`.
+
+
+---
+
+<!-- source: docs/pagentv2/provider.md -->
+
+# pagentv2 Provider
+
+`pagentv2` replaces `LLM` with a smaller `Provider` abstraction.
+
+## Basic usage
+
+```python
+from pagentv2 import Provider
+
+provider = Provider("gpt-4o-mini")
+```
+
+Built-in subclasses:
+
+```python
+from pagentv2 import DeepSeek, Ollama, Vllm, Sglang
+
+deepseek = DeepSeek("deepseek-v4-flash")
+ollama = Ollama("qwen3:8b")
+vllm = Vllm("my-model")
+sglang = Sglang("my-model")
+```
+
+## Constructor
+
+```python
+Provider(
+    model_id: str,
+    base_url: str | None = None,
+    apikey: str | None = None,
+    request_kwargs: Mapping[str, Any] | None = None,
+)
+```
+
+Behavior:
+
+- `base_url` defaults to the subclass base URL
+- `apikey` falls back to the subclass environment variable
+- `request_kwargs` becomes per-provider default request options
+
+## Reserved keys
+
+`Provider.complete()` owns these request fields:
+
+- `model`
+- `messages`
+- `stream`
+- `tools`
+
+They cannot be passed in either `request_kwargs` or per-call `run_kwargs`.
+Doing so raises `TypeError`.
+
+## Streaming call
+
+```python
+stream = await provider.complete(
+    messages,
+    tools=tool_schemas,
+    reasoning_effort="medium",
+)
+
+async for chunk in stream:
+    ...
+```
+
+`complete()` always performs a streaming chat-completions request. `Agent`
+builds higher-level behavior on top of that stream.
+
+## Environment variables
+
+| Provider | Variable |
+|----------|----------|
+| `Provider` | `OPENAI_API_KEY` |
+| `DeepSeek` | `DEEPSEEK_API_KEY` |
+| `Ollama` | `OLLAMA_API_KEY` |
+| `Vllm` | `VLLM_API_KEY` |
+| `Sglang` | `SGLANG_API_KEY` |
+
+## Notes
+
+- `Provider` is intentionally stateless apart from its client config.
+- It does not own conversation history. `Agent.messages` does.
+- `run_kwargs` are where you pass model-specific options like temperature or
+  reasoning knobs, as long as they are not reserved keys.

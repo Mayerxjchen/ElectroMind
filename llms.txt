@@ -19,6 +19,13 @@ This file helps LLMs and coding agents find pagent documentation. Prefer **agent
 - [Reasoning streams](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/reasoning.md): reasoning_content, ReasoningDelta
 - [Wire demo](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire-demo.md): Local FastAPI + browser UI
 - [Developer guide](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/development.md): Repo layout, local dev, docs site
+- [pagentv2 overview](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv2/index.md): New typed API centered on Provider and Message
+- [pagentv2 quick start](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv2/quick-start.md): Minimal Agent with Provider and typed streams
+- [pagentv2 core types](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv2/core-types.md): Agent, Provider, Message, TurnResult, return_type
+- [pagentv2 messages](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv2/messages.md): Roles, chunks, multimedia mapping, OpenAI export
+- [pagentv2 tools](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv2/tools.md): @tool, ToolOutput, argument handling
+- [pagentv2 events](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv2/events.md): Event stream and `arun()` projections
+- [pagentv2 provider](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv2/provider.md): Provider config, reserved keys, built-in backends
 
 ## Human site
 

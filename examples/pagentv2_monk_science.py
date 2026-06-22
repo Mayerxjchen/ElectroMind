@@ -14,8 +14,6 @@ Usage:
     PAGENTV2_MONK_QUESTION="为何黑洞会发光？" uv run python -m examples.pagentv2_monk_science
 """
 
-from __future__ import annotations
-
 import asyncio
 import json
 import os
