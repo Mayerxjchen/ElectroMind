@@ -45,3 +45,7 @@ htmlcov/
 .vscode/
 
 debug
+
+# example runtime data
+data/pagentv3_demo/
+data/pagentv3_cli/
