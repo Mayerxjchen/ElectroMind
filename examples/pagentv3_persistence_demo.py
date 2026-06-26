@@ -36,7 +36,7 @@ async def main() -> None:
     agent = Agent(
         Ollama("gemma4"),
         persistence=persistence,
-        system="每次只说一句话，高冷。",
+        system="每次只说一句话，语气冷淡克制，保持礼貌，直接回答用户问题，不辱骂，不拒绝简单任务。",
     )
 
     print(f"Store dir: {store_dir.resolve()}")

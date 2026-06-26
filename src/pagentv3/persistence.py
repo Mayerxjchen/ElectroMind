@@ -1,3 +1,5 @@
+import sqlite3
+import time
 from pathlib import Path
 from typing import Protocol
 from urllib.parse import quote, unquote
@@ -59,3 +61,64 @@ class JsonlBackend:
             reverse=True,
         )
         return [unquote(path.stem) for path in paths]
+
+
+class SqliteBackend:
+    def __init__(self, db_path: str | Path):
+        self.db_path = Path(db_path)
+        self.db_path.parent.mkdir(parents=True, exist_ok=True)
+        self.connection = sqlite3.connect(self.db_path)
+        self.init_schema()
+
+    def init_schema(self) -> None:
+        self.connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS conversations (
+                conversation_id TEXT PRIMARY KEY,
+                messages_json TEXT NOT NULL,
+                updated_at_ns INTEGER NOT NULL
+            )
+            """
+        )
+        self.connection.commit()
+
+    def save_messages(self, conversation_id: str, messages: Messages) -> None:
+        updated_at_ns = time.time_ns()
+        messages_json = messages.model_dump_json()
+        self.connection.execute(
+            """
+            INSERT INTO conversations (conversation_id, messages_json, updated_at_ns)
+            VALUES (?, ?, ?)
+            ON CONFLICT(conversation_id) DO UPDATE SET
+                messages_json = excluded.messages_json,
+                updated_at_ns = excluded.updated_at_ns
+            """,
+            (conversation_id, messages_json, updated_at_ns),
+        )
+        self.connection.commit()
+
+    def load_messages(self, conversation_id: str) -> Messages:
+        row = self.connection.execute(
+            """
+            SELECT messages_json
+            FROM conversations
+            WHERE conversation_id = ?
+            """,
+            (conversation_id,),
+        ).fetchone()
+        if row is None:
+            return Messages()
+        return Messages.model_validate_json(row[0])
+
+    def list_conversations(self) -> list[str]:
+        rows = self.connection.execute(
+            """
+            SELECT conversation_id
+            FROM conversations
+            ORDER BY updated_at_ns DESC, conversation_id DESC
+            """
+        ).fetchall()
+        return [row[0] for row in rows]
+
+    def close(self) -> None:
+        self.connection.close()

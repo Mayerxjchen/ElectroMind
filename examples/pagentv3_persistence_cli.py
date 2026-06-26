@@ -1,7 +1,8 @@
-"""pagentv3 interactive CLI — continuous chat with JSONL persistence.
+"""pagentv3 interactive CLI — continuous chat with pluggable persistence.
 
 Usage:
     uv run python -m examples.pagentv3_persistence_cli
+    uv run python -m examples.pagentv3_persistence_cli --backend sqlite
 
 Requires:
     ollama serve
@@ -17,17 +18,41 @@ Commands:
 """
 
 import asyncio
+from argparse import ArgumentParser, Namespace
 from pathlib import Path
 
-from pagentv3 import Agent, JsonlBackend, Ollama, Persistence, TextDelta
+from pagentv3 import Agent, JsonlBackend, Ollama, Persistence, SqliteBackend, TextDelta
 
 MODEL_ID = "gemma4"
-STORE_DIR = Path("data/pagentv3_cli")
-SYSTEM_PROMPT = "每次只说一句话，高冷。"
+JSONL_STORE_DIR = Path("data/pagentv3_cli")
+SQLITE_DB_PATH = Path("data/pagentv3_cli.db")
+SYSTEM_PROMPT = (
+    "每次只说一句话，语气冷淡克制，保持礼貌，直接回答用户问题，不辱骂，不拒绝简单任务。"
+)
 CYAN = "\033[96m"
 GREEN = "\033[92m"
 YELLOW = "\033[93m"
 RESET = "\033[0m"
+
+
+def parse_args() -> Namespace:
+    parser = ArgumentParser()
+    parser.add_argument(
+        "--backend",
+        choices=("jsonl", "sqlite"),
+        default="jsonl",
+        help="persistence backend",
+    )
+    return parser.parse_args()
+
+
+def create_persistence(args: Namespace) -> tuple[Persistence, str, Path]:
+    if args.backend == "sqlite":
+        db_path = SQLITE_DB_PATH.resolve()
+        return Persistence(SqliteBackend(db_path)), "DB path", db_path
+
+    store_dir = JSONL_STORE_DIR.resolve()
+    return Persistence(JsonlBackend(store_dir)), "Store dir", store_dir
 
 
 def make_agent(
@@ -75,10 +100,12 @@ async def stream_once(agent: Agent, user_input: str) -> None:
 
 
 async def main() -> None:
-    persistence = Persistence(JsonlBackend(STORE_DIR))
+    args = parse_args()
+    persistence, location_name, location_path = create_persistence(args)
     agent = make_agent(persistence, with_system=True)
 
-    print(f"{YELLOW}Store dir:{RESET} {STORE_DIR.resolve()}")
+    print(f"{YELLOW}{location_name}:{RESET} {location_path}")
+    print(f"{YELLOW}backend:{RESET} {args.backend}")
     print(f"{YELLOW}conversation_id:{RESET} {agent.conversation_id}")
     print(
         f"{YELLOW}Type /new, /list, /list <id|index>, /load <id|index>, "

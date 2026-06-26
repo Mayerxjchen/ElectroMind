@@ -23,7 +23,7 @@ from .message import (
     UserChunk,
     reply_text,
 )
-from .persistence import JsonlBackend, Persistence, PersistenceBackend
+from .persistence import JsonlBackend, Persistence, PersistenceBackend, SqliteBackend
 from .provider import DeepSeek, Ollama, Provider, Sglang, Vllm
 from .tool import FunctionTool, ToolOutput, to_openai_tools, tool
 from .turn_result import TurnResult
@@ -60,6 +60,7 @@ __all__ = [
     "UserChunk",
     "Vllm",
     "JsonlBackend",
+    "SqliteBackend",
     "decode_event_line",
     "encode_event_line",
     "reply_text",
