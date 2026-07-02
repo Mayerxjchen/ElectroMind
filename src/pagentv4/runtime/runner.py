@@ -278,7 +278,11 @@ class Runner:
         workdir = str(thread.workspace_path)
 
         if spec.backend == "local":
-            return await Sandbox.create(backend="local", workdir=workdir)
+            return await Sandbox.create(
+                backend="local",
+                workdir=workdir,
+                command_policy=spec.command_policy,
+            )
 
         if spec.backend in ("docker", "podman"):
             if not spec.image:
@@ -290,6 +294,7 @@ class Runner:
                 workdir=workdir,
                 image=spec.image,
                 container_ttl_seconds=spec.container_ttl_seconds,
+                command_policy=spec.command_policy,
             )
 
         if not spec.ssh_host:
@@ -305,4 +310,5 @@ class Runner:
             backend="ssh",
             workdir=workdir,
             connection=conn.to_dict(),
+            command_policy=spec.command_policy,
         )

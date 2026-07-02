@@ -8,18 +8,25 @@ from app.config import (
 )
 
 
+def test_thread_overrides_includes_command_policy():
+    config = ReplConfig(backend="local", command_policy="workdir")
+    assert config.thread_overrides()["command_policy"] == "workdir"
+
+
 def test_thread_overrides_from_config():
     config = ReplConfig(
-        backend="docker",
-        image="python:3.12-slim",
-        model="deepseek-v4-flash",
+        backend="ssh",
+        ssh_host="pagent",
         ssh_config="~/.ssh/config",
+        ssh_workdir="~/agent",
+        model="deepseek-v4-flash",
     )
     assert config.thread_overrides() == {
-        "backend": "docker",
-        "image": "python:3.12-slim",
-        "model": "deepseek-v4-flash",
+        "backend": "ssh",
+        "ssh_host": "pagent",
         "ssh_config": "~/.ssh/config",
+        "ssh_workdir": "~/agent",
+        "model": "deepseek-v4-flash",
     }
 
 
@@ -45,9 +52,12 @@ def test_config_from_file(tmp_path, monkeypatch):
     config = config_from_args(parser.parse_args([]))
     assert config.thread_id is None
     assert config.resolved_model() == "deepseek-v4-flash"
-    assert config.backend == "local"
+    assert config.backend == "ssh"
+    assert config.ssh_host == "machine_root"
+    assert config.command_policy == "workdir"
     assert config.resolved_max_turns() == 12
     assert config.ssh_config == "~/.ssh/config"
+    assert config.ssh_workdir == "~/"
 
 
 def test_thread_id_from_cli_only(tmp_path, monkeypatch):
@@ -67,7 +77,7 @@ def test_parse_repl_config():
             "base_url": "https://api.example.com",
         },
         "sandbox": {"backend": "local", "image": ""},
-        "ssh": {"config_path": "/tmp/ssh_config"},
+        "ssh": {"host": "dev", "config_path": "/tmp/ssh_config", "workdir": "/tmp/agent"},
         "skills": {"roots": ["./skills", "~/.agents/skills"]},
     }
     config = parse_repl_config(data)
@@ -78,6 +88,8 @@ def test_parse_repl_config():
     assert config.backend == "local"
     assert config.image is None
     assert config.ssh_config == "/tmp/ssh_config"
+    assert config.ssh_host == "dev"
+    assert config.ssh_workdir == "/tmp/agent"
     assert config.skill_roots == ("./skills", "~/.agents/skills")
 
 

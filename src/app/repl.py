@@ -17,6 +17,7 @@ from .config import ReplConfig, build_parser, config_from_args
 
 EXTRA_SYSTEM = "你是 pagent 。回答简短直接。"
 
+# ANSI — basic 8-color, keep output readable not decorative
 CYAN = "\033[36m"
 DIM = "\033[90m"
 GREEN = "\033[32m"
@@ -54,13 +55,29 @@ def row(key: str, value: str, *, color: bool, value_code: str = "") -> str:
     return f"│ {label}{text:<{slot}} │"
 
 
+def format_sandbox_line(runner: Runner) -> str:
+    thread = runner.thread
+    backend = thread.spec.backend
+    if backend == "ssh":
+        alias = thread.spec.ssh_host or "?"
+        conn = (runner.sandbox.spec.connection or {}) if runner.sandbox.spec else {}
+        user = conn.get("user", "")
+        host = conn.get("host", "")
+        target = f"{user}@{host}" if user and host else alias
+        return f"ssh · {alias} · {target}"
+    if backend in ("docker", "podman"):
+        image = thread.spec.image or "?"
+        return f"{backend} · {image} · {runner.sandbox.home}"
+    return f"local · {runner.sandbox.home}"
+
+
 def format_banner(runner: Runner, *, color: bool) -> str:
     thread = runner.thread
     status = "新建" if thread.created else "续聊"
     status_color = YELLOW if thread.created else GREEN
 
     model = thread.spec.model or "deepseek-v4-flash"
-    sandbox = f"{thread.spec.backend} · {runner.sandbox.home}"
+    sandbox = format_sandbox_line(runner)
     workdir = runner.sandbox.workdir
     turns = sum(1 for m in runner.messages.data if m.role == "user")
     skills = ", ".join(runner.skills.names()) or "—"
@@ -80,6 +97,12 @@ def format_banner(runner: Runner, *, color: bool) -> str:
         bottom,
     ]
 
+    if thread.spec.backend == "ssh":
+        lines.insert(
+            5,
+            row("messages", str(thread.root / "messages.jsonl"), color=color),
+        )
+
     if thread.ignored_overrides:
         ignored = ", ".join(thread.ignored_overrides)
         note = shorten(f"spec 已冻结，忽略：{ignored}", INNER)
@@ -88,28 +111,6 @@ def format_banner(runner: Runner, *, color: bool) -> str:
     lines.append(c("  /exit  /pwd  /ls  /skills  /history", BLUE, on=color))
     lines.append("")
     return "\n".join(lines)
-
-
-async def open_runner(config: ReplConfig) -> Runner:
-    api_key = config.resolved_api_key()
-    if not api_key:
-        raise SystemExit(
-            "需要 API Key：在 pagent.toml [provider] 设置 api_key，或 export DEEPSEEK_API_KEY"
-        )
-
-    thread_id = config.thread_id or f"thread-{datetime.now():%Y%m%d-%H%M%S}"
-    provider_kwargs = {"apikey": api_key}
-    if config.provider_base_url:
-        provider_kwargs["base_url"] = config.provider_base_url
-    provider = DeepSeek(config.resolved_model(), **provider_kwargs)
-    return await Runner.open(
-        thread_id,
-        provider,
-        overrides=config.thread_overrides(),
-        extra_system=EXTRA_SYSTEM,
-        max_turns=config.resolved_max_turns(),
-        skill_roots=config.resolved_skill_roots(),
-    )
 
 
 async def render_turn(runner: Runner, user_input: str, *, color: bool) -> None:
@@ -125,8 +126,9 @@ async def render_turn(runner: Runner, user_input: str, *, color: bool) -> None:
             sys.stdout.flush()
 
         elif isinstance(event, ToolCallBegin):
-            if in_reasoning and color:
-                sys.stdout.write(RESET)
+            if in_reasoning:
+                if color:
+                    sys.stdout.write(RESET)
                 print()
             in_reasoning = False
             line = f"tool → {event.name}({event.arguments})"
@@ -154,7 +156,29 @@ async def render_turn(runner: Runner, user_input: str, *, color: bool) -> None:
     print()
 
 
-async def handle_command(cmd: str, runner: Runner) -> bool:
+async def open_runner(config: ReplConfig) -> Runner:
+    api_key = config.resolved_api_key()
+    if not api_key:
+        raise SystemExit(
+            "需要 API Key：在 pagent.toml [provider] 设置 api_key，或 export DEEPSEEK_API_KEY"
+        )
+
+    thread_id = config.thread_id or f"thread-{datetime.now():%Y%m%d-%H%M%S}"
+    provider_kwargs = {"apikey": api_key}
+    if config.provider_base_url:
+        provider_kwargs["base_url"] = config.provider_base_url
+    provider = DeepSeek(config.resolved_model(), **provider_kwargs)
+    return await Runner.open(
+        thread_id,
+        provider,
+        overrides=config.thread_overrides(),
+        extra_system=EXTRA_SYSTEM,
+        max_turns=config.resolved_max_turns(),
+        skill_roots=config.resolved_skill_roots(),
+    )
+
+
+async def handle_command(cmd: str, runner: Runner, *, color: bool) -> bool:
     if cmd in ("/exit", "/quit"):
         return True
     if cmd == "/pwd":
@@ -190,30 +214,87 @@ async def prompt(color: bool) -> str | None:
         return None
 
 
-async def run_repl(config: ReplConfig, *, color: bool | None = None) -> None:
+def say_goodbye(*, color: bool) -> None:
+    print(c("bye", DIM, on=color), flush=True)
+
+
+def format_fatal_error(exc: BaseException, *, phase: str) -> str:
+    """Human-readable fatal error; keep traceback out of the REPL by default."""
+    label = "关闭" if phase == "close" else "启动"
+    name = type(exc).__name__
+    module = type(exc).__module__ or ""
+    if "asyncssh" in module or name.startswith("SFTP") or name == "DisconnectError":
+        hint = (
+            "请检查 SSH 别名、网络，以及远端 workdir 是否可写。"
+            if phase == "start"
+            else "SSH 连接可能已断开。"
+        )
+        return f"pagent {label}失败（SSH 沙箱）: {exc}\n  {hint}"
+    if isinstance(exc, (FileNotFoundError, KeyError, ValueError)):
+        return f"pagent {label}失败: {exc}"
+    if isinstance(exc, OSError):
+        return f"pagent {label}失败: {exc}"
+    return f"pagent {label}失败: {name}: {exc}"
+
+
+async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
     use_color = sys.stdout.isatty() if color is None else color
-    runner = await open_runner(config)
+    runner: Runner | None = None
+    exit_code = 0
     try:
+        runner = await open_runner(config)
         print(format_banner(runner, color=use_color), flush=True)
 
         while True:
             line = await prompt(use_color)
             if line is None:
                 print()
+                say_goodbye(color=use_color)
                 break
             line = line.strip()
             if not line:
                 continue
             if line.startswith("/"):
-                if await handle_command(line, runner):
+                if await handle_command(line, runner, color=use_color):
+                    say_goodbye(color=use_color)
                     break
                 continue
-            await render_turn(runner, line, color=use_color)
+            try:
+                await render_turn(runner, line, color=use_color)
+            except KeyboardInterrupt:
+                print()
+                say_goodbye(color=use_color)
+                break
+    except BaseException as exc:
+        if isinstance(exc, SystemExit):
+            raise
+        if isinstance(exc, KeyboardInterrupt):
+            print()
+            say_goodbye(color=use_color)
+        else:
+            message = format_fatal_error(exc, phase="start")
+            print(c(message, RED, on=use_color), file=sys.stderr, flush=True)
+            exit_code = 1
     finally:
-        await runner.close()
+        if runner is not None:
+            try:
+                await runner.close()
+            except BaseException as exc:
+                if isinstance(exc, SystemExit):
+                    raise
+                if exit_code == 0:
+                    message = format_fatal_error(exc, phase="close")
+                    print(c(message, RED, on=use_color), file=sys.stderr, flush=True)
+                    exit_code = 1
+    return exit_code
 
 
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     config = config_from_args(parser.parse_args(argv))
-    asyncio.run(run_repl(config))
+    try:
+        code = asyncio.run(run_repl(config))
+    except KeyboardInterrupt:
+        print()
+        raise SystemExit(0) from None
+    raise SystemExit(code)

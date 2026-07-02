@@ -86,6 +86,7 @@ class ThreadSpec:
     ssh_host: str | None = None
     ssh_config: str = "~/.ssh/config"
     ssh_workdir: str = "~/agent"
+    command_policy: str = "workdir"
     model: str = "deepseek-v4-flash"
     system: str = ""
     extra: dict = field(default_factory=dict)

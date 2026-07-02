@@ -23,7 +23,8 @@ COMPUTER_DESCRIPTION_TEMPLATE = """你有一台{computer_name}可以使用。
 - copy_to_host：把工作目录里的文件交付给用户；默认放到用户目录下的 `{artifacts_dir}/` 输出目录
 
 工作目录里的文件是持久的，随时可以查看和修改。
-你只被允许在自己的工作目录下操作；访问用户目录时也只能在用户目录范围内。"""
+文件工具（read_file / write_file / list_dir 等）只能访问工作目录；用户目录工具（list_host_files / copy_from_host）只能访问用户目录。
+run_command 默认受 command_policy 约束：workdir 模式下命令里不能出现工作目录之外的路径（系统目录如 /usr、/bin 除外）；open 模式等同完整 shell。动态路径（如 python -c "open(...)"）无法靠静态扫描完全拦住，需要 OS/容器级隔离。"""
 
 
 UV_ENVIRONMENT_EXTRA = """Python 依赖：

@@ -19,7 +19,10 @@ class ReplConfig:
     max_turns: int | None = None
     backend: str | None = None
     image: str | None = None
+    command_policy: str | None = None
+    ssh_host: str | None = None
     ssh_config: str | None = None
+    ssh_workdir: str | None = None
     skill_roots: tuple[str, ...] | None = None
 
     def resolved_api_key(self) -> str | None:
@@ -45,8 +48,14 @@ class ReplConfig:
             kwargs["backend"] = self.backend
         if self.image is not None and self.image != "":
             kwargs["image"] = self.image
+        if self.command_policy is not None:
+            kwargs["command_policy"] = self.command_policy
         if self.ssh_config is not None:
             kwargs["ssh_config"] = self.ssh_config
+        if self.ssh_host is not None and self.ssh_host != "":
+            kwargs["ssh_host"] = self.ssh_host
+        if self.ssh_workdir is not None:
+            kwargs["ssh_workdir"] = self.ssh_workdir
         if self.model is not None:
             kwargs["model"] = self.model
         return kwargs
@@ -87,6 +96,12 @@ def parse_repl_config(data: dict) -> ReplConfig:
     if image == "":
         image = None
 
+    command_policy = sandbox.get("command_policy")
+    if command_policy is not None and not isinstance(command_policy, str):
+        raise ValueError("sandbox.command_policy must be a string")
+    if command_policy == "":
+        command_policy = None
+
     roots = skills.get("roots")
     skill_roots: tuple[str, ...] | None
     if roots is None:
@@ -107,7 +122,10 @@ def parse_repl_config(data: dict) -> ReplConfig:
         max_turns=max_turns,
         backend=sandbox.get("backend"),
         image=image,
+        command_policy=command_policy,
+        ssh_host=ssh.get("host"),
         ssh_config=ssh.get("config_path"),
+        ssh_workdir=ssh.get("workdir"),
         skill_roots=skill_roots,
     )
 

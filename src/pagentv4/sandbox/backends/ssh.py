@@ -220,17 +220,15 @@ class SshBackend:
         return home + path[1:]
 
     async def sftp_mkdirs(self, path: str) -> None:
-        """SFTP 版 mkdir -p；缺目录时创建、已存在不报错。"""
-        if self.sftp is None or not path or path == "/":
+        """远端 mkdir -p；已存在不报错。"""
+        if self.conn is None or not path:
             return
-        parts = path.strip("/").split("/")
-        current = "/" if path.startswith("/") else ""
-        for part in parts:
-            current = os.path.join(current, part) if current else part
-            try:
-                await self.sftp.mkdir(current)
-            except OSError:
-                continue
+        target = await self.expand_remote_path(path) if path.startswith("~") else path
+        await self.conn.run(
+            f"mkdir -p {shell_quote(target)}",
+            check=True,
+            timeout=30,
+        )
 
 
 # --------------------------------------------------------------------------

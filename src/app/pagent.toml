@@ -9,11 +9,13 @@ api_key = ""  # 留空则用 DEEPSEEK_API_KEY 环境变量
 # base_url = ""  # 可选，覆盖 DeepSeek 默认 endpoint
 
 [sandbox]
-backend = "local"
-image = ""
+backend = "ssh"
+command_policy = "workdir"  # open | workdir — workdir 拦截 run_command 里的越界路径
 
 [ssh]
+host = "machine_root"  # ~/.ssh/config 里的 Host 别名
 config_path = "~/.ssh/config"
+workdir = "~/"
 
 [skills]
 # 额外扫描路径；还会自动加载 PAGENT_SKILLS_DIR、./.pagent/skills/、~/.pagent/skills/

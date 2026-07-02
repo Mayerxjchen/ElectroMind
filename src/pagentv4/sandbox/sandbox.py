@@ -23,6 +23,7 @@ from typing import TYPE_CHECKING
 from .base import Backend, CommandResult, DirEntry, SandboxLimits, SandboxSpec
 from .description import build_computer_description
 from .guard import BackendGuard
+from .policy import check_backend_path, check_command, validate_command_policy
 from .workspace import resolve_workdir
 
 if TYPE_CHECKING:
@@ -42,11 +43,31 @@ class Commands:
         stdin: str | None = None,
         timeout: float | None = None,
         limits: SandboxLimits | None = None,
+        trusted: bool = False,
     ) -> CommandResult:
         if isinstance(command, list):
             argv = [self.sandbox.map_command(part) for part in command]
+            mapped = " ".join(argv)
         else:
-            argv = ["sh", "-c", self.sandbox.map_command(command)]
+            mapped = self.sandbox.map_command(command)
+            argv = ["sh", "-c", mapped]
+
+        if not trusted:
+            try:
+                check_command(
+                    mapped,
+                    workdir=self.sandbox.workdir,
+                    policy=self.sandbox.spec.command_policy,
+                )
+            except PermissionError as exc:
+                return CommandResult(
+                    ok=False,
+                    exit_code=126,
+                    stdout="",
+                    stderr=str(exc),
+                    duration_seconds=0.0,
+                )
+
         applied = limits
         if timeout is not None:
             base = limits or self.sandbox.spec.default_limits
@@ -71,7 +92,9 @@ class Files:
         self.sandbox = sandbox
 
     async def read(self, path: str) -> bytes:
-        return await self.sandbox.backend.read_file(self.sandbox.resolve(path))
+        resolved = self.sandbox.resolve(path)
+        check_backend_path(resolved, workdir=self.sandbox.workdir)
+        return await self.sandbox.backend.read_file(resolved)
 
     async def read_text(self, path: str, encoding: str = "utf-8") -> str:
         raw = await self.read(path)
@@ -79,18 +102,24 @@ class Files:
 
     async def write(self, path: str, data: bytes | str) -> None:
         payload = data.encode("utf-8") if isinstance(data, str) else data
-        await self.sandbox.backend.write_file(self.sandbox.resolve(path), payload)
+        resolved = self.sandbox.resolve(path)
+        check_backend_path(resolved, workdir=self.sandbox.workdir)
+        await self.sandbox.backend.write_file(resolved, payload)
 
     async def list(self, path: str = ".") -> list[DirEntry]:
-        return await self.sandbox.backend.list_dir(self.sandbox.resolve(path))
+        resolved = self.sandbox.resolve(path)
+        check_backend_path(resolved, workdir=self.sandbox.workdir)
+        return await self.sandbox.backend.list_dir(resolved)
 
     async def exists(self, path: str) -> bool:
-        return await self.sandbox.backend.exists(self.sandbox.resolve(path))
+        resolved = self.sandbox.resolve(path)
+        check_backend_path(resolved, workdir=self.sandbox.workdir)
+        return await self.sandbox.backend.exists(resolved)
 
     async def remove(self, path: str, *, recursive: bool = False) -> None:
-        await self.sandbox.backend.remove(
-            self.sandbox.resolve(path), recursive=recursive
-        )
+        resolved = self.sandbox.resolve(path)
+        check_backend_path(resolved, workdir=self.sandbox.workdir)
+        await self.sandbox.backend.remove(resolved, recursive=recursive)
 
     async def str_replace(
         self,
@@ -158,6 +187,7 @@ class Sandbox:
         connection: dict[str, str] | None = None,
         default_limits: SandboxLimits | None = None,
         container_ttl_seconds: int | None = None,
+        command_policy: str = "open",
         auto_restart: bool = True,
         restart_max_attempts: int = 2,
     ) -> Sandbox:
@@ -176,6 +206,7 @@ class Sandbox:
             connection=dict(connection or {}),
             default_limits=default_limits or SandboxLimits(),
             container_ttl_seconds=container_ttl_seconds,
+            command_policy=validate_command_policy(command_policy),
         )
         instance = build_backend(backend) if isinstance(backend, str) else backend
         if auto_restart:
@@ -295,7 +326,9 @@ class Sandbox:
             payload = fp.read()
         target_dir = self.safe_virtual_path(dest)
         virtual_target = posixpath.join(target_dir, os.path.basename(source))
-        await self.backend.write_file(self.resolve(virtual_target), payload)
+        backend_path = self.resolve(virtual_target)
+        check_backend_path(backend_path, workdir=self.workdir)
+        await self.backend.write_file(backend_path, payload)
         return virtual_target
 
     async def copy_to_host(self, source: str, host_dir: str | None = None) -> str:
@@ -304,7 +337,9 @@ class Sandbox:
         `host_dir` 缺省时落到 `<host_root>/artifacts/`；显式传入时也必须
         位于 host_root 之下（避免越权写盘）。
         """
-        payload = await self.backend.read_file(self.resolve(source))
+        resolved = self.resolve(source)
+        check_backend_path(resolved, workdir=self.workdir)
+        payload = await self.backend.read_file(resolved)
         host_target_dir = (
             self.resolve_host_path(host_dir)
             if host_dir is not None
@@ -419,14 +454,14 @@ class Sandbox:
         )
 
     async def probe_os_info(self) -> str:
-        result = await self.commands.run("uname -a")
+        result = await self.commands.run("uname -a", trusted=True)
         if result.ok:
             return result.stdout.strip() or "unknown"
         return "unknown"
 
     async def run_probe(self, command: str) -> dict:
         """给 description 用的探测器：只关心 ok / exit_code。"""
-        result = await self.commands.run(command)
+        result = await self.commands.run(command, trusted=True)
         return {"ok": result.ok, "exit_code": result.exit_code}
 
     async def __aenter__(self) -> Sandbox:
