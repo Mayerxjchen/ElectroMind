@@ -53,3 +53,10 @@ features:
 示例输出：`Sunny in Xiamen today.`（以模型实际返回为准）。更多见 [模型与 API Key](./guide/providers)。
 
 [安装 →](./guide/install) · [快速开始 →](./guide/quick-start)
+
+## 想用 pagentv4？
+
+仓库还提供较新的类型化 API，围绕 `Provider`、`Message`、`Runner`，
+以及可选的 sandbox 执行环境。
+
+[pagentv4 概览 →](./pagentv4/) · [pagentv4 快速开始 →](./pagentv4/quick-start)

@@ -1,6 +1,8 @@
-# pagentv2 Events
+# pagentv4 Events
 
-`pagentv2.Agent.events()` emits the full multi-turn timeline. `Agent.arun()`
+语言：[中文](/zh/pagentv4/events) | [English](/pagentv4/events)
+
+`Runner.events()` emits the full multi-turn timeline. `Runner.arun()`
 projects that same stream into one of four return types.
 
 ## Event types
@@ -59,9 +61,10 @@ RunBegin
 ### Raw event stream
 
 ```python
-from pagentv2 import TextDelta, ToolCallBegin, ToolResult
+from pagentv4 import Messages, Runner, TextDelta, ToolCallBegin, ToolResult
 
-async for event in agent.events("Hello"):
+messages = Messages()
+async for event in Runner().events(agent, "Hello", messages):
     if isinstance(event, TextDelta):
         print(event.text, end="")
     elif isinstance(event, ToolCallBegin):
@@ -73,15 +76,13 @@ async for event in agent.events("Hello"):
 ### `arun(return_type="event")`
 
 ```python
-async for event in agent.arun("Hello", return_type="event"):
+async for event in Runner().arun(agent, "Hello", messages, return_type="event"):
     ...
 ```
 
-This is just a thin projection over the same stream.
-
 ## Other `return_type` projections
 
-`Agent.arun()` supports:
+`Runner.arun()` supports:
 
 - `"event"`: raw event objects
 - `"text"`: `TextDelta.text` only
@@ -89,4 +90,4 @@ This is just a thin projection over the same stream.
   `ToolCallBegin`, and `ToolResult`
 - `"acp"`: NDJSON JSON-RPC notifications via `encode_event_line()`
 
-This means the event stream is the canonical source of truth in `pagentv2`.
+The event stream is the canonical source of truth in `pagentv4`.

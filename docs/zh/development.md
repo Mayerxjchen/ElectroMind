@@ -7,8 +7,9 @@
 ## 仓库结构
 
 ```text
-src/pagent/     库代码
-examples/       可运行示例
+src/pagent/     v1 库
+src/pagentv4/   v4 库（core、runtime、sandbox、skills）
+examples/       可运行示例（v4 见 examples/v4runner/）
 tests/          pytest
 docs/           文档
 ```

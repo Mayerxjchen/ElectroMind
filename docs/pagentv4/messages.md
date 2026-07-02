@@ -1,6 +1,8 @@
-# pagentv2 Messages
+# pagentv4 Messages
 
-`pagentv2` stores conversation state as typed `Message` objects rather than raw
+语言：[中文](/zh/pagentv4/messages) | [English](/pagentv4/messages)
+
+`pagentv4` stores conversation state as typed `Message` objects rather than raw
 OpenAI-shaped dicts.
 
 ## Roles and content types
@@ -17,7 +19,7 @@ The role/content pairing is validated in `Message`.
 ## Constructors
 
 ```python
-from pagentv2 import Message
+from pagentv4 import Message
 
 system = Message.system("You are helpful.")
 user = Message.user("Describe this image.")
@@ -37,7 +39,7 @@ Message.assistant({"type": "thinking", "text": "let me think"})
 `Messages` is a thin wrapper around `list[Message]`:
 
 ```python
-from pagentv2 import Message, Messages
+from pagentv4 import Message, Messages
 
 msgs = Messages()
 msgs += Message.system("You are concise.")
@@ -49,6 +51,7 @@ Useful methods:
 - `len(msgs)`
 - iteration over `Message`
 - `msgs.to_openai()` to export provider payloads
+- `msgs.save_to_jsonl(path)` / `Messages.load_from_jsonl(path)`
 
 ## Conversion to provider payloads
 
@@ -64,7 +67,7 @@ Useful methods:
 ### Image
 
 ```python
-from pagentv2 import ImageUrl, Message
+from pagentv4 import ImageUrl, Message
 
 msg = Message(role="user", content=ImageUrl(type="image_url", url="https://..."))
 ```
@@ -78,7 +81,7 @@ Exports to:
 ### Audio
 
 ```python
-from pagentv2 import AudioUrl, Message
+from pagentv4 import AudioUrl, Message
 
 msg = Message(
     role="user",
@@ -90,16 +93,10 @@ msg = Message(
 )
 ```
 
-Current intent:
-
-- `url` is the remote audio resource
-- `text` is the transcript or extracted text for that resource
-
 Current export is a fallback mapping:
 
 - one media part for the remote audio URL
 - one text part for the transcript
 
-This is intentional for now. Media types supported by `pagentv2` and media
-types accepted by OpenAI-compatible APIs do not fully align yet, so a dedicated
-media parsing / adaptation layer is still planned.
+Media types supported by `pagentv4` and media types accepted by
+OpenAI-compatible APIs do not fully align yet.

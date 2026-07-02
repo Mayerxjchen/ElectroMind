@@ -24,13 +24,13 @@ const SOURCES = [
   "reasoning.md",
   "wire-demo.md",
   "development.md",
-  "pagentv2/index.md",
-  "pagentv2/quick-start.md",
-  "pagentv2/core-types.md",
-  "pagentv2/messages.md",
-  "pagentv2/tools.md",
-  "pagentv2/events.md",
-  "pagentv2/provider.md",
+  "pagentv4/index.md",
+  "pagentv4/quick-start.md",
+  "pagentv4/core-types.md",
+  "pagentv4/messages.md",
+  "pagentv4/tools.md",
+  "pagentv4/events.md",
+  "pagentv4/sandbox.md",
 ];
 
 function stripLanguageLine(text) {

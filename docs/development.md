@@ -7,8 +7,9 @@ For contributors and anyone hacking the library. End users should start at the [
 ## Layout
 
 ```text
-src/pagent/     library
-examples/       runnable demos
+src/pagent/     v1 library
+src/pagentv4/   v4 library (core, runtime, sandbox, skills)
+examples/       runnable demos (see examples/v4runner/ for v4)
 tests/          pytest
 docs/           documentation
 ```

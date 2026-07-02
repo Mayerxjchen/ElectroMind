@@ -25,13 +25,15 @@ Prefer **English** paths under `docs/` for machine consumption. Locales: `docs/z
 ## Source layout
 
 ```text
-src/pagent/agent.py      Agent.run / arun / arun_events / arun_wire
-src/pagent/events.py     Event dataclasses
-src/pagent/wire.py       JSON-RPC encode/decode
-src/pagent/session.py    Session, SlidingWindowSession, CompactingSession
-src/pagent/llm.py          LLM, DeepSeek, Ollama, RunEnd
-src/pagent/tool.py         @tool decorator
+src/pagent/              v1 API — Agent.run / arun_events / Session + LLM
+src/pagentv4/core/       Agent, Message, Provider, Tool, Event
+src/pagentv4/runtime/    Runner, ConversationStore, Thread
+src/pagentv4/sandbox/    Backend, Sandbox, file/command tools
+src/pagentv4/skills/     SKILL.md discovery and loading
 ```
+
+Prefer **pagentv4** for new work (`Runner`, sandbox, persistence). See
+`docs/pagentv4/` and `examples/v4runner/`.
 
 ## Conventions
 

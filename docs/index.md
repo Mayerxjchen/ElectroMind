@@ -54,9 +54,9 @@ Example output: `Sunny in Xiamen today.` (actual text depends on the model). Mor
 
 [Install →](./guide/install) · [Quick start →](./guide/quick-start)
 
-## Looking For pagentv2?
+## Looking for pagentv4?
 
-The repo now also contains a newer typed API built around `Provider`,
-`Message`, and `Messages`.
+The repo also contains a newer typed API built around `Provider`,
+`Message`, `Runner`, and optional sandbox execution.
 
-[pagentv2 overview →](./pagentv2/) · [pagentv2 quick start →](./pagentv2/quick-start)
+[pagentv4 overview →](./pagentv4/) · [pagentv4 quick start →](./pagentv4/quick-start)

@@ -1052,8 +1052,9 @@ For contributors and anyone hacking the library. End users should start at the [
 ## Layout
 
 ```text
-src/pagent/     library
-examples/       runnable demos
+src/pagent/     v1 library
+src/pagentv4/   v4 library (core, runtime, sandbox, skills)
+examples/       runnable demos (see examples/v4runner/ for v4)
 tests/          pytest
 docs/           documentation
 ```
@@ -1120,17 +1121,29 @@ On push to `main`, [docs.yml](https://github.com/SyncLionPaw/pagent/blob/main/.g
 
 ---
 
-<!-- source: docs/pagentv2/index.md -->
+<!-- source: docs/pagentv4/index.md -->
 
-# pagentv2
+# pagentv4
 
-`pagentv2` is the newer typed API in this repository.
+`pagentv4` is the newer typed API in this repository.
 
 Use these pages if you want:
 
 - `Provider` instead of `LLM`
 - `Message` / `Messages` instead of `Session`
-- `Agent.arun(..., return_type=...)` projections over one canonical event stream
+- `Runner` for orchestration, persistence, and sandbox sessions
+- A **sandbox** (companion computer) with file and command tools
+- Optional **Thread** and **Skill** support for long-lived REPL-style apps
+
+## Module layout
+
+```text
+core/       Agent, Message, Provider, Tool, Event
+runtime/    Runner, ConversationStore, Thread
+sandbox/    Backend, Sandbox, built-in file/command tools
+adapters/   ACP encode/decode
+skills/     SKILL.md discovery and on-demand loading
+```
 
 ## Pages
 
@@ -1139,32 +1152,169 @@ Use these pages if you want:
 - [Messages](./messages)
 - [Tools](./tools)
 - [Events](./events)
-- [Provider](./provider)
+- [Sandbox](./sandbox)
 
 ## Status
 
 This documentation set is additive for now. The existing top-level `pagent`
 docs still describe the stable `Session + LLM + arun_events()` API.
 
+`pagentv2` remains in the repo for older examples and tests; new work should
+start from `pagentv4`.
+
 
 ---
 
-<!-- source: docs/pagentv2/quick-start.md -->
+<!-- source: docs/pagentv4/quick-start.md -->
 
-# pagentv2 Quick Start
+# pagentv4 Quick Start
 
-`pagentv2` is the newer message-centric API in this repo. It keeps the same
-small runtime shape, but replaces `Session` / `LLM` with `Message` / `Provider`.
+`pagentv4` is the message-centric API with a `Runner` orchestration layer.
+It replaces `Session` / `LLM` with `Message` / `Provider`, and adds optional
+sandbox and persistence support.
 
 Prerequisites: [Install](../guide/install) (Python 3.11+, pip / uv / conda).
 
-## Minimal agent
+## One-liner: `run_agent()`
+
+For scripts and quick experiments, use `run_agent()`. It creates a temporary
+`Messages` internally and discards it when the run finishes.
 
 ```python
 import asyncio
 import os
 
-from pagentv2 import Agent, Provider, tool
+from pagentv4 import Agent, DeepSeek, run_agent
+
+
+async def main():
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        raise SystemExit("Set DEEPSEEK_API_KEY first.")
+
+    agent = Agent(
+        DeepSeek("deepseek-v4-flash"),
+        system="You are helpful and concise.",
+    )
+
+    async for text in run_agent(
+        agent, "Explain tail recursion in one sentence.", return_type="text"
+    ):
+        print(text, end="", flush=True)
+    print()
+
+
+asyncio.run(main())
+```
+
+## Multi-turn with `Runner`
+
+When you need to keep `Messages` across calls:
+
+```python
+from pagentv4 import Agent, DeepSeek, Messages, Runner
+
+agent = Agent(DeepSeek("deepseek-v4-flash"), system="You are helpful.")
+runner = Runner()
+messages = Messages()
+
+async for text in runner.arun(
+    agent, "My name is Ada.", messages, return_type="text"
+):
+    print(text, end="")
+
+async for text in runner.arun(
+    agent, "What is my name?", messages, return_type="text"
+):
+    print(text, end="")
+```
+
+## Sandbox session
+
+When the agent needs files or shell commands, use `Runner.session()`. It
+creates a sandbox, binds eight built-in tools, runs the agent, then closes
+the sandbox.
+
+```python
+from pagentv4 import DeepSeek, Runner
+
+async for event in Runner().session(
+    DeepSeek("deepseek-v4-flash"),
+    "Create hello.txt under /home/agent with one greeting line.",
+    system="Use tools when needed.",
+    workspace_id="default",  # → <cwd>/.pagent/workspaces/default/
+):
+    ...
+```
+
+See [Sandbox](./sandbox) for backends (`local`, `docker`, `podman`, `ssh`).
+
+## Streaming modes
+
+`Runner.arun()` defaults to `return_type="event"`.
+
+| API | Returns | Use when |
+|-----|---------|----------|
+| `runner.arun(..., return_type="event")` | `Event` objects | Full timeline, Python UI |
+| `runner.arun(..., return_type="text")` | `str` chunks | Answer text only |
+| `runner.arun(..., return_type="message")` | `Message` objects | Observe assistant/tool messages |
+| `runner.arun(..., return_type="acp")` | NDJSON lines | Socket / ACP / JSON consumers |
+
+## Built-in providers
+
+```python
+from pagentv4 import DeepSeek, Kimi, LongCat, MiMo, Ollama, Provider, Sglang, Vllm
+
+deepseek = DeepSeek("deepseek-v4-flash")
+ollama = Ollama("qwen3:8b")
+vllm = Vllm("my-model")
+sglang = Sglang("my-model")
+```
+
+`Provider` and the built-in subclasses forward to OpenAI-compatible
+`/v1/chat/completions`.
+
+## Next
+
+- [Core types](./core-types)
+- [Messages](./messages)
+- [Tools](./tools)
+- [Events](./events)
+- [Sandbox](./sandbox)
+
+
+---
+
+<!-- source: docs/pagentv4/core-types.md -->
+
+# pagentv4 Core Types
+
+`pagentv4` separates **configuration** (`Agent`), **conversation state**
+(`Messages`), **orchestration** (`Runner`), and optional **execution**
+(`Sandbox`).
+
+## Main symbols
+
+| Symbol | Role |
+|--------|------|
+| `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang`, … | OpenAI-compatible streaming clients |
+| `Agent(provider, system=None, tools=None, max_turns=8)` | Model + tool configuration |
+| `Runner(store=None)` | Multi-turn loop, persistence, sandbox sessions |
+| `run_agent(agent, user_input, …)` | One-shot sugar over `Runner().arun()` |
+| `Message` | One typed message item with `role` + `content` |
+| `Messages` | In-memory message list with `to_openai()` conversion |
+| `ConversationStore`, `JsonlConversationStore`, `SqliteConversationStore` | Persist messages by id |
+| `Thread`, `ThreadSpec` | Long-lived thread: spec + messages + workspace |
+| `Sandbox` | Companion computer with files and commands |
+| `TurnResult` | One model turn summary: `content`, `tool_calls`, `reasoning_content` |
+| `Event` | Union of event dataclasses emitted by the run loop |
+
+## Agent
+
+`Agent` is a configuration container. It does **not** own conversation history
+or run the tool loop by itself.
+
+```python
+from pagentv4 import Agent, DeepSeek, tool
 
 
 @tool()
@@ -1173,120 +1323,93 @@ def get_weather(city: str) -> str:
     return f"Sunny in {city} today."
 
 
-async def main():
-    if not os.getenv("OPENAI_API_KEY"):
-        raise SystemExit("Set OPENAI_API_KEY first.")
-
-    agent = Agent(
-        Provider("gpt-4o-mini"),
-        system="You are helpful. Use tools when needed.",
-        tools=[get_weather],
-        max_turns=8,
-    )
-
-    answer_parts: list[str] = []
-    async for text in agent.arun("Weather in Xiamen?", return_type="text"):
-        answer_parts.append(text)
-
-    print("".join(answer_parts))
-
-
-asyncio.run(main())
-```
-
-## Streaming modes
-
-Unlike `pagent.Agent.arun()`, `pagentv2.Agent.arun()` defaults to
-`return_type="event"`.
-
-| API | Returns | Use when |
-|-----|---------|----------|
-| `agent.arun(..., return_type="event")` | `Event` objects | Full timeline, Python UI |
-| `agent.arun(..., return_type="text")` | `str` chunks | Answer text only |
-| `agent.arun(..., return_type="message")` | `Message` objects | Observe assistant/tool messages |
-| `agent.arun(..., return_type="acp")` | NDJSON lines | Socket / ACP / JSON consumers |
-
-## Built-in providers
-
-```python
-from pagentv2 import DeepSeek, Ollama, Vllm, Sglang
-
-deepseek = DeepSeek("deepseek-v4-flash")
-ollama = Ollama("qwen3:8b")
-vllm = Vllm("my-model")
-sglang = Sglang("my-model")
-```
-
-`Provider` and the built-in subclasses forward to
-OpenAI-compatible `/v1/chat/completions`.
-
-## Next
-
-- [Core types](./core-types)
-- [Messages](./messages)
-- [Tools](./tools)
-- [Events](./events)
-- [Provider](./provider)
-
-
----
-
-<!-- source: docs/pagentv2/core-types.md -->
-
-# pagentv2 Core Types
-
-`pagentv2` is built around explicit message objects and a small provider layer.
-
-## Main symbols
-
-| Symbol | Role |
-|--------|------|
-| `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang` | OpenAI-compatible streaming clients |
-| `Agent(provider, messages=None, system=None, tools=None, max_turns=8)` | Runs the tool loop |
-| `Message` | One typed message item with `role` + `content` |
-| `Messages` | In-memory message list with `to_openai()` conversion |
-| `TextChunk`, `ThinkingChunk`, `ImageUrl`, `AudioUrl` | Content variants |
-| `ToolCall` | Assistant tool call chunk |
-| `ToolResult` | Tool output message content |
-| `TurnResult` | One model turn summary: `content`, `tool_calls`, `reasoning_content` |
-| `Event` | Union of the event dataclasses emitted by the run loop |
-
-## Agent constructor
-
-```python
-from pagentv2 import Agent, Provider
-
 agent = Agent(
-    Provider("gpt-4o-mini"),
+    DeepSeek("deepseek-v4-flash"),
     system="You are concise.",
-    tools=[],
+    tools=[get_weather],
     max_turns=8,
 )
 ```
 
 Notes:
 
-- `messages` is optional. If omitted, the agent starts with an empty `Messages()`.
-- `system=` is inserted as a system `Message` if one is not already present.
-- Duplicate tool names are rejected.
+- `system=` is inserted by `Runner` if no system message is present.
+- Duplicate tool names are rejected at construction time.
 - `max_turns` must be `>= 1`.
+- `agent.stream_messages(messages)` performs one provider call only.
 
-## Runtime surfaces
+## Runner
 
-| Method | Returns | Notes |
-|--------|---------|-------|
-| `agent.stream_messages(**run_kwargs)` | `AsyncIterator[Message]` | One provider call only |
-| `agent.events(user_input, **run_kwargs)` | `AsyncIterator[Event]` | Full multi-turn loop |
-| `agent.arun(user_input, return_type=...)` | projected stream | `event`, `text`, `message`, or `acp` |
-| `agent.reset()` | `None` | Keeps system messages, drops later messages |
+`Runner` owns the multi-turn tool loop and optional persistence.
+
+| Method | Role |
+|--------|------|
+| `runner.arun(agent, user_input, messages, …)` | Full run with `return_type` projection |
+| `runner.events(agent, user_input, messages, …)` | Raw event stream |
+| `runner.session(provider, user_input, …)` | Create sandbox → bind tools → run → close |
+| `runner.load_conversation(id, messages)` | Load from store if messages empty |
+| `runner.flush_conversation(id, messages)` | Save to store |
+
+Pass `conversation_id=` to `arun()` / `session()` when `Runner` has a store:
+
+```python
+from pagentv4 import JsonlConversationStore, Runner
+
+runner = Runner(store=JsonlConversationStore())
+async for event in runner.arun(
+    agent, "hi", messages, conversation_id="demo"
+):
+    ...
+```
+
+Messages are flushed at each `TurnEnd`. Default JSONL root:
+`<cwd>/.pagent/conversations/`.
+
+## Thread
+
+A **thread** binds conversation history, sandbox spec, and workspace on disk:
+
+```text
+<cwd>/.pagent/threads/<thread_id>/
+  spec.json
+  messages.jsonl
+  workspace/
+```
+
+Use `Thread.open(thread_id, overrides={...})` to create or resume a thread.
+The REPL example (`examples/v4runner/repl.py`) shows the full pattern.
+
+## Provider
+
+```python
+from pagentv4 import Provider
+
+provider = Provider(
+    "gpt-4o-mini",
+    base_url=None,
+    apikey=None,
+    request_kwargs=None,
+)
+```
+
+Reserved keys in `Provider.complete()`:
+
+- `model`
+- `messages`
+- `stream`
+- `tools`
+
+| Provider | Environment variable |
+|----------|---------------------|
+| `Provider` | `OPENAI_API_KEY` |
+| `DeepSeek` | `DEEPSEEK_API_KEY` |
+| `Ollama` | `OLLAMA_API_KEY` |
+| `Vllm` | `VLLM_API_KEY` |
+| `Sglang` | `SGLANG_API_KEY` |
 
 ## `arun()` return types
 
-```python
-from pagentv2 import ArunReturnType
-```
-
-Valid values:
+Valid `return_type` values:
 
 - `"event"`: raw events
 - `"text"`: `TextDelta.text` only
@@ -1295,26 +1418,23 @@ Valid values:
 
 ## Differences from `pagent`
 
-`pagentv2` intentionally shifts the center of gravity:
-
 - no `Session`
 - no `LLM`
 - typed `Message` objects instead of raw OpenAI-shaped dicts
-- `Provider.complete()` owns the low-level request
-- `TurnResult` replaces the old `RunEnd` / `StepEnd` shape for the per-turn summary
+- `Runner` instead of `Agent.arun()` for the full loop
+- optional sandbox and conversation persistence
 
 If you want the older `Session + LLM + arun_events()` API, stay on the main
-`pagent` docs. If you want the newer typed message model, use the `pagentv2`
-pages.
+`pagent` docs.
 
 
 ---
 
-<!-- source: docs/pagentv2/messages.md -->
+<!-- source: docs/pagentv4/messages.md -->
 
-# pagentv2 Messages
+# pagentv4 Messages
 
-`pagentv2` stores conversation state as typed `Message` objects rather than raw
+`pagentv4` stores conversation state as typed `Message` objects rather than raw
 OpenAI-shaped dicts.
 
 ## Roles and content types
@@ -1331,7 +1451,7 @@ The role/content pairing is validated in `Message`.
 ## Constructors
 
 ```python
-from pagentv2 import Message
+from pagentv4 import Message
 
 system = Message.system("You are helpful.")
 user = Message.user("Describe this image.")
@@ -1351,7 +1471,7 @@ Message.assistant({"type": "thinking", "text": "let me think"})
 `Messages` is a thin wrapper around `list[Message]`:
 
 ```python
-from pagentv2 import Message, Messages
+from pagentv4 import Message, Messages
 
 msgs = Messages()
 msgs += Message.system("You are concise.")
@@ -1363,6 +1483,7 @@ Useful methods:
 - `len(msgs)`
 - iteration over `Message`
 - `msgs.to_openai()` to export provider payloads
+- `msgs.save_to_jsonl(path)` / `Messages.load_from_jsonl(path)`
 
 ## Conversion to provider payloads
 
@@ -1378,7 +1499,7 @@ Useful methods:
 ### Image
 
 ```python
-from pagentv2 import ImageUrl, Message
+from pagentv4 import ImageUrl, Message
 
 msg = Message(role="user", content=ImageUrl(type="image_url", url="https://..."))
 ```
@@ -1392,7 +1513,7 @@ Exports to:
 ### Audio
 
 ```python
-from pagentv2 import AudioUrl, Message
+from pagentv4 import AudioUrl, Message
 
 msg = Message(
     role="user",
@@ -1404,34 +1525,28 @@ msg = Message(
 )
 ```
 
-Current intent:
-
-- `url` is the remote audio resource
-- `text` is the transcript or extracted text for that resource
-
 Current export is a fallback mapping:
 
 - one media part for the remote audio URL
 - one text part for the transcript
 
-This is intentional for now. Media types supported by `pagentv2` and media
-types accepted by OpenAI-compatible APIs do not fully align yet, so a dedicated
-media parsing / adaptation layer is still planned.
+Media types supported by `pagentv4` and media types accepted by
+OpenAI-compatible APIs do not fully align yet.
 
 
 ---
 
-<!-- source: docs/pagentv2/tools.md -->
+<!-- source: docs/pagentv4/tools.md -->
 
-# pagentv2 Tools
+# pagentv4 Tools
 
-Tools in `pagentv2` are still ordinary Python functions decorated with
-`@tool()`.
+Tools in `pagentv4` are ordinary Python functions decorated with `@tool()`.
+The `Runner` executes them during the multi-turn loop.
 
 ## Define a tool
 
 ```python
-from pagentv2 import tool
+from pagentv4 import tool
 
 
 @tool()
@@ -1446,26 +1561,30 @@ The decorator derives:
 - description from the docstring
 - argument schema from type hints
 
-## Use with `Agent`
+## Use with `Agent` + `Runner`
 
 ```python
-from pagentv2 import Agent, Provider
+from pagentv4 import Agent, DeepSeek, Messages, Runner
 
 agent = Agent(
-    Provider("gpt-4o-mini"),
+    DeepSeek("deepseek-v4-flash"),
     system="Use tools when needed.",
     tools=[get_weather],
 )
+messages = Messages()
+
+async for event in Runner().arun(agent, "Weather in Xiamen?", messages):
+    ...
 ```
 
 ## Tool outputs
 
 Plain return values are wrapped into `ToolOutput(content=..., ok=True)`.
 
-If you want to signal failure explicitly:
+To signal failure explicitly:
 
 ```python
-from pagentv2 import ToolOutput, tool
+from pagentv4 import ToolOutput, tool
 
 
 @tool()
@@ -1476,11 +1595,11 @@ def calc(expression: str) -> ToolOutput:
     return ToolOutput.succeed("42")
 ```
 
-`ToolResult.ok` is then exposed on the event stream.
+`ToolResult.ok` is exposed on the event stream.
 
 ## Argument handling
 
-`FunctionTool.call()` accepts:
+`FunctionTool.call()` and `FunctionTool.acall()` accept:
 
 - `None`: call the tool with no arguments
 - JSON string: parse then call with `**payload`
@@ -1488,26 +1607,59 @@ def calc(expression: str) -> ToolOutput:
 
 Invalid JSON is converted into a failed `ToolOutput`.
 
-## Duplicate names
+`call()` is synchronous and only supports plain functions. Async tools must
+use `acall()`; `Runner` does this automatically during a run.
 
-Tool names must be unique inside one `Agent`. Duplicate names raise
-`ValueError` at construction time.
+## Async tools
+
+```python
+@tool()
+async def fetch(city: str) -> str:
+    """Fetch weather asynchronously."""
+    return f"Sunny in {city}"
+```
+
+Register the tool on `Agent` as usual.
+
+## Sandbox tools
+
+When you use `Runner.session()` or bind a `Sandbox` manually, eight built-in
+tools are available:
+
+| Tool | Purpose |
+|------|---------|
+| `run_command` | Run a shell command in the workspace |
+| `read_file` | Read a file |
+| `write_file` | Write a file |
+| `str_replace` | Replace text in a file |
+| `list_dir` | List a directory |
+| `list_host_files` | List files on the host side of the workspace |
+| `copy_from_host` | Copy host file into the sandbox |
+| `copy_to_host` | Copy sandbox file to the host |
+
+Use `build_sandbox_tools(sandbox)` or `sandbox.tools()` to get them.
+`Runner.session()` merges sandbox tools with any extra tools you pass.
+
+## Skills
+
+Skills are optional instruction packs loaded from `SKILL.md` directories.
+Use `SkillRegistry.from_defaults()` and `make_use_skill_tool(registry)` to
+let the model load skill instructions on demand. See `examples/v4runner/repl.py`.
 
 ## Notes
 
+- Tool names must be unique inside one `Agent`.
 - Keep docstrings short and concrete. The model sees them.
-- Keep argument types simple unless you are sure the target model handles the
-  resulting schema well.
-- `pagentv2` currently models tool calls in the OpenAI function-call shape.
+- Tool calls use the OpenAI function-call shape.
 
 
 ---
 
-<!-- source: docs/pagentv2/events.md -->
+<!-- source: docs/pagentv4/events.md -->
 
-# pagentv2 Events
+# pagentv4 Events
 
-`pagentv2.Agent.events()` emits the full multi-turn timeline. `Agent.arun()`
+`Runner.events()` emits the full multi-turn timeline. `Runner.arun()`
 projects that same stream into one of four return types.
 
 ## Event types
@@ -1521,7 +1673,7 @@ projects that same stream into one of four return types.
 | `TurnResult` | `content`, `tool_calls`, `reasoning_content` | One model turn finished |
 | `ToolCallBegin` | `tool_call_id`, `name`, `arguments` | About to execute one tool |
 | `ToolResult` | `tool_call_id`, `name`, `content`, `ok` | Tool output appended |
-| `TurnEnd` | `turn`, `stopped` | Turn finished |
+| `TurnEnd` | `turn`, `stopped`, `stop_reason` | Turn finished; see `StopReason` below |
 
 ## Typical sequence
 
@@ -1535,11 +1687,11 @@ RunBegin
     TurnResult(tool_calls=[...])
     ToolCallBegin(...)
     ToolResult(...)
-  TurnEnd(0, stopped=False)
+  TurnEnd(0, stopped=False, stop_reason="continuing")
   TurnBegin(1)
     TextDelta*
     TurnResult(tool_calls=[])
-  TurnEnd(1, stopped=True)
+  TurnEnd(1, stopped=True, stop_reason="no_tool_calls")
 ```
 
 Without tools:
@@ -1549,17 +1701,27 @@ RunBegin
   TurnBegin(0)
     TextDelta*
     TurnResult(tool_calls=[])
-  TurnEnd(0, stopped=True)
+  TurnEnd(0, stopped=True, stop_reason="no_tool_calls")
 ```
+
+## `StopReason`
+
+| Value | `stopped` | Meaning |
+|-------|---------|---------|
+| `continuing` | `False` | Tools ran; another model turn will follow |
+| `no_tool_calls` | `True` | Model replied without tools; run ends |
+| `empty_response` | `True` | Model produced no assistant messages; run ends |
+| `max_turns` | `True` | `max_turns` limit reached after tool execution; run ends |
 
 ## Consumers
 
 ### Raw event stream
 
 ```python
-from pagentv2 import TextDelta, ToolCallBegin, ToolResult
+from pagentv4 import Messages, Runner, TextDelta, ToolCallBegin, ToolResult
 
-async for event in agent.events("Hello"):
+messages = Messages()
+async for event in Runner().events(agent, "Hello", messages):
     if isinstance(event, TextDelta):
         print(event.text, end="")
     elif isinstance(event, ToolCallBegin):
@@ -1571,15 +1733,13 @@ async for event in agent.events("Hello"):
 ### `arun(return_type="event")`
 
 ```python
-async for event in agent.arun("Hello", return_type="event"):
+async for event in Runner().arun(agent, "Hello", messages, return_type="event"):
     ...
 ```
 
-This is just a thin projection over the same stream.
-
 ## Other `return_type` projections
 
-`Agent.arun()` supports:
+`Runner.arun()` supports:
 
 - `"event"`: raw event objects
 - `"text"`: `TextDelta.text` only
@@ -1587,94 +1747,120 @@ This is just a thin projection over the same stream.
   `ToolCallBegin`, and `ToolResult`
 - `"acp"`: NDJSON JSON-RPC notifications via `encode_event_line()`
 
-This means the event stream is the canonical source of truth in `pagentv2`.
+The event stream is the canonical source of truth in `pagentv4`.
 
 
 ---
 
-<!-- source: docs/pagentv2/provider.md -->
+<!-- source: docs/pagentv4/sandbox.md -->
 
-# pagentv2 Provider
+# pagentv4 Sandbox
 
-`pagentv2` replaces `LLM` with a smaller `Provider` abstraction.
+A **sandbox** is the agent's companion computer: an isolated workspace where
+it can run commands and read/write files. Paths are normalized to a virtual
+home (default `/home/agent`) across all backends.
 
-## Basic usage
+## Quick path: `Runner.session()`
 
-```python
-from pagentv2 import Provider
-
-provider = Provider("gpt-4o-mini")
-```
-
-Built-in subclasses:
+The simplest way to give an agent a computer:
 
 ```python
-from pagentv2 import DeepSeek, Ollama, Vllm, Sglang
+from pagentv4 import DeepSeek, Runner
 
-deepseek = DeepSeek("deepseek-v4-flash")
-ollama = Ollama("qwen3:8b")
-vllm = Vllm("my-model")
-sglang = Sglang("my-model")
-```
-
-## Constructor
-
-```python
-Provider(
-    model_id: str,
-    base_url: str | None = None,
-    apikey: str | None = None,
-    request_kwargs: Mapping[str, Any] | None = None,
-)
-```
-
-Behavior:
-
-- `base_url` defaults to the subclass base URL
-- `apikey` falls back to the subclass environment variable
-- `request_kwargs` becomes per-provider default request options
-
-## Reserved keys
-
-`Provider.complete()` owns these request fields:
-
-- `model`
-- `messages`
-- `stream`
-- `tools`
-
-They cannot be passed in either `request_kwargs` or per-call `run_kwargs`.
-Doing so raises `TypeError`.
-
-## Streaming call
-
-```python
-stream = await provider.complete(
-    messages,
-    tools=tool_schemas,
-    reasoning_effort="medium",
-)
-
-async for chunk in stream:
+async for event in Runner().session(
+    DeepSeek("deepseek-v4-flash"),
+    "List files under /home/agent, then create notes.md.",
+    workspace_id="default",
+):
     ...
 ```
 
-`complete()` always performs a streaming chat-completions request. `Agent`
-builds higher-level behavior on top of that stream.
+Flow:
 
-## Environment variables
+1. Create sandbox from `backend` / workspace params
+2. Bind sandbox tools + any extra tools
+3. Build `Agent` and run via `Runner.arun()`
+4. Close sandbox when done (even on error)
 
-| Provider | Variable |
-|----------|----------|
-| `Provider` | `OPENAI_API_KEY` |
-| `DeepSeek` | `DEEPSEEK_API_KEY` |
-| `Ollama` | `OLLAMA_API_KEY` |
-| `Vllm` | `VLLM_API_KEY` |
-| `Sglang` | `SGLANG_API_KEY` |
+## Backends
 
-## Notes
+| `backend=` | Notes |
+|------------|-------|
+| `"local"` | Default. Workspace on host under `.pagent/workspaces/<id>/` |
+| `"docker"` | Container with bind mount |
+| `"podman"` | Same as docker, Podman CLI |
+| `"ssh"` | Remote host via asyncssh |
 
-- `Provider` is intentionally stateless apart from its client config.
-- It does not own conversation history. `Agent.messages` does.
-- `run_kwargs` are where you pass model-specific options like temperature or
-  reasoning knobs, as long as they are not reserved keys.
+```python
+async for event in Runner().session(
+    provider,
+    user_input,
+    backend="docker",
+    image="python:3.12-slim",
+    workspace_id="demo",
+):
+    ...
+```
+
+SSH example:
+
+```python
+async for event in Runner().session(
+    provider,
+    user_input,
+    backend="ssh",
+    connection={"host": "user@example.com", "workdir": "/tmp/agent"},
+):
+    ...
+```
+
+## Workspace layout
+
+With `workspace_id="default"`:
+
+```text
+<cwd>/.pagent/workspaces/default/
+```
+
+Pass `workdir="/absolute/path"` to override. The sandbox maps agent paths
+under `/home/agent` to this directory.
+
+## Direct `Sandbox` API
+
+For lower-level control:
+
+```python
+from pagentv4 import Sandbox
+
+sandbox = await Sandbox.create(backend="local", workspace_id="my-project")
+try:
+    result = await sandbox.commands.run("ls -la")
+    await sandbox.files.write("hello.txt", "hi")
+    content = await sandbox.files.read_text("hello.txt")
+finally:
+    await sandbox.close()
+```
+
+Context manager form:
+
+```python
+async with await Sandbox.create(backend="local", workspace_id="demo") as box:
+    await box.files.write("hello.txt", "hi")
+```
+
+## Built-in agent tools
+
+`sandbox.tools()` returns eight `FunctionTool` instances (see [Tools](./tools)).
+Wording shown to the model avoids internal terms like "sandbox".
+
+## Thread integration
+
+A [Thread](./core-types#thread) stores sandbox spec, messages, and workspace
+together under `.pagent/threads/<id>/`. Use this when you need the same
+computer and conversation to survive across process restarts — see
+`examples/v4runner/repl.py`.
+
+## Limits
+
+`sandbox.commands.run(..., timeout=...)` and `SandboxLimits` cap stdout,
+stderr, memory, and CPU time. Defaults are conservative; tune per workload.

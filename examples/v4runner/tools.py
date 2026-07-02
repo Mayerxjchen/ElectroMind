@@ -91,7 +91,9 @@ async def main():
 
     async for event in runner.arun(agent, QUESTION, messages):
         if isinstance(event, TurnBegin):
-            print(f"{DIM if color else ''}── turn {event.turn} 开始 ──{RESET if color else ''}")
+            print(
+                f"{DIM if color else ''}── turn {event.turn} 开始 ──{RESET if color else ''}"
+            )
             in_reasoning = False
 
         elif isinstance(event, ReasoningDelta):
@@ -129,7 +131,9 @@ async def main():
                 sys.stdout.write(RESET)
             in_reasoning = False
             reason = f" ({event.stop_reason})" if event.stopped else ""
-            print(f"\n{DIM if color else ''}── turn {event.turn} 结束{reason} ──{RESET if color else ''}")
+            print(
+                f"\n{DIM if color else ''}── turn {event.turn} 结束{reason} ──{RESET if color else ''}"
+            )
 
     print(f"\n累计消息条数：{len(messages.data)}")
 

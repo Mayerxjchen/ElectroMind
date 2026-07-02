@@ -15,6 +15,13 @@ const zhLegacyRewrites: Record<string, string> = {
   "zh/guide/tools-session.md": "zh/guide/concepts.md",
   "ja/guide/tools-session.md": "ja/guide/concepts.md",
   "sc/guide/tools-session.md": "sc/guide/concepts.md",
+  "pagentv2/index.md": "pagentv4/index.md",
+  "pagentv2/quick-start.md": "pagentv4/quick-start.md",
+  "pagentv2/core-types.md": "pagentv4/core-types.md",
+  "pagentv2/messages.md": "pagentv4/messages.md",
+  "pagentv2/tools.md": "pagentv4/tools.md",
+  "pagentv2/events.md": "pagentv4/events.md",
+  "pagentv2/provider.md": "pagentv4/sandbox.md",
 };
 
 export default withMermaid(
@@ -70,7 +77,7 @@ export default withMermaid(
       themeConfig: {
         nav: [
           { text: "Guide", link: "/guide/quick-start", activeMatch: "/guide/" },
-          { text: "pagentv2", link: "/pagentv2/" },
+          { text: "pagentv4", link: "/pagentv4/" },
           { text: "Events", link: "/events" },
           { text: "Wire", link: "/wire" },
           { text: "Dev", link: "/development" },
@@ -85,15 +92,15 @@ export default withMermaid(
             ],
           },
           {
-            text: "pagentv2",
+            text: "pagentv4",
             items: [
-              { text: "Overview", link: "/pagentv2/" },
-              { text: "Quick start", link: "/pagentv2/quick-start" },
-              { text: "Core types", link: "/pagentv2/core-types" },
-              { text: "Messages", link: "/pagentv2/messages" },
-              { text: "Tools", link: "/pagentv2/tools" },
-              { text: "Events", link: "/pagentv2/events" },
-              { text: "Provider", link: "/pagentv2/provider" },
+              { text: "Overview", link: "/pagentv4/" },
+              { text: "Quick start", link: "/pagentv4/quick-start" },
+              { text: "Core types", link: "/pagentv4/core-types" },
+              { text: "Messages", link: "/pagentv4/messages" },
+              { text: "Tools", link: "/pagentv4/tools" },
+              { text: "Events", link: "/pagentv4/events" },
+              { text: "Sandbox", link: "/pagentv4/sandbox" },
             ],
           },
           {
@@ -151,6 +158,7 @@ export default withMermaid(
       themeConfig: {
         nav: [
           { text: "指南", link: "/zh/guide/quick-start", activeMatch: "/zh/guide/" },
+          { text: "pagentv4", link: "/zh/pagentv4/" },
           { text: "事件", link: "/zh/events" },
           { text: "Wire", link: "/zh/wire" },
           { text: "开发", link: "/zh/development" },
@@ -162,6 +170,18 @@ export default withMermaid(
               { text: "简介", link: "/zh/" },
               { text: "安装", link: "/zh/guide/install" },
               { text: "快速开始", link: "/zh/guide/quick-start" },
+            ],
+          },
+          {
+            text: "pagentv4",
+            items: [
+              { text: "概览", link: "/zh/pagentv4/" },
+              { text: "快速开始", link: "/zh/pagentv4/quick-start" },
+              { text: "核心类型", link: "/zh/pagentv4/core-types" },
+              { text: "消息", link: "/zh/pagentv4/messages" },
+              { text: "工具", link: "/zh/pagentv4/tools" },
+              { text: "事件", link: "/zh/pagentv4/events" },
+              { text: "Sandbox", link: "/zh/pagentv4/sandbox" },
             ],
           },
           {
