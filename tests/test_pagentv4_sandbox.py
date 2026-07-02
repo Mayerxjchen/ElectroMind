@@ -600,7 +600,8 @@ class FakeProvider:
 
 
 @pytest.mark.asyncio
-async def test_runner_session_binds_sandbox_tools(tmp_path):
+async def test_runner_open_binds_sandbox_tools(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
     tool_call = FakeToolCallDelta(
         index=0,
         tool_id="call-1",
@@ -614,16 +615,21 @@ async def test_runner_session_binds_sandbox_tools(tmp_path):
         ]
     )
 
-    events = []
-    async for event in Runner().session(
+    runner = await Runner.open(
+        "sandbox-test",
         provider,
-        "please write a note",
-        system="you are helpful",
-        workdir=str(tmp_path),
-    ):
-        events.append(type(event).__name__)
+        overrides={"backend": "local"},
+        extra_system="you are helpful",
+    )
+    events = []
+    try:
+        async for event in runner.run("please write a note"):
+            events.append(type(event).__name__)
+    finally:
+        await runner.close()
 
-    assert (tmp_path / "note.md").read_text() == "hello via session"
+    note_path = tmp_path / "sandbox-test" / "workspace" / "note.md"
+    assert note_path.read_text() == "hello via session"
     assert "ToolCallBegin" in events
     assert "ToolResult" in events
     assert "TextDelta" in events
@@ -636,7 +642,8 @@ async def test_runner_session_binds_sandbox_tools(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_runner_session_merges_extra_tools(tmp_path):
+async def test_runner_open_merges_extra_tools(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
     from pagentv4 import tool
 
     @tool()
@@ -657,14 +664,17 @@ async def test_runner_session_merges_extra_tools(tmp_path):
         ]
     )
 
-    async for _ in Runner().session(
+    runner = await Runner.open(
+        "tools-test",
         provider,
-        "hi",
-        system=None,
+        overrides={"backend": "local"},
         tools=[add],
-        workdir=str(tmp_path),
-    ):
-        pass
+    )
+    try:
+        async for _ in runner.run("hi"):
+            pass
+    finally:
+        await runner.close()
 
     tools_arg = provider.calls[0]["tools"]
     tool_names = [entry["function"]["name"] for entry in tools_arg]
@@ -673,7 +683,9 @@ async def test_runner_session_merges_extra_tools(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_runner_session_closes_sandbox_on_exception(tmp_path):
+async def test_runner_open_closes_sandbox_on_exception(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+
     class Boom(Exception):
         pass
 
@@ -682,15 +694,17 @@ async def test_runner_session_closes_sandbox_on_exception(tmp_path):
 
     provider = type("BoomProvider", (), {"complete": failing_stream})()
 
+    runner = await Runner.open(
+        "boom-test",
+        provider,
+        overrides={"backend": "local"},
+    )
     with pytest.raises(Boom):
-        async for _ in Runner().session(
-            provider,
-            "hi",
-            workdir=str(tmp_path),
-        ):
+        async for _ in runner.run("hi"):
             pass
+    await runner.close()
 
-    assert (tmp_path).exists()
+    assert (tmp_path / "boom-test" / "workspace").exists()
 
 
 def make_spec(**overrides) -> SandboxSpec:

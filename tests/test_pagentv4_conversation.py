@@ -1,7 +1,6 @@
 import pytest
 
 from pagentv4 import (
-    Agent,
     JsonlConversationStore,
     Messages,
     Runner,
@@ -49,19 +48,12 @@ def test_default_conversations_root_is_project_local(tmp_path, monkeypatch):
 def test_jsonl_store_roundtrip(tmp_path):
     store = JsonlConversationStore(root=tmp_path)
     messages = Messages()
+    from pagentv4 import Message
 
-    async def scenario():
-        provider = FakeProvider([[FakeStreamChunk(content="hello")]])
-        agent = Agent(provider, system="sys")
-        runner = Runner(store=store)
-        async for _ in runner.arun(
-            agent, "hi", messages, conversation_id="alpha"
-        ):
-            pass
-
-    import asyncio
-
-    asyncio.run(scenario())
+    messages += Message.system("sys")
+    messages += Message.user("hi", turn_id=1)
+    messages += Message.assistant({"type": "text", "text": "hello"}, turn_id=1)
+    store.save("alpha", messages)
 
     reloaded = store.load("alpha")
     assert [m.role for m in reloaded.data] == ["system", "user", "assistant"]
@@ -70,40 +62,48 @@ def test_jsonl_store_roundtrip(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_arun_loads_prior_conversation(tmp_path):
-    store = JsonlConversationStore(root=tmp_path)
+async def test_runner_loads_prior_conversation(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
 
     provider_first = FakeProvider([[FakeStreamChunk(content="first")]])
-    runner = Runner(store=store)
-    async for _ in runner.arun(
-        Agent(provider_first, system="sys"),
-        "hi",
-        Messages(),
-        conversation_id="beta",
-    ):
-        pass
+    runner = await Runner.open(
+        "beta",
+        provider_first,
+        overrides={"backend": "local"},
+        extra_system="sys",
+    )
+    try:
+        async for _ in runner.run("hi"):
+            pass
+    finally:
+        await runner.close()
 
     provider_second = FakeProvider([[FakeStreamChunk(content="second")]])
-    fresh_messages = Messages()
-    async for _ in runner.arun(
-        Agent(provider_second, system="sys"),
-        "again",
-        fresh_messages,
-        conversation_id="beta",
-    ):
-        pass
+    runner = await Runner.open(
+        "beta",
+        provider_second,
+        overrides={"backend": "local"},
+        extra_system="sys",
+    )
+    try:
+        async for _ in runner.run("again"):
+            pass
 
-    roles = [message.role for message in fresh_messages.data]
-    assert roles == ["system", "user", "assistant", "user", "assistant"]
-    assert fresh_messages.data[-1].content.text == "second"
+        roles = [message.role for message in runner.messages.data]
+        assert roles == ["system", "user", "assistant", "user", "assistant"]
+        assert runner.messages.data[-1].content.text == "second"
+    finally:
+        await runner.close()
 
-    reloaded = store.load("beta")
+    store = JsonlConversationStore(root=tmp_path / "beta")
+    reloaded = store.load("messages")
     assert reloaded.data[-1].content.text == "second"
 
 
 @pytest.mark.asyncio
-async def test_arun_flushes_each_turn(tmp_path):
-    store = JsonlConversationStore(root=tmp_path)
+async def test_runner_flushes_each_turn(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    store = JsonlConversationStore(root=tmp_path / "gamma")
 
     class RecordingStore:
         def __init__(self):
@@ -121,8 +121,6 @@ async def test_arun_flushes_each_turn(tmp_path):
 
         def delete(self, conversation_id):
             store.delete(conversation_id)
-
-    recorder = RecordingStore()
 
     def make_tool_call(name, arguments):
         return type(
@@ -150,29 +148,23 @@ async def test_arun_flushes_each_turn(tmp_path):
         """no op"""
         return "ok"
 
-    runner = Runner(store=recorder)
-    async for _ in runner.arun(
-        Agent(provider, system="sys", tools=[noop]),
-        "hi",
-        Messages(),
-        conversation_id="gamma",
-    ):
-        pass
-
-    assert recorder.saves >= 2
-
-
-@pytest.mark.asyncio
-async def test_arun_rejects_conversation_id_without_store():
-    runner = Runner()
-    with pytest.raises(ValueError):
-        async for _ in runner.arun(
-            Agent(FakeProvider([[FakeStreamChunk(content="x")]]), system="s"),
-            "hi",
-            Messages(),
-            conversation_id="foo",
-        ):
+    runner = await Runner.open(
+        "gamma",
+        provider,
+        overrides={"backend": "local"},
+        extra_system="sys",
+        tools=[noop],
+    )
+    original_store = runner.store
+    recorder = RecordingStore()
+    runner.store = recorder  # type: ignore[assignment]
+    try:
+        async for _ in runner.run("hi"):
             pass
+        assert recorder.saves >= 2
+    finally:
+        runner.store = original_store
+        await runner.close()
 
 
 def test_jsonl_store_rejects_bad_id(tmp_path):
@@ -214,19 +206,22 @@ def test_sqlite_store_roundtrip(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_session_persists_conversation(tmp_path):
-    store = JsonlConversationStore(root=tmp_path / "conv")
+async def test_runner_persists_conversation(tmp_path, monkeypatch):
+    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
 
     provider = FakeProvider([[FakeStreamChunk(content="done")]])
-    runner = Runner(store=store)
-    async for _ in runner.session(
+    runner = await Runner.open(
+        "zeta",
         provider,
-        "hi",
-        system="sys",
-        workdir=str(tmp_path / "sandbox"),
-        conversation_id="zeta",
-    ):
-        pass
+        overrides={"backend": "local"},
+        extra_system="sys",
+    )
+    try:
+        async for _ in runner.run("hi"):
+            pass
+    finally:
+        await runner.close()
 
-    reloaded = store.load("zeta")
+    store = JsonlConversationStore(root=tmp_path / "zeta")
+    reloaded = store.load("messages")
     assert reloaded.data[-1].content.text == "done"

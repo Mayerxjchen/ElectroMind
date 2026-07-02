@@ -9,6 +9,7 @@
 ```text
 src/pagent/     v1 库
 src/pagentv4/   v4 库（core、runtime、sandbox、skills）
+src/app/        应用层（REPL 等，基于 pagentv4）
 examples/       可运行示例（v4 见 examples/v4runner/）
 tests/          pytest
 docs/           文档

@@ -38,6 +38,14 @@ uv add pagent
 uv add "pagent[search]"
 ```
 
+### uvx (terminal REPL)
+
+```bash
+export DEEPSEEK_API_KEY="your-key"
+uvx pagent
+uvx pagent --thread-id demo
+```
+
 ### conda
 
 ```bash

@@ -1,6 +1,6 @@
 import pytest
 
-from pagentv4 import Agent, Message, Messages, Runner, run_agent
+from pagentv4 import Runner
 
 
 class FakeStreamChunk:
@@ -33,59 +33,70 @@ class FakeProvider:
         return stream()
 
 
+async def open_runner(tmp_path, monkeypatch, provider, *, system="test", tools=(), max_turns=8):
+    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    return await Runner.open(
+        "test",
+        provider,
+        overrides={"backend": "local"},
+        extra_system=system,
+        max_turns=max_turns,
+        tools=tools,
+    )
+
+
 @pytest.mark.asyncio
-async def test_runner_populates_messages_with_system_prompt():
+async def test_runner_populates_messages_with_system_prompt(tmp_path, monkeypatch):
     provider = FakeProvider(
         [[FakeStreamChunk(content="hel"), FakeStreamChunk(content="lo")]]
     )
-    agent = Agent(provider, system="test")
-    runner = Runner()
-    messages = Messages()
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="test")
+    try:
+        async for _ in runner.run("hi"):
+            pass
+    finally:
+        await runner.close()
 
-    async for _ in runner.arun(agent, "hi", messages):
-        pass
-
-    assert [message.role for message in messages.data] == [
+    assert [message.role for message in runner.messages.data] == [
         "system",
         "user",
         "assistant",
     ]
-    assert len({message.message_id for message in messages.data}) == len(messages.data)
-    assert messages.data[0].turn_id == 0
-    assert messages.data[1].turn_id == 1
-    assert messages.data[2].turn_id == 1
-    assert messages.data[-1].content.text == "hello"
+    assert len({message.message_id for message in runner.messages.data}) == len(
+        runner.messages.data
+    )
+    assert runner.messages.data[0].turn_id == 0
+    assert runner.messages.data[1].turn_id == 1
+    assert runner.messages.data[2].turn_id == 1
+    assert runner.messages.data[-1].content.text == "hello"
 
 
 @pytest.mark.asyncio
-async def test_runner_keeps_existing_messages():
-    messages = Messages()
-    messages += Message.system("test")
-    messages += Message.user("earlier", turn_id=1)
-    messages += Message.assistant({"type": "text", "text": "done"}, turn_id=1)
-    existing_messages = list(messages.data)
+async def test_runner_keeps_existing_messages(tmp_path, monkeypatch):
+    provider = FakeProvider(
+        [
+            [FakeStreamChunk(content="done")],
+            [FakeStreamChunk(content="next")],
+        ]
+    )
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="test")
+    try:
+        async for _ in runner.run("earlier"):
+            pass
+        existing_messages = list(runner.messages.data)
 
-    provider = FakeProvider([[FakeStreamChunk(content="done")]])
-    agent = Agent(provider)
-    runner = Runner()
+        async for _ in runner.run("next"):
+            pass
 
-    async for _ in runner.arun(agent, "next", messages):
-        pass
-
-    assert messages.data[:3] == existing_messages
-    assert provider.calls[0]["messages"][0] == {"role": "system", "content": "test"}
-    assert provider.calls[0]["messages"][1] == {
-        "role": "user",
-        "content": "earlier",
-    }
-    assert provider.calls[0]["messages"][2] == {"role": "assistant", "content": "done"}
-    assert provider.calls[0]["messages"][3] == {"role": "user", "content": "next"}
-    assert messages.data[3].turn_id == 2
-    assert messages.data[4].turn_id == 2
+        assert runner.messages.data[: len(existing_messages)] == existing_messages
+        assert provider.calls[0]["messages"][-1] == {"role": "user", "content": "earlier"}
+        assert provider.calls[1]["messages"][-1] == {"role": "user", "content": "next"}
+    finally:
+        await runner.close()
 
 
 @pytest.mark.asyncio
-async def test_runner_accumulates_assistant_chunks_in_messages():
+async def test_runner_accumulates_assistant_chunks_in_messages(tmp_path, monkeypatch):
     provider = FakeProvider(
         [
             [
@@ -96,148 +107,137 @@ async def test_runner_accumulates_assistant_chunks_in_messages():
             ]
         ]
     )
-    agent = Agent(provider, system="test")
-    runner = Runner()
-    messages = Messages()
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="test")
+    try:
+        async for _ in runner.run("hi"):
+            pass
 
-    async for _ in runner.arun(agent, "hi", messages):
-        pass
-
-    assert [message.role for message in messages.data] == [
-        "system",
-        "user",
-        "assistant",
-        "assistant",
-    ]
-    assert all(message.message_id for message in messages.data)
-    assert messages.data[1].turn_id == 1
-    assert messages.data[2].content.text == "let me think"
-    assert messages.data[2].turn_id == 1
-    assert messages.data[3].content.text == "hello"
-    assert messages.data[3].turn_id == 1
+        assert [message.role for message in runner.messages.data] == [
+            "system",
+            "user",
+            "assistant",
+            "assistant",
+        ]
+        assert all(message.message_id for message in runner.messages.data)
+        assert runner.messages.data[1].turn_id == 1
+        assert runner.messages.data[2].content.text == "let me think"
+        assert runner.messages.data[2].turn_id == 1
+        assert runner.messages.data[3].content.text == "hello"
+        assert runner.messages.data[3].turn_id == 1
+    finally:
+        await runner.close()
 
 
 @pytest.mark.asyncio
-async def test_runner_reuses_messages_across_runs():
+async def test_runner_reuses_messages_across_runs(tmp_path, monkeypatch):
     provider = FakeProvider(
         [
             [FakeStreamChunk(content="one")],
             [FakeStreamChunk(content="two")],
         ]
     )
-    agent = Agent(provider, system="sys")
-    runner = Runner()
-    messages = Messages()
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="sys")
+    try:
+        async for _ in runner.run("hi"):
+            pass
+        async for _ in runner.run("again"):
+            pass
 
-    async for _ in runner.arun(agent, "hi", messages):
-        pass
-    async for _ in runner.arun(agent, "again", messages):
-        pass
-
-    roles = [message.role for message in messages.data]
-    assert roles == ["system", "user", "assistant", "user", "assistant"]
-    assert messages.data[1].turn_id == 1
-    assert messages.data[2].turn_id == 1
-    assert messages.data[3].turn_id == 2
-    assert messages.data[4].turn_id == 2
+        roles = [message.role for message in runner.messages.data]
+        assert roles == ["system", "user", "assistant", "user", "assistant"]
+        assert runner.messages.data[1].turn_id == 1
+        assert runner.messages.data[2].turn_id == 1
+        assert runner.messages.data[3].turn_id == 2
+        assert runner.messages.data[4].turn_id == 2
+    finally:
+        await runner.close()
 
 
 @pytest.mark.asyncio
-async def test_runner_isolates_separate_message_containers():
+async def test_runner_isolates_separate_threads(tmp_path, monkeypatch):
     provider = FakeProvider(
         [
             [FakeStreamChunk(content="a")],
             [FakeStreamChunk(content="b")],
         ]
     )
-    agent = Agent(provider, system="sys")
-    runner = Runner()
-    left = Messages()
-    right = Messages()
+    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    left = await Runner.open(
+        "left",
+        provider,
+        overrides={"backend": "local"},
+        extra_system="sys",
+    )
+    right = await Runner.open(
+        "right",
+        provider,
+        overrides={"backend": "local"},
+        extra_system="sys",
+    )
+    try:
+        async for _ in left.run("hi"):
+            pass
+        async for _ in right.run("hi"):
+            pass
 
-    async for _ in runner.arun(agent, "hi", left):
-        pass
-    async for _ in runner.arun(agent, "hi", right):
-        pass
-
-    assert [m.role for m in left.data] == ["system", "user", "assistant"]
-    assert [m.role for m in right.data] == ["system", "user", "assistant"]
-    assert left.data[-1].content.text == "a"
-    assert right.data[-1].content.text == "b"
-
-
-@pytest.mark.asyncio
-async def test_runner_shared_across_agents():
-    provider_a = FakeProvider([[FakeStreamChunk(content="from-a")]])
-    provider_b = FakeProvider([[FakeStreamChunk(content="from-b")]])
-    agent_a = Agent(provider_a, system="A")
-    agent_b = Agent(provider_b, system="B")
-    runner = Runner()
-
-    messages_a = Messages()
-    messages_b = Messages()
-
-    async for _ in runner.arun(agent_a, "hi", messages_a):
-        pass
-    async for _ in runner.arun(agent_b, "hi", messages_b):
-        pass
-
-    assert messages_a.data[0].content.text == "A"
-    assert messages_b.data[0].content.text == "B"
-    assert messages_a.data[-1].content.text == "from-a"
-    assert messages_b.data[-1].content.text == "from-b"
+        assert [m.role for m in left.messages.data] == ["system", "user", "assistant"]
+        assert [m.role for m in right.messages.data] == ["system", "user", "assistant"]
+        assert left.messages.data[-1].content.text == "a"
+        assert right.messages.data[-1].content.text == "b"
+    finally:
+        await left.close()
+        await right.close()
 
 
 @pytest.mark.asyncio
-async def test_run_agent_helper_yields_text():
+async def test_run_yields_text(tmp_path, monkeypatch):
     provider = FakeProvider(
         [[FakeStreamChunk(content="he"), FakeStreamChunk(content="llo")]]
     )
-    agent = Agent(provider, system="s")
-
-    chunks = []
-    async for text in run_agent(agent, "hi", return_type="text"):
-        chunks.append(text)
-
-    assert "".join(chunks) == "hello"
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="s")
+    try:
+        chunks = []
+        async for text in runner.run("hi", return_type="text"):
+            chunks.append(text)
+        assert "".join(chunks) == "hello"
+    finally:
+        await runner.close()
 
 
 @pytest.mark.asyncio
-async def test_arun_calls_sync_event_handler():
+async def test_run_calls_sync_event_handler(tmp_path, monkeypatch):
     provider = FakeProvider(
         [[FakeStreamChunk(content="he"), FakeStreamChunk(content="llo")]]
     )
-    agent = Agent(provider, system="s")
-    runner = Runner()
-    messages = Messages()
-
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="s")
     seen: list[str] = []
 
     def handler(event):
         seen.append(type(event).__name__)
 
-    async for _ in runner.arun(agent, "hi", messages, event_handler=handler):
-        pass
-
-    assert "TextDelta" in seen
-    assert "RunBegin" in seen
-    assert "TurnBegin" in seen
-    assert "TurnEnd" in seen
+    try:
+        async for _ in runner.run("hi", event_handler=handler):
+            pass
+        assert "TextDelta" in seen
+        assert "RunBegin" in seen
+        assert "TurnBegin" in seen
+        assert "TurnEnd" in seen
+    finally:
+        await runner.close()
 
 
 @pytest.mark.asyncio
-async def test_arun_awaits_async_event_handler():
+async def test_run_awaits_async_event_handler(tmp_path, monkeypatch):
     provider = FakeProvider([[FakeStreamChunk(content="ok")]])
-    agent = Agent(provider, system="s")
-    runner = Runner()
-    messages = Messages()
-
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="s")
     seen: list[str] = []
 
     async def handler(event):
         seen.append(type(event).__name__)
 
-    async for _ in runner.arun(agent, "hi", messages, event_handler=handler):
-        pass
-
-    assert "TextDelta" in seen
+    try:
+        async for _ in runner.run("hi", event_handler=handler):
+            pass
+        assert "TextDelta" in seen
+    finally:
+        await runner.close()

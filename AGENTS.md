@@ -30,10 +30,13 @@ src/pagentv4/core/       Agent, Message, Provider, Tool, Event
 src/pagentv4/runtime/    Runner, ConversationStore, Thread
 src/pagentv4/sandbox/    Backend, Sandbox, file/command tools
 src/pagentv4/skills/     SKILL.md discovery and loading
+src/app/                 application layer (REPL, CLI) on top of pagentv4
 ```
 
 Prefer **pagentv4** for new work (`Runner`, sandbox, persistence). See
 `docs/pagentv4/` and `examples/v4runner/`.
+
+**Terminal agent:** `uv run pagent` — same REPL as `examples/v4runner/repl.py`.
 
 ## Conventions
 

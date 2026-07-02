@@ -2,8 +2,7 @@
 
 语言：[中文](/zh/pagentv4/events) | [English](/pagentv4/events)
 
-`Runner.events()` emits the full multi-turn timeline. `Runner.arun()`
-projects that same stream into one of four return types.
+`runner.run()` emits the full multi-turn timeline, projected by `return_type`.
 
 ## Event types
 
@@ -58,31 +57,25 @@ RunBegin
 
 ## Consumers
 
-### Raw event stream
-
 ```python
-from pagentv4 import Messages, Runner, TextDelta, ToolCallBegin, ToolResult
+from pagentv4 import DeepSeek, Runner, TextDelta, ToolCallBegin, ToolResult
 
-messages = Messages()
-async for event in Runner().events(agent, "Hello", messages):
-    if isinstance(event, TextDelta):
-        print(event.text, end="")
-    elif isinstance(event, ToolCallBegin):
-        print(f"\n[tool {event.name}]")
-    elif isinstance(event, ToolResult):
-        print(f"\n[result {event.ok}: {event.content}]")
-```
-
-### `arun(return_type="event")`
-
-```python
-async for event in Runner().arun(agent, "Hello", messages, return_type="event"):
-    ...
+runner = await Runner.open("demo", DeepSeek("deepseek-v4-flash"), overrides={"backend": "local"})
+try:
+    async for event in runner.run("Hello", return_type="event"):
+        if isinstance(event, TextDelta):
+            print(event.text, end="")
+        elif isinstance(event, ToolCallBegin):
+            print(f"\n[tool {event.name}]")
+        elif isinstance(event, ToolResult):
+            print(f"\n[result {event.ok}: {event.content}]")
+finally:
+    await runner.close()
 ```
 
 ## Other `return_type` projections
 
-`Runner.arun()` supports:
+`runner.run()` supports:
 
 - `"event"`: raw event objects
 - `"text"`: `TextDelta.text` only

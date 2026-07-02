@@ -15,9 +15,7 @@ import os
 import sys
 
 from pagentv4 import (
-    Agent,
     DeepSeek,
-    Messages,
     ReasoningDelta,
     Runner,
     TextDelta,
@@ -78,64 +76,67 @@ async def main():
         raise SystemExit("请先 export DEEPSEEK_API_KEY=<your-key>")
 
     color = use_color()
-    agent = Agent(
+    runner = await Runner.open(
+        "tools-demo",
         DeepSeek("deepseek-v4-flash"),
-        system="你是一个乐于使用工具的助手；答案要简短。",
+        overrides={"backend": "local"},
+        extra_system="你是一个乐于使用工具的助手；答案要简短。",
         tools=[get_weather, calc],
     )
-    runner = Runner()
-    messages = Messages()
 
     print(f"Q: {QUESTION}\n")
     in_reasoning = False
 
-    async for event in runner.arun(agent, QUESTION, messages):
-        if isinstance(event, TurnBegin):
-            print(
-                f"{DIM if color else ''}── turn {event.turn} 开始 ──{RESET if color else ''}"
-            )
-            in_reasoning = False
-
-        elif isinstance(event, ReasoningDelta):
-            if not in_reasoning:
-                in_reasoning = True
-                if color:
-                    sys.stdout.write(DIM)
-                sys.stdout.write("reasoning: ")
-            sys.stdout.write(event.text)
-            sys.stdout.flush()
-
-        elif isinstance(event, ToolCallBegin):
-            if in_reasoning and color:
-                sys.stdout.write(RESET)
-            in_reasoning = False
-            line = f"tool → {event.name}({event.arguments})"
-            print(f"{CYAN}{line}{RESET}" if color else line)
-
-        elif isinstance(event, ToolResult):
-            mark = "ok" if event.ok else "fail"
-            body = event.content.replace("\n", " ")
-            print(f"  {GREEN if color else ''}{mark}: {body}{RESET if color else ''}")
-
-        elif isinstance(event, TextDelta):
-            if in_reasoning:
-                if color:
-                    sys.stdout.write(RESET)
-                print()
+    try:
+        async for event in runner.run(QUESTION):
+            if isinstance(event, TurnBegin):
+                print(
+                    f"{DIM if color else ''}── turn {event.turn} 开始 ──{RESET if color else ''}"
+                )
                 in_reasoning = False
-            sys.stdout.write(event.text)
-            sys.stdout.flush()
 
-        elif isinstance(event, TurnEnd):
-            if in_reasoning and color:
-                sys.stdout.write(RESET)
-            in_reasoning = False
-            reason = f" ({event.stop_reason})" if event.stopped else ""
-            print(
-                f"\n{DIM if color else ''}── turn {event.turn} 结束{reason} ──{RESET if color else ''}"
-            )
+            elif isinstance(event, ReasoningDelta):
+                if not in_reasoning:
+                    in_reasoning = True
+                    if color:
+                        sys.stdout.write(DIM)
+                    sys.stdout.write("reasoning: ")
+                sys.stdout.write(event.text)
+                sys.stdout.flush()
 
-    print(f"\n累计消息条数：{len(messages.data)}")
+            elif isinstance(event, ToolCallBegin):
+                if in_reasoning and color:
+                    sys.stdout.write(RESET)
+                in_reasoning = False
+                line = f"tool → {event.name}({event.arguments})"
+                print(f"{CYAN}{line}{RESET}" if color else line)
+
+            elif isinstance(event, ToolResult):
+                mark = "ok" if event.ok else "fail"
+                body = event.content.replace("\n", " ")
+                print(f"  {GREEN if color else ''}{mark}: {body}{RESET if color else ''}")
+
+            elif isinstance(event, TextDelta):
+                if in_reasoning:
+                    if color:
+                        sys.stdout.write(RESET)
+                    print()
+                    in_reasoning = False
+                sys.stdout.write(event.text)
+                sys.stdout.flush()
+
+            elif isinstance(event, TurnEnd):
+                if in_reasoning and color:
+                    sys.stdout.write(RESET)
+                in_reasoning = False
+                reason = f" ({event.stop_reason})" if event.stopped else ""
+                print(
+                    f"\n{DIM if color else ''}── turn {event.turn} 结束{reason} ──{RESET if color else ''}"
+                )
+
+        print(f"\n累计消息条数：{len(runner.messages.data)}")
+    finally:
+        await runner.close()
 
 
 if __name__ == "__main__":

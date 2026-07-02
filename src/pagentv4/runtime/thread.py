@@ -42,8 +42,8 @@ Thread 是 pagentv4 里"agent 长期在这里干活"的最小完整实体。一�
 
 # 谁调用它
 
-只归 pagentv4.runtime；Sandbox / Agent 本身不认 Thread。REPL、CLI、上层门面用
-Thread.open() 拿到 spec 后自行拼 Sandbox / Runner / JsonlConversationStore。
+`Runner.open()` 打开 thread，Runner 与 sandbox / messages / agent 同生共死；
+REPL 里每行输入调用 `runner.run(user_input)`，退出时 `runner.close()`。
 """
 
 from __future__ import annotations

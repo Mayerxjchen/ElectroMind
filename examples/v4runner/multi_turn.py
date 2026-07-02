@@ -1,8 +1,6 @@
-"""v4 多轮对话 — 手动持有 `Runner` + `Messages`。
+"""v4 多轮对话 — `Runner.open()` + 多次 `runner.run()`。
 
-`run_agent` 每次都从零开始；如果需要跨轮记忆，
-就要显式创建一个 `Runner` 和一个 `Messages` 容器，
-让每次 `runner.arun(...)` 都往同一个容器里追加。
+同一个 thread 里反复跑，messages 自动累积、持久化。
 
 Usage:
     export DEEPSEEK_API_KEY="your-key-here"
@@ -13,7 +11,7 @@ import asyncio
 import os
 import sys
 
-from pagentv4 import Agent, DeepSeek, Messages, Runner, TextDelta
+from pagentv4 import DeepSeek, Runner, TextDelta
 
 TURNS = [
     "你先记住一个数：42。",
@@ -26,23 +24,25 @@ async def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("请先 export DEEPSEEK_API_KEY=<your-key>")
 
-    agent = Agent(
+    runner = await Runner.open(
+        "multi-turn-demo",
         DeepSeek("deepseek-v4-flash"),
-        system="你是一个记性好的助手，回答简短。",
+        overrides={"backend": "local"},
+        extra_system="你是一个记性好的助手，回答简短。",
     )
-    runner = Runner()
-    messages = Messages()
+    try:
+        for question in TURNS:
+            print(f"\nQ: {question}")
+            print("A: ", end="", flush=True)
+            async for event in runner.run(question):
+                if isinstance(event, TextDelta):
+                    sys.stdout.write(event.text)
+                    sys.stdout.flush()
+            print()
 
-    for question in TURNS:
-        print(f"\nQ: {question}")
-        print("A: ", end="", flush=True)
-        async for event in runner.arun(agent, question, messages):
-            if isinstance(event, TextDelta):
-                sys.stdout.write(event.text)
-                sys.stdout.flush()
-        print()
-
-    print(f"\n累计消息条数：{len(messages.data)}")
+        print(f"\n累计消息条数：{len(runner.messages.data)}")
+    finally:
+        await runner.close()
 
 
 if __name__ == "__main__":

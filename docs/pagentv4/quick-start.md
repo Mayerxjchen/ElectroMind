@@ -8,89 +8,92 @@ sandbox and persistence support.
 
 Prerequisites: [Install](../guide/install) (Python 3.11+, pip / uv / conda).
 
-## One-liner: `run_agent()`
+## Open a thread
 
-For scripts and quick experiments, use `run_agent()`. It creates a temporary
-`Messages` internally and discards it when the run finishes.
+`Runner` is bound to a **thread** for its entire lifetime: sandbox, messages,
+and agent are created together and torn down with `runner.close()`.
 
 ```python
 import asyncio
 import os
 
-from pagentv4 import Agent, DeepSeek, run_agent
+from pagentv4 import DeepSeek, Runner
 
 
 async def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("Set DEEPSEEK_API_KEY first.")
 
-    agent = Agent(
+    runner = await Runner.open(
+        "demo",
         DeepSeek("deepseek-v4-flash"),
-        system="You are helpful and concise.",
+        overrides={"backend": "local"},
+        extra_system="You are helpful and concise.",
     )
-
-    async for text in run_agent(
-        agent, "Explain tail recursion in one sentence.", return_type="text"
-    ):
-        print(text, end="", flush=True)
-    print()
+    try:
+        async for text in runner.run(
+            "Explain tail recursion in one sentence.", return_type="text"
+        ):
+            print(text, end="", flush=True)
+        print()
+    finally:
+        await runner.close()
 
 
 asyncio.run(main())
 ```
 
-## Multi-turn with `Runner`
+## Multi-turn on the same thread
 
-When you need to keep `Messages` across calls:
+Call `runner.run()` again — messages accumulate and persist under
+`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ```python
-from pagentv4 import Agent, DeepSeek, Messages, Runner
-
-agent = Agent(DeepSeek("deepseek-v4-flash"), system="You are helpful.")
-runner = Runner()
-messages = Messages()
-
-async for text in runner.arun(
-    agent, "My name is Ada.", messages, return_type="text"
-):
-    print(text, end="")
-
-async for text in runner.arun(
-    agent, "What is my name?", messages, return_type="text"
-):
-    print(text, end="")
+runner = await Runner.open("demo", provider, overrides={"backend": "local"})
+try:
+    async for text in runner.run("My name is Ada.", return_type="text"):
+        print(text, end="")
+    async for text in runner.run("What is my name?", return_type="text"):
+        print(text, end="")
+finally:
+    await runner.close()
 ```
 
-## Sandbox session
+Re-open the same `thread_id` later to resume.
 
-When the agent needs files or shell commands, use `Runner.session()`. It
-creates a sandbox, binds eight built-in tools, runs the agent, then closes
-the sandbox.
+## Sandbox + tools
+
+`Runner.open()` creates the sandbox from the thread spec, binds built-in file
+and command tools, and merges any extra tools you pass:
 
 ```python
-from pagentv4 import DeepSeek, Runner
-
-async for event in Runner().session(
+runner = await Runner.open(
+    "demo",
     DeepSeek("deepseek-v4-flash"),
-    "Create hello.txt under /home/agent with one greeting line.",
-    system="Use tools when needed.",
-    workspace_id="default",  # → <cwd>/.pagent/workspaces/default/
-):
-    ...
+    overrides={"backend": "local"},
+    extra_system="Use tools when needed.",
+)
+try:
+    async for event in runner.run(
+        "Create hello.txt under /home/agent with one greeting line."
+    ):
+        ...
+finally:
+    await runner.close()
 ```
 
 See [Sandbox](./sandbox) for backends (`local`, `docker`, `podman`, `ssh`).
 
 ## Streaming modes
 
-`Runner.arun()` defaults to `return_type="event"`.
+`runner.run()` defaults to `return_type="event"`.
 
 | API | Returns | Use when |
 |-----|---------|----------|
-| `runner.arun(..., return_type="event")` | `Event` objects | Full timeline, Python UI |
-| `runner.arun(..., return_type="text")` | `str` chunks | Answer text only |
-| `runner.arun(..., return_type="message")` | `Message` objects | Observe assistant/tool messages |
-| `runner.arun(..., return_type="acp")` | NDJSON lines | Socket / ACP / JSON consumers |
+| `runner.run(..., return_type="event")` | `Event` objects | Full timeline, Python UI |
+| `runner.run(..., return_type="text")` | `str` chunks | Answer text only |
+| `runner.run(..., return_type="message")` | `Message` objects | Observe assistant/tool messages |
+| `runner.run(..., return_type="acp")` | NDJSON lines | Socket / ACP / JSON consumers |
 
 ## Built-in providers
 

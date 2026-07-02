@@ -24,6 +24,23 @@ uv add pagent
 uv add "pagent[search]"
 ```
 
+### uvx (terminal REPL, no install)
+
+Run the interactive CLI without adding the package to a project:
+
+```bash
+export DEEPSEEK_API_KEY="your-key"
+uvx pagent
+uvx pagent --thread-id demo
+```
+
+From a git checkout or local wheel:
+
+```bash
+uvx --from . pagent
+uvx --from git+https://github.com/SyncLionPaw/pagent pagent
+```
+
 In a cloned **pagent** repo (contributors):
 
 ```bash

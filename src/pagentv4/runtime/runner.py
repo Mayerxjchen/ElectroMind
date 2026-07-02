@@ -1,5 +1,8 @@
-from collections.abc import AsyncIterator, Awaitable, Callable
+from __future__ import annotations
+
+from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
 from inspect import isawaitable
+from pathlib import Path
 from typing import Any, Literal
 
 from ..adapters.acp import encode_event_line
@@ -17,8 +20,14 @@ from ..core.message import Message, Messages, TextChunk, ThinkingChunk, ToolCall
 from ..core.provider import Provider
 from ..core.tool import FunctionTool, ToolOutput
 from ..core.turn_result import TurnResult
-from ..sandbox import Sandbox, SandboxLimits
-from .conversation import ConversationStore
+from ..sandbox import Sandbox, SshConnection
+from ..skills import (
+    SkillRegistry,
+    build_skills_system_prompt,
+    make_use_skill_tool,
+)
+from .conversation import JsonlConversationStore
+from .thread import Thread
 
 ArunReturnType = Literal["event", "text", "acp", "message"]
 
@@ -79,8 +88,32 @@ def project_event(event, return_type: ArunReturnType):
 
 
 class Runner:
-    def __init__(self, store: ConversationStore | None = None):
+    """Run 调度器，与 thread 同生共死。
+
+    `await Runner.open(...)` → 多次 `runner.run(user_input)` → `await runner.close()`
+    """
+
+    def __init__(
+        self,
+        *,
+        thread: Thread,
+        sandbox: Sandbox,
+        store: JsonlConversationStore,
+        messages: Messages,
+        agent: Agent,
+        skills: SkillRegistry,
+        conversation_id: str,
+    ):
+        self.thread = thread
+        self.sandbox = sandbox
         self.store = store
+        self.messages = messages
+        self.agent = agent
+        self.skills = skills
+        self.conversation_id = conversation_id
+
+    async def close(self) -> None:
+        await self.sandbox.close()
 
     async def execute_tool(
         self,
@@ -100,7 +133,6 @@ class Runner:
         self,
         tool_calls: list[dict],
         tool_map: dict[str, FunctionTool],
-        messages: Messages,
         turn_id: int,
     ) -> AsyncIterator:
         for tool_call in tool_calls:
@@ -112,7 +144,7 @@ class Runner:
             yield ToolCallBegin(tool_call["id"], name, arguments)
             output = await self.execute_tool(tool_call, tool_map)
             append_message(
-                messages,
+                self.messages,
                 Message.tool_result(tool_call["id"], output.content),
                 turn_id=turn_id,
             )
@@ -120,38 +152,34 @@ class Runner:
 
     async def stream_agent_messages(
         self,
-        agent: Agent,
-        messages: Messages,
         turn_id: int,
         **run_kwargs,
     ) -> AsyncIterator:
-        async for message in agent.stream_messages(messages, **run_kwargs):
-            append_message(messages, message, turn_id=turn_id)
+        async for message in self.agent.stream_messages(self.messages, **run_kwargs):
+            append_message(self.messages, message, turn_id=turn_id)
             event = message_to_event(message)
             if event is not None:
                 yield event
 
-    async def arun(
+    def flush_conversation(self) -> None:
+        self.store.save(self.conversation_id, self.messages)
+
+    async def run(
         self,
-        agent: Agent,
         user_input: str,
-        messages: Messages,
         *,
         return_type: ArunReturnType = "event",
         event_handler: EventHandler | None = None,
-        conversation_id: str | None = None,
         **run_kwargs,
     ) -> AsyncIterator:
         if return_type not in {"event", "text", "acp", "message"}:
             raise ValueError(f"unknown return_type: {return_type!r}")
 
-        async for event in self.events(
-            agent,
-            user_input,
-            messages,
-            conversation_id=conversation_id,
-            **run_kwargs,
-        ):
+        ensure_system(self.messages, self.agent.system)
+        turn_id = self.messages.max_turn_id() + 1
+        append_message(self.messages, Message.user(user_input), turn_id=turn_id)
+
+        async for event in self._events(user_input, turn_id, **run_kwargs):
             if event_handler is not None:
                 result = event_handler(event)
                 if isawaitable(result):
@@ -162,157 +190,119 @@ class Runner:
                 continue
             yield projected
 
-    def load_conversation(
-        self, conversation_id: str | None, messages: Messages
-    ) -> None:
-        if conversation_id is None or self.store is None:
-            return
-        if messages.data:
-            return
-        loaded = self.store.load(conversation_id)
-        for message in loaded.data:
-            messages += message
-
-    def flush_conversation(
-        self, conversation_id: str | None, messages: Messages
-    ) -> None:
-        if conversation_id is None or self.store is None:
-            return
-        self.store.save(conversation_id, messages)
-
-    async def events(
-        self,
-        agent: Agent,
-        user_input: str,
-        messages: Messages,
-        *,
-        conversation_id: str | None = None,
-        **run_kwargs,
-    ) -> AsyncIterator:
-        if conversation_id is not None and self.store is None:
-            raise ValueError(
-                "conversation_id was given but Runner has no store; "
-                "construct Runner(store=JsonlConversationStore())"
-            )
-
-        self.load_conversation(conversation_id, messages)
-        ensure_system(messages, agent.system)
-        turn_id = messages.max_turn_id() + 1
-        append_message(messages, Message.user(user_input), turn_id=turn_id)
+    async def _events(self, user_input: str, turn_id: int, **run_kwargs) -> AsyncIterator:
         yield RunBegin(user_input)
 
-        for turn in range(agent.max_turns):
+        for turn in range(self.agent.max_turns):
             yield TurnBegin(turn)
-            turn_start = len(messages.data)
+            turn_start = len(self.messages.data)
 
-            async for event in self.stream_agent_messages(
-                agent, messages, turn_id, **run_kwargs
-            ):
+            async for event in self.stream_agent_messages(turn_id, **run_kwargs):
                 yield event
 
-            result = TurnResult.from_slice(messages.data, turn_start)
+            result = TurnResult.from_slice(self.messages.data, turn_start)
             yield result
 
-            if turn_start >= len(messages.data):
+            if turn_start >= len(self.messages.data):
                 yield TurnEnd(turn, stopped=True, stop_reason="empty_response")
-                self.flush_conversation(conversation_id, messages)
+                self.flush_conversation()
                 return
 
             if not result.has_tool_calls:
                 yield TurnEnd(turn, stopped=True, stop_reason="no_tool_calls")
-                self.flush_conversation(conversation_id, messages)
+                self.flush_conversation()
                 return
 
             async for event in self.emit_tool_events(
-                result.tool_calls, agent.tool_map, messages, turn_id
+                result.tool_calls, self.agent.tool_map, turn_id
             ):
                 yield event
 
-            if turn + 1 >= agent.max_turns:
+            if turn + 1 >= self.agent.max_turns:
                 yield TurnEnd(turn, stopped=True, stop_reason="max_turns")
-                self.flush_conversation(conversation_id, messages)
+                self.flush_conversation()
                 return
 
             yield TurnEnd(turn, stopped=False, stop_reason="continuing")
-            self.flush_conversation(conversation_id, messages)
+            self.flush_conversation()
 
-    async def session(
-        self,
+    @classmethod
+    async def open(
+        cls,
+        thread_id: str,
         provider: Provider,
-        user_input: str,
         *,
-        system: str | None = None,
-        tools: list[FunctionTool] | None = None,
+        overrides: dict | None = None,
+        extra_system: str = "",
         max_turns: int = 8,
-        backend: str = "local",
-        workspace_id: str | None = None,
-        workdir: str | None = None,
-        home: str = "/home/agent",
-        image: str | None = None,
-        env: dict[str, str] | None = None,
-        connection: dict[str, str] | None = None,
-        default_limits: SandboxLimits | None = None,
-        messages: Messages | None = None,
-        return_type: ArunReturnType = "event",
-        event_handler: EventHandler | None = None,
-        conversation_id: str | None = None,
-        **run_kwargs,
-    ) -> AsyncIterator:
-        """一次新的 run：造 sandbox → 造 agent → 绑工具 → 跑 → 关 sandbox。
+        skill_roots: Sequence[str | Path] = (),
+        tools: Sequence[FunctionTool] = (),
+    ) -> Runner:
+        thread = Thread.open(thread_id, overrides=overrides)
+        sandbox = await cls._open_sandbox(thread)
+        store = JsonlConversationStore(root=thread.root)
 
-        流程与 pagentv4 顶层设计一致：
-        1. 从 backend / workspace 参数造 Sandbox 电脑（伴身电脑）
-        2. 从电脑里拿工具，与用户传入的 tools 合并
-        3. 用 provider + system + 合并工具造 Agent
-        4. 走标准 arun，事件按 return_type 投影后 yield 给上层
-        5. 迭代结束（正常或异常）都 close sandbox
-        """
-        sandbox = await Sandbox.create(
-            backend=backend,
-            workspace_id=workspace_id,
-            workdir=workdir,
-            home=home,
-            image=image,
-            env=env,
-            connection=connection,
-            default_limits=default_limits,
+        skills = SkillRegistry.from_defaults(*skill_roots)
+        mount = await sandbox.install_skills(skills) if skills.names() else {}
+        combined_tools = [*sandbox.tools(), *tools]
+        if skills.names():
+            combined_tools.append(make_use_skill_tool(skills, mount))
+
+        system_tail = thread.spec.system or extra_system
+        computer_desc = await sandbox.describe()
+        skills_prompt = build_skills_system_prompt(skills, mount)
+        system_prompt = "\n".join(
+            part for part in (computer_desc, skills_prompt, system_tail) if part
         )
-        try:
-            combined_tools = [*sandbox.tools(), *(tools or [])]
-            agent = Agent(
-                provider,
-                system=system,
-                tools=combined_tools,
-                max_turns=max_turns,
+
+        messages = Messages()
+        conversation_id = thread.messages_conversation_id
+        for message in store.load(conversation_id).data:
+            messages += message
+
+        return cls(
+            thread=thread,
+            sandbox=sandbox,
+            store=store,
+            messages=messages,
+            agent=Agent(
+                provider, system=system_prompt, tools=combined_tools, max_turns=max_turns
+            ),
+            skills=skills,
+            conversation_id=conversation_id,
+        )
+
+    @staticmethod
+    async def _open_sandbox(thread: Thread) -> Sandbox:
+        spec = thread.spec
+        workdir = str(thread.workspace_path)
+
+        if spec.backend == "local":
+            return await Sandbox.create(backend="local", workdir=workdir)
+
+        if spec.backend in ("docker", "podman"):
+            if not spec.image:
+                raise ValueError(
+                    f"thread {thread.id!r}: backend {spec.backend!r} requires image"
+                )
+            return await Sandbox.create(
+                backend=spec.backend,
+                workdir=workdir,
+                image=spec.image,
+                container_ttl_seconds=spec.container_ttl_seconds,
             )
-            async for item in self.arun(
-                agent,
-                user_input,
-                messages if messages is not None else Messages(),
-                return_type=return_type,
-                event_handler=event_handler,
-                conversation_id=conversation_id,
-                **run_kwargs,
-            ):
-                yield item
-        finally:
-            await sandbox.close()
 
-
-async def run_agent(
-    agent: Agent,
-    user_input: str,
-    *,
-    return_type: ArunReturnType = "event",
-    event_handler: EventHandler | None = None,
-    **run_kwargs,
-) -> AsyncIterator:
-    async for item in Runner().arun(
-        agent,
-        user_input,
-        Messages(),
-        return_type=return_type,
-        event_handler=event_handler,
-        **run_kwargs,
-    ):
-        yield item
+        if not spec.ssh_host:
+            raise ValueError(
+                f"thread {thread.id!r}: backend 'ssh' requires ssh_host in thread spec"
+            )
+        conn = SshConnection.from_ssh_config(
+            spec.ssh_host,
+            config_path=spec.ssh_config,
+            workdir=spec.ssh_workdir,
+        )
+        return await Sandbox.create(
+            backend="ssh",
+            workdir=workdir,
+            connection=conn.to_dict(),
+        )

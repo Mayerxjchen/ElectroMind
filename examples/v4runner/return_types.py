@@ -1,6 +1,6 @@
 """v4 return_type 展示 — 同一次调用，四种投影形态。
 
-`Runner.arun(..., return_type=...)` 支持四种投影：
+`runner.run(..., return_type=...)` 支持四种投影：
 
     "event"    原始事件对象（默认）
     "text"     只保留可见文本，最简的字符串流
@@ -17,15 +17,14 @@ Usage:
 import asyncio
 import os
 
-from pagentv4 import Agent, DeepSeek, Messages, Runner
+from pagentv4 import DeepSeek, Runner
 
 QUESTION = "用一句话解释 asyncio 是什么。"
 
 
-async def demo(runner: Runner, agent: Agent, return_type: str):
+async def demo(runner: Runner, return_type: str):
     print(f"\n=== return_type={return_type!r} ===")
-    messages = Messages()
-    async for item in runner.arun(agent, QUESTION, messages, return_type=return_type):
+    async for item in runner.run(QUESTION, return_type=return_type):
         if return_type == "text":
             print(item, end="", flush=True)
         else:
@@ -38,11 +37,17 @@ async def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("请先 export DEEPSEEK_API_KEY=<your-key>")
 
-    agent = Agent(DeepSeek("deepseek-v4-flash"), system="回答不超过一句话。")
-    runner = Runner()
-
-    for kind in ("text", "message", "acp", "event"):
-        await demo(runner, agent, kind)
+    runner = await Runner.open(
+        "return-types-demo",
+        DeepSeek("deepseek-v4-flash"),
+        overrides={"backend": "local"},
+        extra_system="回答不超过一句话。",
+    )
+    try:
+        for kind in ("text", "message", "acp", "event"):
+            await demo(runner, kind)
+    finally:
+        await runner.close()
 
 
 if __name__ == "__main__":

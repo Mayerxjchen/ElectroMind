@@ -12,8 +12,7 @@
 |--------|------|
 | `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang`, … | OpenAI-compatible streaming clients |
 | `Agent(provider, system=None, tools=None, max_turns=8)` | Model + tool configuration |
-| `Runner(store=None)` | Multi-turn loop, persistence, sandbox sessions |
-| `run_agent(agent, user_input, …)` | One-shot sugar over `Runner().arun()` |
+| `Runner` | Thread-bound orchestrator: sandbox + messages + tool loop |
 | `Message` | One typed message item with `role` + `content` |
 | `Messages` | In-memory message list with `to_openai()` conversion |
 | `ConversationStore`, `JsonlConversationStore`, `SqliteConversationStore` | Persist messages by id |
@@ -54,30 +53,34 @@ Notes:
 
 ## Runner
 
-`Runner` owns the multi-turn tool loop and optional persistence.
+`Runner` is created only via `Runner.open()` and lives as long as its thread.
+It owns the multi-turn tool loop, sandbox, messages, and persistence.
 
 | Method | Role |
 |--------|------|
-| `runner.arun(agent, user_input, messages, …)` | Full run with `return_type` projection |
-| `runner.events(agent, user_input, messages, …)` | Raw event stream |
-| `runner.session(provider, user_input, …)` | Create sandbox → bind tools → run → close |
-| `runner.load_conversation(id, messages)` | Load from store if messages empty |
-| `runner.flush_conversation(id, messages)` | Save to store |
-
-Pass `conversation_id=` to `arun()` / `session()` when `Runner` has a store:
+| `Runner.open(thread_id, provider, …)` | Open thread → sandbox → agent |
+| `runner.run(user_input, …)` | One user turn with `return_type` projection |
+| `runner.close()` | Close sandbox |
 
 ```python
-from pagentv4 import JsonlConversationStore, Runner
+from pagentv4 import DeepSeek, Runner
 
-runner = Runner(store=JsonlConversationStore())
-async for event in runner.arun(
-    agent, "hi", messages, conversation_id="demo"
-):
-    ...
+runner = await Runner.open(
+    "demo",
+    DeepSeek("deepseek-v4-flash"),
+    overrides={"backend": "local"},
+    extra_system="You are helpful.",
+    tools=[my_tool],  # optional extras merged with sandbox tools
+)
+try:
+    async for event in runner.run("hi"):
+        ...
+finally:
+    await runner.close()
 ```
 
-Messages are flushed at each `TurnEnd`. Default JSONL root:
-`<cwd>/.pagent/conversations/`.
+Messages are flushed at each `TurnEnd` into
+`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ## Thread
 
@@ -121,7 +124,7 @@ Reserved keys in `Provider.complete()`:
 | `Vllm` | `VLLM_API_KEY` |
 | `Sglang` | `SGLANG_API_KEY` |
 
-## `arun()` return types
+## `run()` return types
 
 Valid `return_type` values:
 

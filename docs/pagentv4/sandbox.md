@@ -6,27 +6,33 @@ A **sandbox** is the agent's companion computer: an isolated workspace where
 it can run commands and read/write files. Paths are normalized to a virtual
 home (default `/home/agent`) across all backends.
 
-## Quick path: `Runner.session()`
+## Quick path: `Runner.open()`
 
 The simplest way to give an agent a computer:
 
 ```python
 from pagentv4 import DeepSeek, Runner
 
-async for event in Runner().session(
+runner = await Runner.open(
+    "demo",
     DeepSeek("deepseek-v4-flash"),
-    "List files under /home/agent, then create notes.md.",
-    workspace_id="default",
-):
-    ...
+    overrides={"backend": "local"},
+)
+try:
+    async for event in runner.run(
+        "List files under /home/agent, then create notes.md."
+    ):
+        ...
+finally:
+    await runner.close()
 ```
 
 Flow:
 
-1. Create sandbox from `backend` / workspace params
-2. Bind sandbox tools + any extra tools
-3. Build `Agent` and run via `Runner.arun()`
-4. Close sandbox when done (even on error)
+1. Open thread → create sandbox from thread spec
+2. Bind sandbox tools + any extra tools passed to `open()`
+3. Build `Agent` and run via `runner.run()`
+4. Close sandbox with `runner.close()`
 
 ## Backends
 
@@ -38,26 +44,30 @@ Flow:
 | `"ssh"` | Remote host via asyncssh |
 
 ```python
-async for event in Runner().session(
+runner = await Runner.open(
+    "demo",
     provider,
-    user_input,
-    backend="docker",
-    image="python:3.12-slim",
-    workspace_id="demo",
-):
-    ...
+    overrides={"backend": "docker", "image": "python:3.12-slim"},
+)
+try:
+    async for event in runner.run(user_input):
+        ...
+finally:
+    await runner.close()
 ```
 
-SSH example:
+SSH example — set `ssh_host` in thread spec or overrides:
 
 ```python
-async for event in Runner().session(
+runner = await Runner.open(
+    "remote",
     provider,
-    user_input,
-    backend="ssh",
-    connection={"host": "user@example.com", "workdir": "/tmp/agent"},
-):
-    ...
+    overrides={
+        "backend": "ssh",
+        "ssh_host": "user@example.com",
+        "ssh_workdir": "/tmp/agent",
+    },
+)
 ```
 
 ## Workspace layout

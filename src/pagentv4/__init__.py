@@ -57,7 +57,6 @@ from .runtime import (
     ThreadSpec,
     default_conversations_root,
     default_threads_root,
-    run_agent,
     validate_thread_id,
 )
 from .sandbox import (
@@ -153,7 +152,6 @@ __all__ = [
     "load_skills_from_root",
     "make_use_skill_tool",
     "reply_text",
-    "run_agent",
     "to_openai_tools",
     "tool",
     "validate_thread_id",

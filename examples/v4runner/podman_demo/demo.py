@@ -15,7 +15,7 @@ Sandbox 门面把 `/home/agent` 前缀映射到宿主 workdir，容器里通过
 - 文件 API 直接落到宿主机文件系统
 - exec 走 `podman exec -w <workdir> <cid> <argv>` 在容器里执行
 
-跑完可以到 <cwd>/.pagent/workspaces/podman-demo/ 找 agent 写下的文件。
+跑完可以到 thread workspace 找 agent 写下的文件。
 """
 
 import argparse
@@ -27,7 +27,6 @@ from pagentv4 import (
     DeepSeek,
     ReasoningDelta,
     Runner,
-    Sandbox,
     TextDelta,
     ToolCallBegin,
     ToolResult,
@@ -60,9 +59,9 @@ def parse_args():
         help="容器镜像 tag；默认用同目录 Dockerfile 构建的 pagent-podman-demo:latest",
     )
     parser.add_argument(
-        "--workspace-id",
+        "--thread-id",
         default="podman-demo",
-        help="沙箱 workspace 名，落到 <cwd>/.pagent/workspaces/<id>/",
+        help="thread id",
     )
     parser.add_argument(
         "--ttl",
@@ -85,10 +84,10 @@ def use_color() -> bool:
     return sys.stdout.isatty()
 
 
-async def render(runner, agent, question, messages):
+async def render(runner: Runner, question: str):
     color = use_color()
     in_reasoning = False
-    async for event in runner.arun(agent, question, messages):
+    async for event in runner.run(question):
         if isinstance(event, ReasoningDelta):
             if not in_reasoning:
                 in_reasoning = True
@@ -130,34 +129,28 @@ async def main():
 
     args = parse_args()
 
-    from pagentv4 import Agent, Messages
-
-    sandbox = await Sandbox.create(
-        backend=args.backend,
-        image=args.image,
-        workspace_id=args.workspace_id,
-        container_ttl_seconds=args.ttl or None,
+    runner = await Runner.open(
+        args.thread_id,
+        DeepSeek(args.model),
+        overrides={
+            "backend": args.backend,
+            "image": args.image,
+            "container_ttl_seconds": args.ttl or None,
+        },
+        max_turns=12,
     )
     try:
         print(f"backend:         {args.backend}")
         print(f"image:           {args.image}")
-        print(f"sandbox workdir: {sandbox.workdir}")
-        print(f"agent home:      {sandbox.home}")
+        print(f"sandbox workdir: {runner.sandbox.workdir}")
+        print(f"agent home:      {runner.sandbox.home}")
         ttl_str = f"{args.ttl}s" if args.ttl else "infinity"
         print(f"container ttl:   {ttl_str}")
         print(f"Q: {QUESTION}\n")
 
-        system_prompt = await sandbox.describe()
-        agent = Agent(
-            DeepSeek(args.model),
-            system=system_prompt,
-            tools=list(sandbox.tools()),
-            max_turns=12,
-        )
-        runner = Runner()
-        await render(runner, agent, QUESTION, Messages())
+        await render(runner, QUESTION)
     finally:
-        await sandbox.close()
+        await runner.close()
 
 
 if __name__ == "__main__":

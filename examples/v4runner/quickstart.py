@@ -1,8 +1,6 @@
-"""v4 quick start — 一行 `run_agent()` 尝鲜。
+"""v4 quick start — `Runner.open()` 尝鲜。
 
-演示 pagentv4 最简用法：不管理 Runner，也不管理 Messages，
-`run_agent` 内部临时创建一次 Messages 跑完就丢。
-适合脚本、REPL、快速试模型。
+打开一个 thread，跑一轮，关掉。适合脚本和快速试模型。
 
 Usage:
     export DEEPSEEK_API_KEY="your-key-here"
@@ -12,25 +10,29 @@ Usage:
 import asyncio
 import os
 import sys
+from datetime import datetime
 
-from pagentv4 import Agent, DeepSeek, run_agent
+from pagentv4 import DeepSeek, Runner
 
 
 async def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("请先 export DEEPSEEK_API_KEY=<your-key>")
 
-    agent = Agent(
+    thread_id = f"quickstart-{datetime.now():%Y%m%d-%H%M%S}"
+    runner = await Runner.open(
+        thread_id,
         DeepSeek("deepseek-v4-flash"),
-        system="你是一个简洁的助手，回答不超过两句。",
+        overrides={"backend": "local"},
+        extra_system="你是一个简洁的助手，回答不超过两句。",
     )
-
-    async for text in run_agent(
-        agent, "用一句话解释什么是尾递归。", return_type="text"
-    ):
-        sys.stdout.write(text)
-        sys.stdout.flush()
-    print()
+    try:
+        async for text in runner.run("用一句话解释什么是尾递归。", return_type="text"):
+            sys.stdout.write(text)
+            sys.stdout.flush()
+        print()
+    finally:
+        await runner.close()
 
 
 if __name__ == "__main__":
