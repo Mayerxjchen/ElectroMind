@@ -13,9 +13,7 @@ CLEAN_PATHS := \
 	.nox \
 	htmlcov \
 	build \
-	dist \
-	data/pagentv3_demo \
-	data/pagentv3_cli
+	dist
 
 RSYNC_EXCLUDES := \
 	--exclude .venv \
@@ -30,8 +28,8 @@ RSYNC_EXCLUDES := \
 	--exclude htmlcov \
 	--exclude build \
 	--exclude dist \
-	--exclude data/pagentv3_demo \
-	--exclude data/pagentv3_cli \
+	--exclude .pagent \
+	--exclude artifacts \
 	--exclude .DS_Store
 
 .PHONY: help clean-package-artifacts dist-zip
