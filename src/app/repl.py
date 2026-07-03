@@ -9,6 +9,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI
 
 from pagentv4 import DeepSeek, Runner
+from pagentv4.tools import HARNESS_WEB_TOOLS
 
 from .clean import clean_pagent, format_clean_report
 from .config import ReplConfig, build_parser, config_from_args
@@ -60,6 +61,7 @@ async def open_runner(config: ReplConfig) -> Runner:
         extra_system=EXTRA_SYSTEM,
         max_turns=config.resolved_max_turns(),
         skill_roots=config.resolved_skill_roots(),
+        tools=HARNESS_WEB_TOOLS,
     )
 
 

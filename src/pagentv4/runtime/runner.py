@@ -190,7 +190,9 @@ class Runner:
                 continue
             yield projected
 
-    async def _events(self, user_input: str, turn_id: int, **run_kwargs) -> AsyncIterator:
+    async def _events(
+        self, user_input: str, turn_id: int, **run_kwargs
+    ) -> AsyncIterator:
         yield RunBegin(user_input)
 
         for turn in range(self.agent.max_turns):
@@ -266,7 +268,10 @@ class Runner:
             store=store,
             messages=messages,
             agent=Agent(
-                provider, system=system_prompt, tools=combined_tools, max_turns=max_turns
+                provider,
+                system=system_prompt,
+                tools=combined_tools,
+                max_turns=max_turns,
             ),
             skills=skills,
             conversation_id=conversation_id,

@@ -52,3 +52,4 @@ data/pagentv3_cli/
 data/pagentv3_cli.db
 
 .pagent/
+artifacts/

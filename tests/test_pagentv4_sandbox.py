@@ -246,7 +246,9 @@ async def test_copy_between_host_and_sandbox(tmp_path):
 
         exported = await box.copy_to_host("host_input.txt")
         assert os.path.isfile(exported)
-        assert (tmp_path / "artifacts" / "host_input.txt").read_text() == "payload from host"
+        assert (
+            tmp_path / "artifacts" / "host_input.txt"
+        ).read_text() == "payload from host"
 
 
 @pytest.mark.asyncio

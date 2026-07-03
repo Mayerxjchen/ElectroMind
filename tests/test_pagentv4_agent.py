@@ -33,7 +33,9 @@ class FakeProvider:
         return stream()
 
 
-async def open_runner(tmp_path, monkeypatch, provider, *, system="test", tools=(), max_turns=8):
+async def open_runner(
+    tmp_path, monkeypatch, provider, *, system="test", tools=(), max_turns=8
+):
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
     return await Runner.open(
         "test",
@@ -89,7 +91,10 @@ async def test_runner_keeps_existing_messages(tmp_path, monkeypatch):
             pass
 
         assert runner.messages.data[: len(existing_messages)] == existing_messages
-        assert provider.calls[0]["messages"][-1] == {"role": "user", "content": "earlier"}
+        assert provider.calls[0]["messages"][-1] == {
+            "role": "user",
+            "content": "earlier",
+        }
         assert provider.calls[1]["messages"][-1] == {"role": "user", "content": "next"}
     finally:
         await runner.close()

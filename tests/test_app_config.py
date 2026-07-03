@@ -89,7 +89,11 @@ def test_parse_repl_config():
             "base_url": "https://api.example.com",
         },
         "sandbox": {"backend": "local", "image": ""},
-        "ssh": {"host": "dev", "config_path": "/tmp/ssh_config", "workdir": "/tmp/agent"},
+        "ssh": {
+            "host": "dev",
+            "config_path": "/tmp/ssh_config",
+            "workdir": "/tmp/agent",
+        },
         "skills": {"roots": ["./skills", "~/.agents/skills"]},
     }
     config = parse_repl_config(data)

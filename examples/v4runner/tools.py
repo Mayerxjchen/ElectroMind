@@ -114,7 +114,9 @@ async def main():
             elif isinstance(event, ToolResult):
                 mark = "ok" if event.ok else "fail"
                 body = event.content.replace("\n", " ")
-                print(f"  {GREEN if color else ''}{mark}: {body}{RESET if color else ''}")
+                print(
+                    f"  {GREEN if color else ''}{mark}: {body}{RESET if color else ''}"
+                )
 
             elif isinstance(event, TextDelta):
                 if in_reasoning:

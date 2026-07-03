@@ -9,7 +9,13 @@ from app.clean import (
 from pagentv4.core.message import Message, Messages
 
 
-def write_thread(tmp_path, thread_id: str, *, user_text: str | None = None, workspace_file: str | None = None):
+def write_thread(
+    tmp_path,
+    thread_id: str,
+    *,
+    user_text: str | None = None,
+    workspace_file: str | None = None,
+):
     root = tmp_path / thread_id
     root.mkdir(parents=True)
     (root / "spec.json").write_text(json.dumps({"backend": "local"}), encoding="utf-8")
@@ -52,7 +58,9 @@ def test_clean_pagent_removes_empty_threads(tmp_path):
     write_thread(tmp_path, "kept", user_text="hi")
     write_thread(tmp_path, "empty-b")
 
-    report = clean_pagent(threads_root=tmp_path, conversations_root=tmp_path / "conversations")
+    report = clean_pagent(
+        threads_root=tmp_path, conversations_root=tmp_path / "conversations"
+    )
 
     assert report.removed_threads == ["empty-a", "empty-b"]
     assert (tmp_path / "kept").exists()
@@ -87,7 +95,9 @@ def test_clean_pagent_removes_empty_conversations(tmp_path):
     kept_messages += Message.user("hi")
     kept_messages.save_to_jsonl(kept)
 
-    report = clean_pagent(threads_root=tmp_path / "threads", conversations_root=conversations)
+    report = clean_pagent(
+        threads_root=tmp_path / "threads", conversations_root=conversations
+    )
 
     assert set(report.removed_conversations) == {"demo", "sys"}
     assert not empty.exists()

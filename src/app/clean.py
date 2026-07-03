@@ -77,7 +77,9 @@ def clean_pagent(
     A standalone conversation file is useless when empty or has no user messages.
     """
     report = CleanReport()
-    threads_base = Path(threads_root) if threads_root is not None else default_threads_root()
+    threads_base = (
+        Path(threads_root) if threads_root is not None else default_threads_root()
+    )
     conversations_base = (
         Path(conversations_root)
         if conversations_root is not None
