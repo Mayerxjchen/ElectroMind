@@ -263,16 +263,15 @@ def make_copy_from_host(sandbox: Sandbox) -> FunctionTool:
 
 
 def make_copy_to_host(sandbox: Sandbox) -> FunctionTool:
-    async def copy_to_host(source: str, host_dir: str | None = None) -> str:
-        placed = await sandbox.copy_to_host(source, host_dir)
+    async def copy_to_host(source: str) -> str:
+        placed = await sandbox.copy_to_host(source)
         return f"delivered file to user at {placed}"
 
     return FunctionTool(
         name="copy_to_host",
         description=(
             "把工作目录里的一个文件交付给用户。"
-            f"默认放到用户目录下的 `{sandbox.ARTIFACTS_DIRNAME}/` 输出目录；"
-            "需要放到别的子目录时才传 host_dir。"
+            f"固定写到用户目录下的 `{sandbox.ARTIFACTS_DIRNAME}/` 输出目录。"
         ),
         parameters={
             "type": "object",
@@ -280,13 +279,6 @@ def make_copy_to_host(sandbox: Sandbox) -> FunctionTool:
                 "source": {
                     "type": "string",
                     "description": "要交付的文件在工作目录中的路径。",
-                },
-                "host_dir": {
-                    "type": "string",
-                    "description": (
-                        "可选：用户目录下的目标子目录，"
-                        f"默认 `{sandbox.ARTIFACTS_DIRNAME}/`。"
-                    ),
                 },
             },
             "required": ["source"],

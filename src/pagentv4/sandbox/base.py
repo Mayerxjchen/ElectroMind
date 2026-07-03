@@ -66,7 +66,7 @@ class SandboxSpec:
     host_root 是「宿主机上允许 agent 观察/取文件的根目录」，默认 os.getcwd()：
     - copy_from_host 的 host_path 相对 host_root 解析；abs 也必须落在 host_root 之下
     - list_host_files 只能列 host_root 之下的内容
-    - copy_to_host 默认把产物写到 <host_root>/artifacts/
+    - copy_to_host 只能把产物写到 <host_root>/artifacts/
 
     image / command / env / connection 由具体后端解读；
     Local 用不到 image；Docker/Podman 需要 image；SSH 需要 connection。

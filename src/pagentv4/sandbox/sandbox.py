@@ -369,20 +369,12 @@ class Sandbox:
             check_backend_path(target, workdir=self.workdir)
             await self.backend.write_file(target, payload.read())
 
-    async def copy_to_host(self, source: str, host_dir: str | None = None) -> str:
-        """把 sandbox 里的文件复制到宿主机目录。返回宿主机实际路径。
-
-        `host_dir` 缺省时落到 `<host_root>/artifacts/`；显式传入时也必须
-        位于 host_root 之下（避免越权写盘）。
-        """
+    async def copy_to_host(self, source: str) -> str:
+        """把 sandbox 里的文件复制到宿主机 artifacts/ 目录。返回宿主机实际路径。"""
         resolved = self.resolve(source)
         check_backend_path(resolved, workdir=self.workdir)
         payload = await self.backend.read_file(resolved)
-        host_target_dir = (
-            self.resolve_host_path(host_dir)
-            if host_dir is not None
-            else self.artifacts_dir
-        )
+        host_target_dir = self.artifacts_dir
         os.makedirs(host_target_dir, exist_ok=True)
         filename = posixpath.basename(source.rstrip("/")) or "artifact"
         dest = os.path.join(host_target_dir, filename)

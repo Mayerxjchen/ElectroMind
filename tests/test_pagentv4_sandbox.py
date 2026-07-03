@@ -236,7 +236,6 @@ async def test_copy_between_host_and_sandbox(tmp_path):
     host_source = tmp_path / "host_input.txt"
     host_source.write_text("payload from host")
     sandbox_dir = tmp_path / "sandbox"
-    host_dest = tmp_path / "host_dest"
 
     async with await Sandbox.create(
         backend="local", workdir=str(sandbox_dir), host_root=str(tmp_path)
@@ -245,9 +244,9 @@ async def test_copy_between_host_and_sandbox(tmp_path):
         assert placed == "/home/agent/host_input.txt"
         assert (sandbox_dir / "host_input.txt").read_text() == "payload from host"
 
-        exported = await box.copy_to_host("host_input.txt", str(host_dest))
+        exported = await box.copy_to_host("host_input.txt")
         assert os.path.isfile(exported)
-        assert (host_dest / "host_input.txt").read_text() == "payload from host"
+        assert (tmp_path / "artifacts" / "host_input.txt").read_text() == "payload from host"
 
 
 @pytest.mark.asyncio
