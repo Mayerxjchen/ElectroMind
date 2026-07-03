@@ -5,6 +5,7 @@
 # pagent（中文）
 
 [![CI](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml/badge.svg)](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml)
+[![Coverage](https://codecov.io/gh/SyncLionPaw/pagent/graph/badge.svg)](https://app.codecov.io/gh/SyncLionPaw/pagent)
 
 语言： [中文](./README.zh-CN.md) | [English](./README.en.md) · [文档站](https://synclionpaw.github.io/pagent/) · [给 Agent 看](./AGENTS.md) · [llms.txt](./llms.txt)
 

@@ -39,14 +39,50 @@ module-name = ["pagent", "pagentv4", "app"]
 dev = [
     "agent-client-protocol>=0.10",
     "asyncssh>=2.14",
+    "coverage[toml]>=7.15.0",
     "ddgs>=7",
     "pre-commit>=4",
     "pytest>=8",
     "pytest-asyncio>=0.24",
+    "pytest-cov>=7.1.0",
     "ruff>=0.9",
 ]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+
+[tool.coverage.run]
+# 只统计业务代码，排除测试、示例、文档
+source = ["src"]
+branch = true                  # 分支覆盖（if/else 两条腿都算），比行覆盖更严格
+omit = [
+    "*/tests/*",
+    "*/examples/*",
+    "*/docs/*",
+    "*/__main__.py",
+    # 故意的非法语法 demo，无法被 import
+    "src/pagentv4/core/hacked_agent.py",
+    # v3 准备淘汰，整体不计入覆盖率（保留测试直到彻底移除）
+    "src/pagentv3/*",
+    # 故意不测的旧 Agent 实现（已被 core/agent.py 取代）
+    "src/pagentv4/core/agent_restored.py",
+    # 需要真实环境（docker / ssh / ACP server）才能测，纯单测覆盖不到
+    "src/pagentv4/sandbox/backends/container.py",
+    "src/pagentv4/sandbox/backends/ssh.py",
+    "src/pagentv4/adapters/acp.py",
+]
+
+[tool.coverage.report]
+# 终端报告里按行列出未覆盖的代码行
+show_missing = true
+skip_covered = false
+# 排除琐碎的、不算真正逻辑的行
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "@(abc\\.)?abstractmethod",
+]
 
 [tool.ruff]
 target-version = "py311"
