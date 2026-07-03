@@ -107,8 +107,8 @@ def truncate_text(text: str, limit: int) -> str:
 )
 def web_search(query: str, max_results: int = 5) -> ToolOutput:
     """Args:
-        query: 搜索关键词，例如库名、错误信息、概念名称。
-        max_results: 最多返回几条结果（1-10，默认 5）。
+    query: 搜索关键词，例如库名、错误信息、概念名称。
+    max_results: 最多返回几条结果（1-10，默认 5）。
     """
 
     def search(client, q: str, n: int):
@@ -132,8 +132,8 @@ def web_search(query: str, max_results: int = 5) -> ToolOutput:
 )
 def fetch_url(url: str, max_chars: int = DEFAULT_FETCH_MAX_CHARS) -> ToolOutput:
     """Args:
-        url: 完整 URL，必须以 http:// 或 https:// 开头。
-        max_chars: 最多返回多少字符（500-100000，默认 20000）；超出部分会截断。
+    url: 完整 URL，必须以 http:// 或 https:// 开头。
+    max_chars: 最多返回多少字符（500-100000，默认 20000）；超出部分会截断。
     """
     client = ddgs_client()
     if client is None:
