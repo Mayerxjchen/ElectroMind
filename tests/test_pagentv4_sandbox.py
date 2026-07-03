@@ -306,6 +306,27 @@ async def test_copy_from_host_missing_file_raises(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_copy_from_host_directory(tmp_path):
+    lib = tmp_path / "pkg"
+    lib.mkdir()
+    (lib / "a.py").write_text("a")
+    sub = lib / "sub"
+    sub.mkdir()
+    (sub / "b.py").write_text("b")
+    sandbox_dir = tmp_path / "box"
+
+    async with await Sandbox.create(
+        backend="local",
+        workdir=str(sandbox_dir),
+        host_root=str(tmp_path),
+    ) as box:
+        placed = await box.copy_from_host("pkg")
+        assert placed == "/home/agent/pkg"
+        assert (sandbox_dir / "pkg" / "a.py").read_text() == "a"
+        assert (sandbox_dir / "pkg" / "sub" / "b.py").read_text() == "b"
+
+
+@pytest.mark.asyncio
 async def test_list_host_files_depth_one(tmp_path):
     (tmp_path / "a.txt").write_text("aa")
     (tmp_path / "sub").mkdir()

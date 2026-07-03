@@ -1,159 +1,44 @@
 from __future__ import annotations
 
 import asyncio
+import os
 import sys
 from datetime import datetime
 
-from pagentv4 import (
-    DeepSeek,
-    ReasoningDelta,
-    Runner,
-    TextDelta,
-    ToolCallBegin,
-    ToolResult,
-)
+from prompt_toolkit import PromptSession
+from prompt_toolkit.formatted_text import ANSI
 
+from pagentv4 import DeepSeek, Runner
+
+from .clean import clean_pagent, format_clean_report
 from .config import ReplConfig, build_parser, config_from_args
+from .render import (
+    BLUE,
+    DIM,
+    RED,
+    RESET,
+    c,
+    format_banner,
+    print_command_header,
+    print_command_result,
+    render_turn,
+)
 
 EXTRA_SYSTEM = "你是 pagent 。回答简短直接。"
 
-# ANSI — basic 8-color, keep output readable not decorative
-CYAN = "\033[36m"
-DIM = "\033[90m"
-GREEN = "\033[32m"
-RED = "\033[31m"
-BLUE = "\033[34m"
-YELLOW = "\033[33m"
-RESET = "\033[0m"
-
-INNER = 54  # chars between │ borders
+_prompt_session: PromptSession | None = None
 
 
-def shorten(text: str, width: int) -> str:
-    if len(text) <= width:
-        return text
-    if width <= 1:
-        return text[:width]
-    head = max(1, (width - 1) // 2)
-    tail = max(1, width - head - 1)
-    return f"{text[:head]}…{text[-tail:]}"
+def prompt_session() -> PromptSession:
+    global _prompt_session
+    if _prompt_session is None:
+        _prompt_session = PromptSession()
+    return _prompt_session
 
 
-def c(text: str, code: str, *, on: bool) -> str:
-    return f"{code}{text}{RESET}" if on else text
-
-
-def row(key: str, value: str, *, color: bool, value_code: str = "") -> str:
-    label = f"{key:<8}"
-    slot = INNER - len(label)
-    text = shorten(value, slot)
-    if value_code:
-        text = c(text, value_code, on=color)
-    line = f"│ {c(label, DIM, on=color)}{text:<{slot}} │"
-    if color:
-        return c(line, DIM, on=True)
-    return f"│ {label}{text:<{slot}} │"
-
-
-def format_sandbox_line(runner: Runner) -> str:
-    thread = runner.thread
-    backend = thread.spec.backend
-    if backend == "ssh":
-        alias = thread.spec.ssh_host or "?"
-        conn = (runner.sandbox.spec.connection or {}) if runner.sandbox.spec else {}
-        user = conn.get("user", "")
-        host = conn.get("host", "")
-        target = f"{user}@{host}" if user and host else alias
-        return f"ssh · {alias} · {target}"
-    if backend in ("docker", "podman"):
-        image = thread.spec.image or "?"
-        return f"{backend} · {image} · {runner.sandbox.home}"
-    return f"local · {runner.sandbox.home}"
-
-
-def format_banner(runner: Runner, *, color: bool) -> str:
-    thread = runner.thread
-    status = "新建" if thread.created else "续聊"
-    status_color = YELLOW if thread.created else GREEN
-
-    model = thread.spec.model or "deepseek-v4-flash"
-    sandbox = format_sandbox_line(runner)
-    workdir = runner.sandbox.workdir
-    turns = sum(1 for m in runner.messages.data if m.role == "user")
-    skills = ", ".join(runner.skills.names()) or "—"
-
-    bar = "─" * (INNER - 6)
-    top = c(f"╭─ pagent {bar}╮", CYAN, on=color)
-    bottom = c(f"╰{'─' * (INNER + 2)}╯", DIM, on=color)
-
-    lines = [
-        top,
-        row("thread", f"{thread.id} · {status}", color=color, value_code=status_color),
-        row("model", model, color=color),
-        row("sandbox", sandbox, color=color),
-        row("workdir", workdir, color=color),
-        row("turns", f"{turns} prior · max {runner.agent.max_turns}", color=color),
-        row("skills", skills, color=color),
-        bottom,
-    ]
-
-    if thread.spec.backend == "ssh":
-        lines.insert(
-            5,
-            row("messages", str(thread.root / "messages.jsonl"), color=color),
-        )
-
-    if thread.ignored_overrides:
-        ignored = ", ".join(thread.ignored_overrides)
-        note = shorten(f"spec 已冻结，忽略：{ignored}", INNER)
-        lines.append(c(f"  {note}", DIM, on=color))
-
-    lines.append(c("  /exit  /pwd  /ls  /skills  /history", BLUE, on=color))
-    lines.append("")
-    return "\n".join(lines)
-
-
-async def render_turn(runner: Runner, user_input: str, *, color: bool) -> None:
-    in_reasoning = False
-    async for event in runner.run(user_input):
-        if isinstance(event, ReasoningDelta):
-            if not in_reasoning:
-                in_reasoning = True
-                if color:
-                    sys.stdout.write(DIM)
-                sys.stdout.write("reasoning: ")
-            sys.stdout.write(event.text)
-            sys.stdout.flush()
-
-        elif isinstance(event, ToolCallBegin):
-            if in_reasoning:
-                if color:
-                    sys.stdout.write(RESET)
-                print()
-            in_reasoning = False
-            line = f"tool → {event.name}({event.arguments})"
-            print(f"{CYAN}{line}{RESET}" if color else line)
-
-        elif isinstance(event, ToolResult):
-            body = event.content.replace("\n", " ")
-            if len(body) > 200:
-                body = body[:200] + "…"
-            mark = "ok" if event.ok else "fail"
-            palette = GREEN if event.ok else RED
-            print(f"  {palette}{mark}{RESET}: {body}" if color else f"  {mark}: {body}")
-
-        elif isinstance(event, TextDelta):
-            if in_reasoning:
-                if color:
-                    sys.stdout.write(RESET)
-                print()
-                in_reasoning = False
-            sys.stdout.write(event.text)
-            sys.stdout.flush()
-
-    if in_reasoning and color:
-        sys.stdout.write(RESET)
-    print()
+def read_prompt_line(*, color: bool) -> str:
+    message = ANSI(f"{BLUE}you> {RESET}") if color else "you> "
+    return prompt_session().prompt(message)
 
 
 async def open_runner(config: ReplConfig) -> Runner:
@@ -178,7 +63,62 @@ async def open_runner(config: ReplConfig) -> Runner:
     )
 
 
+def split_prefixed_command(line: str) -> tuple[str, str] | None:
+    if line.startswith("!!"):
+        return ("sandbox", line[2:].strip())
+    if line.startswith("!"):
+        return ("host", line[1:].strip())
+    return None
+
+
+async def run_sandbox_command(command: str, runner: Runner, *, color: bool) -> None:
+    print_command_header("sandbox", command, color=color)
+    result = await runner.sandbox.commands.run(command)
+    print_command_result(result.stdout, result.stderr, result.exit_code, color=color)
+
+
+async def run_host_command(command: str, *, color: bool) -> None:
+    print_command_header("host", command, color=color)
+    shell = os.environ.get("SHELL") or "/bin/zsh"
+    process = await asyncio.create_subprocess_exec(
+        shell,
+        "-lc",
+        command,
+        cwd=os.getcwd(),
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+    stdout_raw, stderr_raw = await process.communicate()
+    stdout = stdout_raw.decode("utf-8", errors="replace")
+    stderr = stderr_raw.decode("utf-8", errors="replace")
+    print_command_result(stdout, stderr, process.returncode or 0, color=color)
+
+
+async def handle_prefixed_command(
+    line: str,
+    runner: Runner,
+    *,
+    color: bool,
+) -> bool:
+    parsed = split_prefixed_command(line)
+    if parsed is None:
+        return False
+
+    target, command = parsed
+    if not command:
+        print(c("empty command", RED, on=color))
+        return True
+
+    if target == "sandbox":
+        await run_sandbox_command(command, runner, color=color)
+        return True
+
+    await run_host_command(command, color=color)
+    return True
+
+
 async def handle_command(cmd: str, runner: Runner, *, color: bool) -> bool:
+    del color
     if cmd in ("/exit", "/quit"):
         return True
     if cmd == "/pwd":
@@ -207,9 +147,8 @@ async def handle_command(cmd: str, runner: Runner, *, color: bool) -> bool:
 
 
 async def prompt(color: bool) -> str | None:
-    marker = f"{BLUE}you>{RESET} " if color else "you> "
     try:
-        return await asyncio.to_thread(input, marker)
+        return await asyncio.to_thread(read_prompt_line, color=color)
     except (EOFError, KeyboardInterrupt):
         return None
 
@@ -241,6 +180,7 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
     use_color = sys.stdout.isatty() if color is None else color
     runner: Runner | None = None
     exit_code = 0
+    had_user_turn = False
     try:
         runner = await open_runner(config)
         print(format_banner(runner, color=use_color), flush=True)
@@ -254,6 +194,8 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
             line = line.strip()
             if not line:
                 continue
+            if await handle_prefixed_command(line, runner, color=use_color):
+                continue
             if line.startswith("/"):
                 if await handle_command(line, runner, color=use_color):
                     say_goodbye(color=use_color)
@@ -261,6 +203,7 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
                 continue
             try:
                 await render_turn(runner, line, color=use_color)
+                had_user_turn = True
             except KeyboardInterrupt:
                 print()
                 say_goodbye(color=use_color)
@@ -286,6 +229,11 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
                     message = format_fatal_error(exc, phase="close")
                     print(c(message, RED, on=use_color), file=sys.stderr, flush=True)
                     exit_code = 1
+            keep = {runner.thread.id} if had_user_turn else set()
+            report = clean_pagent(keep_thread_ids=keep)
+            clean_message = format_clean_report(report)
+            if clean_message:
+                print(c(clean_message, DIM, on=use_color), flush=True)
     return exit_code
 
 

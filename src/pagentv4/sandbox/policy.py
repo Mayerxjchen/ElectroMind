@@ -16,7 +16,7 @@ import os
 import re
 
 # shell 命令里冒出来的绝对路径（启发式，不保证完整）
-ABS_PATH = re.compile(r"(?<![A-Za-z0-9_./~-])(/(?:[\w.@+-]+/)*[\w.@+-]*)")
+ABS_PATH = re.compile(r"(?<![A-Za-z0-9_./~-])(/(?:[\w.@+-]+(?:/[\w.@+-]+)*)?/?)")
 # .. 作为路径分量：cd ..、../x、..&& 等（原先只匹配 ../ 或行尾，漏了 cd .. &&）
 DOTDOT = re.compile(r"(?<![\w.])\.\.(?![\w.])")
 CD_TARGET = re.compile(
@@ -86,6 +86,10 @@ def cd_target_from_match(match: re.Match[str]) -> str:
     return match.group(2) or match.group(3) or match.group(4) or ""
 
 
+def is_url_slash(command: str, start: int) -> bool:
+    return start > 0 and command[start - 1] == ":" and command.startswith("//", start)
+
+
 def check_cd_targets(command: str, *, workdir: str) -> None:
     workdir_norm = os.path.normpath(workdir)
     for match in CD_TARGET.finditer(command):
@@ -134,6 +138,8 @@ def check_command(command: str, *, workdir: str, policy: str) -> None:
 
     workdir_norm = os.path.normpath(workdir)
     for match in ABS_PATH.finditer(command):
+        if is_url_slash(command, match.start()):
+            continue
         path = os.path.normpath(match.group())
         if under_root(path, workdir_norm):
             continue

@@ -18,6 +18,8 @@ from __future__ import annotations
 
 import os
 import posixpath
+import tarfile
+import tempfile
 from typing import TYPE_CHECKING
 
 from .base import Backend, CommandResult, DirEntry, SandboxLimits, SandboxSpec
@@ -314,22 +316,58 @@ class Sandbox:
         return os.path.join(self.host_root, self.ARTIFACTS_DIRNAME)
 
     async def copy_from_host(self, host_path: str, dest: str = ".") -> str:
-        """把宿主机文件复制进 sandbox。返回 sandbox 内的虚拟路径。
+        """把宿主机文件或目录复制进 sandbox。返回 sandbox 内的虚拟路径。
 
         - `host_path`: 相对 host_root 或落在 host_root 之下的绝对路径
         - `dest`: sandbox 内的目标目录（虚拟路径），默认 home
         """
         source = self.resolve_host_path(host_path, allow_missing=False)
-        if not os.path.isfile(source):
-            raise FileNotFoundError(f"host file not found: {source}")
-        with open(source, "rb") as fp:
-            payload = fp.read()
+        if not os.path.exists(source):
+            raise FileNotFoundError(f"host path not found: {source}")
+
         target_dir = self.safe_virtual_path(dest)
-        virtual_target = posixpath.join(target_dir, os.path.basename(source))
-        backend_path = self.resolve(virtual_target)
-        check_backend_path(backend_path, workdir=self.workdir)
-        await self.backend.write_file(backend_path, payload)
-        return virtual_target
+        name = os.path.basename(source.rstrip(os.sep)) or source.rstrip(os.sep)
+        virtual_target = posixpath.join(target_dir, name)
+
+        if os.path.isfile(source):
+            backend_path = self.resolve(virtual_target)
+            check_backend_path(backend_path, workdir=self.workdir)
+            with open(source, "rb") as fp:
+                await self.backend.write_file(backend_path, fp.read())
+            return virtual_target
+
+        if os.path.isdir(source):
+            await self._copy_host_dir_archived(source, name)
+            return virtual_target
+
+        raise FileNotFoundError(f"host path is not a file or directory: {source}")
+
+    async def _copy_host_dir_archived(self, host_dir: str, arcname: str) -> None:
+        """Pack host directory as tar.gz, then extract into workspace."""
+        with tempfile.NamedTemporaryFile(suffix=".tar.gz") as tmp:
+            with tarfile.open(tmp.name, "w:gz") as tar:
+                tar.add(host_dir, arcname=arcname)
+            with tarfile.open(tmp.name, "r:gz") as tar:
+                await self._extract_tar_to_workspace(tar)
+
+    async def _extract_tar_to_workspace(self, tar: tarfile.TarFile) -> None:
+        workdir = os.path.abspath(self.workdir)
+        for member in tar.getmembers():
+            if member.isdir():
+                continue
+            if not member.isfile():
+                continue
+            relative = member.name.replace("/", os.sep)
+            if relative.startswith(os.sep) or ".." in relative.split(os.sep):
+                raise ValueError(f"unsafe tar member: {member.name}")
+            target = os.path.normpath(os.path.join(workdir, relative))
+            if target != workdir and not target.startswith(workdir + os.sep):
+                raise ValueError(f"unsafe tar member: {member.name}")
+            payload = tar.extractfile(member)
+            if payload is None:
+                continue
+            check_backend_path(target, workdir=self.workdir)
+            await self.backend.write_file(target, payload.read())
 
     async def copy_to_host(self, source: str, host_dir: str | None = None) -> str:
         """把 sandbox 里的文件复制到宿主机目录。返回宿主机实际路径。

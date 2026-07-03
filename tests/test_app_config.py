@@ -8,6 +8,16 @@ from app.config import (
 )
 
 
+def test_thread_overrides_includes_container_ttl():
+    config = ReplConfig(backend="docker", image="demo:latest", container_ttl=300)
+    assert config.thread_overrides()["container_ttl_seconds"] == 300
+
+
+def test_thread_overrides_container_ttl_zero_means_infinity():
+    config = ReplConfig(backend="docker", image="demo:latest", container_ttl=0)
+    assert config.thread_overrides()["container_ttl_seconds"] is None
+
+
 def test_thread_overrides_includes_command_policy():
     config = ReplConfig(backend="local", command_policy="workdir")
     assert config.thread_overrides()["command_policy"] == "workdir"
@@ -52,7 +62,9 @@ def test_config_from_file(tmp_path, monkeypatch):
     config = config_from_args(parser.parse_args([]))
     assert config.thread_id is None
     assert config.resolved_model() == "deepseek-v4-flash"
-    assert config.backend == "ssh"
+    assert config.backend == "docker"
+    assert config.image == "pagent-podman-demo:latest"
+    assert config.container_ttl == 300
     assert config.ssh_host == "machine_root"
     assert config.command_policy == "workdir"
     assert config.resolved_max_turns() == 12

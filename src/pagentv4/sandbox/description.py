@@ -19,7 +19,7 @@ COMPUTER_DESCRIPTION_TEMPLATE = """你有一台{computer_name}可以使用。
 - str_replace：把文件里的一段文本替换成新文本
 - list_dir：查看当前工作目录里的文件
 - list_host_files：查看用户目录里的文件（用于定位用户提到的文件）
-- copy_from_host：从用户目录把文件复制到工作目录
+- copy_from_host：从用户目录把文件或目录复制到工作目录（目录会先 tar.gz 打包再解压）
 - copy_to_host：把工作目录里的文件交付给用户；默认放到用户目录下的 `{artifacts_dir}/` 输出目录
 
 工作目录里的文件是持久的，随时可以查看和修改。

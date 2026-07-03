@@ -8,8 +8,16 @@ model = "deepseek-v4-flash"
 api_key = ""  # 留空则用 DEEPSEEK_API_KEY 环境变量
 # base_url = ""  # 可选，覆盖 DeepSeek 默认 endpoint
 
+# podman 示例（需安装 podman CLI）：
+# [sandbox]
+# backend = "podman"
+# image = "localhost/pagent-podman-demo"
+# command_policy = "workdir"
+
 [sandbox]
-backend = "ssh"
+backend = "docker"
+image = "pagent-podman-demo:latest"
+container_ttl = 300  # 秒；容器主进程 sleep <ttl>，到期 --rm 自清理；0 或不设则用 sleep infinity
 command_policy = "workdir"  # open | workdir — workdir 拦截 run_command 里的越界路径
 
 [ssh]

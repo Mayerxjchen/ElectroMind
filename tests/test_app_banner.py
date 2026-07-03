@@ -1,4 +1,19 @@
-from app.repl import format_banner
+from app.render import box_line_width, display_width, format_banner, row
+
+
+def test_row_aligns_with_cjk_status():
+    line = row("thread", "thread-demo · 新建", color=False)
+    assert line.startswith("│")
+    assert line.endswith("│")
+    assert display_width(line) == box_line_width()
+
+
+def test_box_top_and_row_share_width():
+    from app.render import box_top
+
+    top = box_top(color=False)
+    line = row("model", "deepseek-v4-flash", color=False)
+    assert display_width(top) == display_width(line)
 
 
 def test_banner_contains_key_fields():

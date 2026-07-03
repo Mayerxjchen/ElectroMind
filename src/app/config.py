@@ -19,6 +19,7 @@ class ReplConfig:
     max_turns: int | None = None
     backend: str | None = None
     image: str | None = None
+    container_ttl: int | None = None
     command_policy: str | None = None
     ssh_host: str | None = None
     ssh_config: str | None = None
@@ -48,6 +49,8 @@ class ReplConfig:
             kwargs["backend"] = self.backend
         if self.image is not None and self.image != "":
             kwargs["image"] = self.image
+        if self.container_ttl is not None:
+            kwargs["container_ttl_seconds"] = self.container_ttl or None
         if self.command_policy is not None:
             kwargs["command_policy"] = self.command_policy
         if self.ssh_config is not None:
@@ -102,6 +105,10 @@ def parse_repl_config(data: dict) -> ReplConfig:
     if command_policy == "":
         command_policy = None
 
+    container_ttl = sandbox.get("container_ttl")
+    if container_ttl is not None and not isinstance(container_ttl, int):
+        raise ValueError("sandbox.container_ttl must be an integer")
+
     roots = skills.get("roots")
     skill_roots: tuple[str, ...] | None
     if roots is None:
@@ -122,6 +129,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
         max_turns=max_turns,
         backend=sandbox.get("backend"),
         image=image,
+        container_ttl=container_ttl,
         command_policy=command_policy,
         ssh_host=ssh.get("host"),
         ssh_config=ssh.get("config_path"),

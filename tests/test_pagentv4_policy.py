@@ -40,7 +40,9 @@ def test_check_command_workdir_blocks_parent():
 
 def test_check_command_workdir_blocks_cd_chain():
     with pytest.raises(PermissionError, match="parent directory"):
-        check_command("cd .. && cd .. && ls -la", workdir="/home/dev/agent", policy="workdir")
+        check_command(
+            "cd .. && cd .. && ls -la", workdir="/home/dev/agent", policy="workdir"
+        )
 
 
 def test_check_command_workdir_blocks_cd_absolute_escape():
@@ -73,6 +75,23 @@ def test_check_command_workdir_allows_workspace_paths():
 def test_check_command_workdir_allows_system_paths():
     check_command("python3 --version", workdir="/tmp/ws", policy="workdir")
     check_command("/usr/bin/git status", workdir="/tmp/ws", policy="workdir")
+
+
+def test_check_command_workdir_allows_urls():
+    check_command(
+        "curl -s -o /dev/null --connect-timeout 5 https://www.baidu.com",
+        workdir="/tmp/ws",
+        policy="workdir",
+    )
+
+
+def test_check_command_workdir_still_blocks_real_path_after_url():
+    with pytest.raises(PermissionError, match="outside workspace"):
+        check_command(
+            "curl https://www.baidu.com && cat /home/dev/.bashrc",
+            workdir="/home/dev/agent",
+            policy="workdir",
+        )
 
 
 def test_check_backend_path():
@@ -135,6 +154,22 @@ async def test_sandbox_workdir_policy_allows_mapped_home(tmp_path):
         result = await box.commands.run("cat /home/agent/target.txt")
         assert result.ok
         assert result.stdout.strip() == "payload"
+
+
+@pytest.mark.asyncio
+async def test_sandbox_workdir_policy_allows_curl_url(tmp_path):
+    from pagentv4 import Sandbox
+
+    async with await Sandbox.create(
+        backend="local",
+        workdir=str(tmp_path),
+        command_policy="workdir",
+    ) as box:
+        result = await box.commands.run(
+            "printf '%s\\n' https://www.baidu.com >/dev/null"
+        )
+        assert result.ok
+        assert result.exit_code == 0
 
 
 @pytest.mark.asyncio

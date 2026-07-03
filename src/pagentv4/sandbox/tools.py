@@ -235,20 +235,20 @@ def make_list_dir(sandbox: Sandbox) -> FunctionTool:
 def make_copy_from_host(sandbox: Sandbox) -> FunctionTool:
     async def copy_from_host(host_path: str, dest: str = ".") -> str:
         placed = await sandbox.copy_from_host(host_path, dest=dest)
-        return f"copied user file into workspace at {placed}"
+        return f"copied into workspace at {placed}"
 
     return FunctionTool(
         name="copy_from_host",
         description=(
-            "把用户目录里的文件复制到工作目录，方便进一步处理。"
-            "如果不知道文件在哪里，先用 list_host_files 找。"
+            "把用户目录里的文件或目录复制到工作目录，方便进一步处理。"
+            "目录会先打包压缩再解压到 workspace；不知道路径在哪时先用 list_host_files 找。"
         ),
         parameters={
             "type": "object",
             "properties": {
                 "host_path": {
                     "type": "string",
-                    "description": "用户目录里的路径（相对用户目录）。",
+                    "description": "用户目录里的文件或目录路径（相对用户目录）。",
                 },
                 "dest": {
                     "type": "string",

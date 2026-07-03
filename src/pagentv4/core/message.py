@@ -396,8 +396,11 @@ class Messages(BaseModel):
                 api_msg: dict = {"role": "assistant"}
                 if text_parts:
                     api_msg["content"] = "".join(text_parts)
-                else:
+                elif tool_calls:
                     api_msg["content"] = None
+                else:
+                    # DeepSeek rejects content=null without tool_calls (reasoning-only turn).
+                    api_msg["content"] = ""
                 if tool_calls:
                     api_msg["tool_calls"] = tool_calls
                 if reasoning_parts:
