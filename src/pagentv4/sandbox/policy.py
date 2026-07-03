@@ -24,7 +24,8 @@ CD_TARGET = re.compile(
     re.IGNORECASE,
 )
 
-# agent 跑工具链时通常需要读的系统目录
+# agent 跑工具链时通常需要读的系统目录（不含 /tmp/：workdir 常落在 /tmp 下，
+# 整段放行会漏掉 workspace 外的 /tmp/... 路径）
 SYSTEM_PREFIXES = (
     "/usr/",
     "/bin/",
@@ -35,7 +36,6 @@ SYSTEM_PREFIXES = (
     "/etc/",
     "/var/run/",
     "/var/tmp/",
-    "/tmp/",
     "/dev/",
     "/proc/",
     "/sys/",
@@ -50,7 +50,6 @@ SYSTEM_EXACT = frozenset(
         "/lib64",
         "/opt",
         "/etc",
-        "/tmp",
         "/dev/null",
         "/dev/stdin",
         "/dev/stdout",
