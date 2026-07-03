@@ -1,5 +1,6 @@
 import inspect
 import json
+import types
 from dataclasses import dataclass
 from functools import reduce
 from typing import Any, Union, get_args, get_origin, get_type_hints
@@ -95,7 +96,8 @@ class FunctionTool:
 
 def unwrap_optional(type_hint):
     origin = get_origin(type_hint)
-    if origin is not Union:
+    # 同时认 typing.Union 和 PEP 604 的 `int | None`（types.UnionType）
+    if origin is not Union and origin is not types.UnionType:
         return False, type_hint
 
     args = get_args(type_hint)
