@@ -1,0 +1,51 @@
+# pagent browser 镜像 —— 在默认 agent 镜像基础上加 headless Chromium。
+#
+# 预装：curl、jq、git、uv、node/npm、Chromium、Noto CJK 字体。
+# 渲染 HTML、导出 PDF 时用；日常开发继续用 Dockerfile。
+#
+# 用法：
+#     docker build -t pagent:browser -f src/app/Dockerfile.browser src/app
+#     # pagent.toml: image = "pagent:browser"
+#
+# 容器内 headless 示例：
+#     chromium-browser --headless --disable-gpu --no-sandbox --disable-dev-shm-usage \
+#         --screenshot=/home/agent/out.png https://example.com
+
+FROM alpine:3.21
+
+ARG PYTHON_VERSION=3.12
+
+RUN apk add --no-cache \
+        bash \
+        ca-certificates \
+        chromium \
+        curl \
+        font-noto-cjk \
+        git \
+        jq \
+        nodejs \
+        npm \
+        tar \
+        xz
+
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh \
+    && mv /root/.local/bin/uv /usr/local/bin/uv \
+    && mv /root/.local/bin/uvx /usr/local/bin/uvx
+
+ENV UV_PYTHON_PREFERENCE=only-managed
+RUN uv python install "$PYTHON_VERSION" \
+    && ln -sf "$(uv python find "$PYTHON_VERSION")" /usr/local/bin/python3 \
+    && ln -sf python3 /usr/local/bin/python \
+    && uv cache clean \
+    && rm -rf /root/.cache
+
+# Alpine 的 chromium 包；Puppeteer/Playwright 可指向这个二进制。
+ENV CHROME_BIN=/usr/bin/chromium-browser \
+    CHROMIUM_PATH=/usr/bin/chromium-browser \
+    PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser \
+    CHROMIUM_FLAGS="--headless --disable-gpu --no-sandbox --disable-dev-shm-usage"
+
+RUN mkdir -p /home/agent
+WORKDIR /home/agent
+
+CMD ["sleep", "infinity"]

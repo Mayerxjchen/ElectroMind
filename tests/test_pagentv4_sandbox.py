@@ -767,8 +767,10 @@ def test_ssh_backend_describe_formats_connection():
 
 @pytest.mark.asyncio
 async def test_build_computer_description_appends_uv_when_available():
-    async def probe(_: str) -> dict:
-        return {"ok": True, "exit_code": 0}
+    async def probe(command: str) -> dict:
+        if "uv" in command:
+            return {"ok": True, "exit_code": 0}
+        return {"ok": False, "exit_code": 127}
 
     text = await build_computer_description(
         computer_name="Test 节点",
@@ -783,6 +785,8 @@ async def test_build_computer_description_appends_uv_when_available():
     assert "Linux test 6.0" in text
     assert "额外说明：foobar" in text
     assert "uv venv .venv" in text
+    assert "npm init" not in text
+    assert "chromium-browser" not in text
     assert "run_command" in text
     assert "copy_from_host" in text
     assert "copy_to_host" in text
@@ -806,6 +810,69 @@ async def test_build_computer_description_skips_uv_when_missing():
         extra="",
         run_probe=probe,
     )
+    assert "uv venv" not in text
+    assert "npm init" not in text
+
+
+@pytest.mark.asyncio
+async def test_build_computer_description_appends_node_when_available():
+    async def probe(command: str) -> dict:
+        if "node" in command:
+            return {"ok": True, "exit_code": 0}
+        return {"ok": False, "exit_code": 127}
+
+    text = await build_computer_description(
+        computer_name="Test 节点",
+        os_info="Linux test 6.0",
+        home="/home/agent",
+        host_root="/tmp/host",
+        artifacts_dir="artifacts",
+        extra="",
+        run_probe=probe,
+    )
+    assert "npm init -y" in text
+    assert "node_modules" in text
+    assert "uv venv" not in text
+
+
+@pytest.mark.asyncio
+async def test_build_computer_description_appends_uv_and_node_when_both_available():
+    async def probe(_: str) -> dict:
+        return {"ok": True, "exit_code": 0}
+
+    text = await build_computer_description(
+        computer_name="Test 节点",
+        os_info="Linux",
+        home="/home/agent",
+        host_root="/tmp/host",
+        artifacts_dir="artifacts",
+        extra="",
+        run_probe=probe,
+    )
+    assert "uv venv .venv" in text
+    assert "npm init -y" in text
+    assert "chromium-browser" in text
+
+
+@pytest.mark.asyncio
+async def test_build_computer_description_appends_browser_when_available():
+    async def probe(command: str) -> dict:
+        if "chromium-browser" in command:
+            return {"ok": True, "exit_code": 0}
+        return {"ok": False, "exit_code": 127}
+
+    text = await build_computer_description(
+        computer_name="Test 节点",
+        os_info="Linux",
+        home="/home/agent",
+        host_root="/tmp/host",
+        artifacts_dir="artifacts",
+        extra="",
+        run_probe=probe,
+    )
+    assert "CHROMIUM_FLAGS" in text
+    assert "Noto Sans CJK" in text
+    assert "--no-sandbox" in text
     assert "uv venv" not in text
 
 

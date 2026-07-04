@@ -63,7 +63,7 @@ def test_config_from_file(tmp_path, monkeypatch):
     assert config.thread_id is None
     assert config.resolved_model() == "deepseek-v4-flash"
     assert config.backend == "docker"
-    assert config.image == "pagent-podman-demo:latest"
+    assert config.image == "pagent:latest"
     assert config.container_ttl == 300
     assert config.ssh_host == "machine_root"
     assert config.command_policy == "workdir"

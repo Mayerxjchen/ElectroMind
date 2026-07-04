@@ -9,19 +9,37 @@ from .conversation import (
     SqliteConversationStore,
     default_conversations_root,
 )
+from .inbound import (
+    CancelRun,
+    CheckpointPolicy,
+    DrainResult,
+    InboundEvent,
+    InboundMailbox,
+    RunCancelled,
+    Steer,
+    fold_inbound,
+)
 from .runner import ArunReturnType, EventHandler, Runner
 from .thread import Thread, ThreadSpec, default_threads_root, validate_thread_id
 
 __all__ = [
     "ArunReturnType",
+    "CancelRun",
+    "CheckpointPolicy",
     "ConversationStore",
+    "DrainResult",
     "EventHandler",
+    "InboundEvent",
+    "InboundMailbox",
     "JsonlConversationStore",
+    "RunCancelled",
     "Runner",
     "SqliteConversationStore",
+    "Steer",
     "Thread",
     "ThreadSpec",
     "default_conversations_root",
     "default_threads_root",
+    "fold_inbound",
     "validate_thread_id",
 ]

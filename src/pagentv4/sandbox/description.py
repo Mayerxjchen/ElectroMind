@@ -35,6 +35,23 @@ UV_ENVIRONMENT_EXTRA = """Python 依赖：
 
 """
 
+NODE_ENVIRONMENT_EXTRA = """Node.js 依赖：
+- 电脑上已装 node 和 npm。做 Node 项目时在工作目录初始化（如 npm init -y），依赖装到本地 node_modules，别往全局乱装。
+- 推荐流程：npm init -y → npm install <包名> → node <脚本> 或 npm run <script>。
+- 需要时可用 `node --version`、`npm --help` 确认环境。
+
+"""
+
+BROWSER_ENVIRONMENT_EXTRA = """Headless 浏览器：
+- 电脑上已装 Chromium（chromium-browser）。截图、渲染 HTML、导出 PDF 时用它，别指望 GUI。
+- 已预装 Noto Sans CJK 中文字体；HTML 里别只写「微软雅黑 / PingFang」等 Windows/macOS 字体，应加 `Noto Sans CJK SC` 或通用 `sans-serif`。
+- 容器里必须带：`--headless --disable-gpu --no-sandbox --disable-dev-shm-usage`（$CHROMIUM_FLAGS 已预设）。
+- 示例：chromium-browser $CHROMIUM_FLAGS --screenshot=out.png https://example.com
+- 本地 HTML：chromium-browser $CHROMIUM_FLAGS --print-to-pdf=out.pdf file:///home/agent/page.html
+- Puppeteer/Playwright 可设 PUPPETEER_EXECUTABLE_PATH=$CHROME_BIN 指向系统 Chromium。
+
+"""
+
 
 ProbeRunner = Callable[[str], Awaitable[dict]]
 
@@ -44,6 +61,29 @@ async def uv_environment_extra(run_probe: ProbeRunner) -> str:
     if result.get("ok") and result.get("exit_code") == 0:
         return UV_ENVIRONMENT_EXTRA
     return ""
+
+
+async def node_environment_extra(run_probe: ProbeRunner) -> str:
+    result = await run_probe("command -v node >/dev/null 2>&1 && node --version")
+    if result.get("ok") and result.get("exit_code") == 0:
+        return NODE_ENVIRONMENT_EXTRA
+    return ""
+
+
+async def browser_environment_extra(run_probe: ProbeRunner) -> str:
+    result = await run_probe(
+        "command -v chromium-browser >/dev/null 2>&1 && chromium-browser --version"
+    )
+    if result.get("ok") and result.get("exit_code") == 0:
+        return BROWSER_ENVIRONMENT_EXTRA
+    return ""
+
+
+async def environment_extra(run_probe: ProbeRunner) -> str:
+    uv_extra = await uv_environment_extra(run_probe)
+    node_extra = await node_environment_extra(run_probe)
+    browser_extra = await browser_environment_extra(run_probe)
+    return uv_extra + node_extra + browser_extra
 
 
 async def build_computer_description(
@@ -56,12 +96,12 @@ async def build_computer_description(
     extra: str,
     run_probe: ProbeRunner,
 ) -> str:
-    uv_extra = await uv_environment_extra(run_probe)
+    tool_extra = await environment_extra(run_probe)
     return COMPUTER_DESCRIPTION_TEMPLATE.format(
         computer_name=computer_name,
         os_info=os_info,
         home=home,
         host_root=host_root,
         artifacts_dir=artifacts_dir,
-        extra=extra + uv_extra,
+        extra=extra + tool_extra,
     )
