@@ -126,9 +126,7 @@ class Runner:
     def _apply_inbound_drain(
         self, outbound_event: object, *, turn_id: int, turn: int
     ) -> None:
-        drain = self.inbound.drain_if_policy(
-            outbound_event, self.checkpoint_policy
-        )
+        drain = self.inbound.drain_if_policy(outbound_event, self.checkpoint_policy)
         if drain is None:
             return
         for text in drain.steers:
