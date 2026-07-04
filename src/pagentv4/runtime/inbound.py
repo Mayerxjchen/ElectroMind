@@ -89,6 +89,10 @@ class CheckpointPolicy:
 class RunCancelled(Exception):
     """检查点消费到 :class:`CancelRun` 时由 Runner 抛出。"""
 
+    def __init__(self, turn: int) -> None:
+        self.turn = turn
+        super().__init__(turn)
+
 
 @dataclass(frozen=True, slots=True)
 class DrainResult:

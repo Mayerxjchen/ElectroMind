@@ -3,7 +3,9 @@ from typing import Literal, TypeAlias
 
 from .turn_result import TurnResult
 
-StopReason = Literal["continuing", "no_tool_calls", "empty_response", "max_turns"]
+StopReason = Literal[
+    "continuing", "no_tool_calls", "empty_response", "max_turns", "cancelled"
+]
 
 
 @dataclass(frozen=True, slots=True)

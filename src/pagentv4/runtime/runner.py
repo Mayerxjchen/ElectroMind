@@ -27,6 +27,7 @@ from ..skills import (
     make_use_skill_tool,
 )
 from .conversation import JsonlConversationStore
+from .inbound import CheckpointPolicy, InboundMailbox, RunCancelled
 from .thread import Thread
 
 ArunReturnType = Literal["event", "text", "acp", "message"]
@@ -103,6 +104,8 @@ class Runner:
         agent: Agent,
         skills: SkillRegistry,
         conversation_id: str,
+        inbound: InboundMailbox | None = None,
+        checkpoint_policy: CheckpointPolicy | None = None,
     ):
         self.thread = thread
         self.sandbox = sandbox
@@ -111,6 +114,37 @@ class Runner:
         self.agent = agent
         self.skills = skills
         self.conversation_id = conversation_id
+        self.inbound = inbound or InboundMailbox()
+        self.checkpoint_policy = checkpoint_policy or CheckpointPolicy()
+
+    def steer(self, text: str) -> None:
+        self.inbound.steer(text)
+
+    def cancel_run(self) -> None:
+        self.inbound.cancel()
+
+    def _apply_inbound_drain(
+        self, outbound_event: object, *, turn_id: int, turn: int
+    ) -> None:
+        drain = self.inbound.drain_if_policy(
+            outbound_event, self.checkpoint_policy
+        )
+        if drain is None:
+            return
+        for text in drain.steers:
+            append_message(self.messages, Message.user(text), turn_id=turn_id)
+        if drain.cancelled:
+            raise RunCancelled(turn)
+
+    async def _emit(
+        self,
+        event,
+        *,
+        turn_id: int,
+        turn: int,
+    ) -> AsyncIterator:
+        yield event
+        self._apply_inbound_drain(event, turn_id=turn_id, turn=turn)
 
     async def close(self) -> None:
         await self.sandbox.close()
@@ -193,39 +227,74 @@ class Runner:
     async def _events(
         self, user_input: str, turn_id: int, **run_kwargs
     ) -> AsyncIterator:
-        yield RunBegin(user_input)
+        try:
+            async for event in self._event_loop(user_input, turn_id, **run_kwargs):
+                yield event
+        except RunCancelled as exc:
+            yield TurnEnd(exc.turn, stopped=True, stop_reason="cancelled")
+            self.flush_conversation()
+
+    async def _event_loop(
+        self, user_input: str, turn_id: int, **run_kwargs
+    ) -> AsyncIterator:
+        async for event in self._emit(RunBegin(user_input), turn_id=turn_id, turn=0):
+            yield event
 
         for turn in range(self.agent.max_turns):
-            yield TurnBegin(turn)
+            async for event in self._emit(TurnBegin(turn), turn_id=turn_id, turn=turn):
+                yield event
             turn_start = len(self.messages.data)
 
             async for event in self.stream_agent_messages(turn_id, **run_kwargs):
-                yield event
+                async for out in self._emit(event, turn_id=turn_id, turn=turn):
+                    yield out
 
             result = TurnResult.from_slice(self.messages.data, turn_start)
-            yield result
+            async for event in self._emit(result, turn_id=turn_id, turn=turn):
+                yield event
 
             if turn_start >= len(self.messages.data):
-                yield TurnEnd(turn, stopped=True, stop_reason="empty_response")
+                async for event in self._emit(
+                    TurnEnd(turn, stopped=True, stop_reason="empty_response"),
+                    turn_id=turn_id,
+                    turn=turn,
+                ):
+                    yield event
                 self.flush_conversation()
                 return
 
             if not result.has_tool_calls:
-                yield TurnEnd(turn, stopped=True, stop_reason="no_tool_calls")
+                async for event in self._emit(
+                    TurnEnd(turn, stopped=True, stop_reason="no_tool_calls"),
+                    turn_id=turn_id,
+                    turn=turn,
+                ):
+                    yield event
                 self.flush_conversation()
                 return
 
             async for event in self.emit_tool_events(
                 result.tool_calls, self.agent.tool_map, turn_id
             ):
-                yield event
+                async for out in self._emit(event, turn_id=turn_id, turn=turn):
+                    yield out
 
             if turn + 1 >= self.agent.max_turns:
-                yield TurnEnd(turn, stopped=True, stop_reason="max_turns")
+                async for event in self._emit(
+                    TurnEnd(turn, stopped=True, stop_reason="max_turns"),
+                    turn_id=turn_id,
+                    turn=turn,
+                ):
+                    yield event
                 self.flush_conversation()
                 return
 
-            yield TurnEnd(turn, stopped=False, stop_reason="continuing")
+            async for event in self._emit(
+                TurnEnd(turn, stopped=False, stop_reason="continuing"),
+                turn_id=turn_id,
+                turn=turn,
+            ):
+                yield event
             self.flush_conversation()
 
     @classmethod
