@@ -9,7 +9,8 @@ from dataclasses import dataclass, field
 
 from pagentv4 import ReasoningDelta, Runner, TextDelta, ToolCallBegin, ToolResult
 
-# ANSI — basic 8-color, keep output readable not decorative
+from .terminal import emit
+
 CYAN = "\033[36m"
 DIM = "\033[90m"
 GREEN = "\033[32m"
@@ -268,7 +269,7 @@ def print_command_header(target: str, command: str, *, color: bool) -> None:
     palette = CYAN if target == "sandbox" else YELLOW
     label = "sandbox" if target == "sandbox" else "host"
     line = f"{label}$ {command}"
-    print(c(line, palette, on=color))
+    emit(c(line, palette, on=color))
 
 
 def print_command_result(
@@ -279,13 +280,13 @@ def print_command_result(
 
     if has_stdout:
         end = "" if stdout.endswith("\n") else "\n"
-        print(stdout, end=end)
+        emit(stdout, end=end)
     if has_stderr:
         text = c(stderr, RED, on=color) if color else stderr
         end = "" if stderr.endswith("\n") else "\n"
-        print(text, end=end, file=sys.stderr)
+        emit(text, end=end, file=sys.stderr)
     if exit_code != 0 or (not has_stdout and not has_stderr):
-        print(c(f"[exit {exit_code}]", DIM, on=color))
+        emit(c(f"[exit {exit_code}]", DIM, on=color))
 
 
 @dataclass
@@ -312,19 +313,15 @@ class RenderState:
         prefix = "reasoning: "
         body = "".join(self.reasoning_parts)
         if self.color:
-            sys.stdout.write(f"{DIM}{prefix}{body}{RESET}")
+            emit(f"{DIM}{prefix}{body}{RESET}")
         else:
-            sys.stdout.write(f"{prefix}{body}")
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+            emit(f"{prefix}{body}")
         self.reasoning_parts.clear()
 
     def flush_text(self) -> None:
         if not self.text_parts:
             return
-        sys.stdout.write("".join(self.text_parts))
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+        emit("".join(self.text_parts))
         self.text_parts.clear()
 
     def flush_buffers(self) -> None:
@@ -341,7 +338,7 @@ class RenderState:
         if self.reasoning_parts:
             self.flush_reasoning()
         if self.previous_kind == "tool_result" and not self.text_parts:
-            print()
+            emit()
         self.text_parts.append(text)
         self.previous_kind = "text"
 
@@ -362,7 +359,7 @@ class RenderState:
                 call_preview=line,
             )
         )
-        print(f"{CYAN}{line}{RESET}" if self.color else line)
+        emit(f"{CYAN}{line}{RESET}" if self.color else line)
         self.previous_kind = "tool_call"
 
     def print_tool_result(self, tool_call_id: str, content: str, *, ok: bool) -> None:
@@ -385,7 +382,7 @@ class RenderState:
             line = f"{palette}{head}{RESET}"
             if tail:
                 line += f": {tail}"
-        print(f"  {line}")
+        emit(f"  {line}")
         self.previous_kind = "tool_result"
 
     def finish(self) -> None:
@@ -395,7 +392,7 @@ class RenderState:
         if self.text_parts:
             self.flush_text()
             return
-        print()
+        emit()
 
 
 async def render_turn(

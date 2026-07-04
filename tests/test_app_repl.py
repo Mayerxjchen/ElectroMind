@@ -83,7 +83,7 @@ def test_read_prompt_line_uses_prompt_toolkit(monkeypatch):
             captured["message"] = message
             return "你好"
 
-    monkeypatch.setattr("app.repl.prompt_session", lambda: FakeSession())
+    monkeypatch.setattr("app.terminal.prompt_session", lambda: FakeSession())
 
     assert read_prompt_line(color=True) == "你好"
     assert captured["message"] is not None
@@ -97,7 +97,7 @@ def test_read_prompt_line_plain_prompt_when_no_color(monkeypatch):
             captured["message"] = message
             return "ok"
 
-    monkeypatch.setattr("app.repl.prompt_session", lambda: FakeSession())
+    monkeypatch.setattr("app.terminal.prompt_session", lambda: FakeSession())
 
     assert read_prompt_line(color=False) == "ok"
     assert captured["message"] == "you> "

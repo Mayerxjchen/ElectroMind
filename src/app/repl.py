@@ -5,7 +5,6 @@ import os
 import sys
 from datetime import datetime
 
-from prompt_toolkit import PromptSession
 from prompt_toolkit.formatted_text import ANSI
 
 from pagentv4 import DeepSeek, Runner
@@ -24,22 +23,14 @@ from .render import (
     print_command_result,
     render_turn,
 )
+from .terminal import emit, emit_prompt
 
 EXTRA_SYSTEM = "你是 pagent 。回答简短直接。"
-
-_prompt_session: PromptSession | None = None
-
-
-def prompt_session() -> PromptSession:
-    global _prompt_session
-    if _prompt_session is None:
-        _prompt_session = PromptSession()
-    return _prompt_session
 
 
 def read_prompt_line(*, color: bool) -> str:
     message = ANSI(f"{BLUE}you> {RESET}") if color else "you> "
-    return prompt_session().prompt(message)
+    return emit_prompt(message)
 
 
 async def open_runner(config: ReplConfig) -> Runner:
@@ -108,7 +99,7 @@ async def handle_prefixed_command(
 
     target, command = parsed
     if not command:
-        print(c("empty command", RED, on=color))
+        emit(c("empty command", RED, on=color))
         return True
 
     if target == "sandbox":
@@ -124,27 +115,27 @@ async def handle_command(cmd: str, runner: Runner, *, color: bool) -> bool:
     if cmd in ("/exit", "/quit"):
         return True
     if cmd == "/pwd":
-        print(runner.sandbox.workdir)
+        emit(runner.sandbox.workdir)
         return False
     if cmd == "/ls":
         entries = await runner.sandbox.files.list(runner.sandbox.home)
         for entry in entries:
             tag = "d" if entry.is_dir else "f"
-            print(f"  {tag} {entry.name}")
+            emit(f"  {tag} {entry.name}")
         return False
     if cmd == "/skills":
         if not runner.skills.names():
-            print("(no skills loaded)")
+            emit("(no skills loaded)")
             return False
         for skill in runner.skills.list():
-            print(f"  {skill.name}: {skill.description}")
+            emit(f"  {skill.name}: {skill.description}")
         return False
     if cmd == "/history":
         for message in runner.messages.data:
             preview = str(message.content)[:80].replace("\n", " ")
-            print(f"  [{message.role}] {preview}")
+            emit(f"  [{message.role}] {preview}")
         return False
-    print(f"unknown command: {cmd}")
+    emit(f"unknown command: {cmd}")
     return False
 
 
@@ -156,7 +147,7 @@ async def prompt(color: bool) -> str | None:
 
 
 def say_goodbye(*, color: bool) -> None:
-    print(c("bye", DIM, on=color), flush=True)
+    emit(c("bye", DIM, on=color), flush=True)
 
 
 def format_fatal_error(exc: BaseException, *, phase: str) -> str:
@@ -185,12 +176,12 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
     had_user_turn = False
     try:
         runner = await open_runner(config)
-        print(format_banner(runner, color=use_color), flush=True)
+        emit(format_banner(runner, color=use_color), flush=True)
 
         while True:
             line = await prompt(use_color)
             if line is None:
-                print()
+                emit()
                 say_goodbye(color=use_color)
                 break
             line = line.strip()
@@ -207,18 +198,18 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
                 await render_turn(runner, line, color=use_color)
                 had_user_turn = True
             except KeyboardInterrupt:
-                print()
+                emit()
                 say_goodbye(color=use_color)
                 break
     except BaseException as exc:
         if isinstance(exc, SystemExit):
             raise
         if isinstance(exc, KeyboardInterrupt):
-            print()
+            emit()
             say_goodbye(color=use_color)
         else:
             message = format_fatal_error(exc, phase="start")
-            print(c(message, RED, on=use_color), file=sys.stderr, flush=True)
+            emit(c(message, RED, on=use_color), file=sys.stderr, flush=True)
             exit_code = 1
     finally:
         if runner is not None:
@@ -229,13 +220,13 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
                     raise
                 if exit_code == 0:
                     message = format_fatal_error(exc, phase="close")
-                    print(c(message, RED, on=use_color), file=sys.stderr, flush=True)
+                    emit(c(message, RED, on=use_color), file=sys.stderr, flush=True)
                     exit_code = 1
             keep = {runner.thread.id} if had_user_turn else set()
             report = clean_pagent(keep_thread_ids=keep)
             clean_message = format_clean_report(report)
             if clean_message:
-                print(c(clean_message, DIM, on=use_color), flush=True)
+                emit(c(clean_message, DIM, on=use_color), flush=True)
     return exit_code
 
 
@@ -245,6 +236,6 @@ def main(argv: list[str] | None = None) -> None:
     try:
         code = asyncio.run(run_repl(config))
     except KeyboardInterrupt:
-        print()
+        emit()
         raise SystemExit(0) from None
     raise SystemExit(code)
