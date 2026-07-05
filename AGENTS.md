@@ -38,6 +38,29 @@ Prefer **pagentv4** for new work (`Runner`, sandbox, persistence). See
 
 **Terminal agent:** `uv run pagent` — same REPL as `examples/v4runner/repl.py`.
 
+## CI before commit / push
+
+**Always run** `./scripts/ci-check.sh` before `git commit` or `git push` to `main`.
+It mirrors the GitHub Actions that run on every push:
+
+| Local step | Workflow |
+|------------|----------|
+| `uv sync --group dev --extra search --frozen` | ruff.yml, coverage.yml |
+| `uv run ruff check .` | ruff.yml |
+| `uv run ruff format --check .` | ruff.yml |
+| `uv run pytest tests/ --cov=src …` | ruff.yml + coverage.yml |
+| `cd docs && npm ci && npm run build` | docs.yml |
+
+Do not push until this script exits 0. If docs build regenerates `llms-full.txt`,
+include those changes when English docs changed.
+
+Optional git hook (one-time per clone):
+
+```bash
+git config core.hooksPath .githooks
+chmod +x scripts/ci-check.sh .githooks/pre-push
+```
+
 ## Conventions
 
 - `agent.run()` returns **`RunEnd`**; use `.content` for the answer (not `str(run_end)`).
