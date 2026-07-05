@@ -10,6 +10,7 @@ pagentv4 使用示例，按复杂度递进：
 | [return_types.py](return_types.py) | 同一次调用，`text` / `message` / `acp` / `event` 四种投影对比 |
 | [sandbox_session.py](sandbox_session.py) | local sandbox + 文件/命令工具 |
 | [repl.py](repl.py) | 交互式 REPL：不带参数新建 `thread-<时间戳>`，`--thread-id foo` 续上已有的 |
+| [concurrent_repl.py](concurrent_repl.py) | 底栏固定输入 REPL（与默认 `uv run pagent` 相同） |
 
 实现位于 `src/app/`，与 `uv run pagent` / `uv run python -m app` 相同。
 
@@ -20,6 +21,9 @@ export DEEPSEEK_API_KEY="your-key"
 uv run pagent                              # 新建 thread
 uv run pagent --thread-id demo             # 续聊
 uv run python -m examples.v4runner.repl
+uv run pagent                              # TTY 默认底栏固定输入
+uv run pagent --blocking                   # 阻塞模式（跑完再输入）
+uv run python -m examples.v4runner.concurrent_repl
 uv run python -m examples.v4runner.quickstart
 uv run python -m examples.v4runner.multi_turn
 uv run python -m examples.v4runner.tools

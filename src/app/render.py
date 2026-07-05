@@ -7,7 +7,14 @@ import sys
 import unicodedata
 from dataclasses import dataclass, field
 
-from pagentv4 import ReasoningDelta, Runner, TextDelta, ToolCallBegin, ToolResult
+from pagentv4 import (
+    ReasoningDelta,
+    Runner,
+    TextDelta,
+    ToolCallBegin,
+    ToolResult,
+    TurnEnd,
+)
 
 from .terminal import emit
 
@@ -104,6 +111,17 @@ def box_bottom(*, color: bool) -> str:
 
 def c(text: str, code: str, *, on: bool) -> str:
     return f"{code}{text}{RESET}" if on else text
+
+
+def emit_user_line(text: str, *, color: bool, user_label: str = "you") -> None:
+    emit(c(f"{user_label}> {text}", BLUE, on=color))
+
+
+def format_assistant_line(
+    body: str, *, color: bool, assistant_label: str = "pagent"
+) -> str:
+    line = f"{assistant_label}> {body}"
+    return c(line, GREEN, on=color) if color else line
 
 
 def inline(text: str) -> str:
@@ -302,6 +320,8 @@ class ToolBlock:
 @dataclass
 class RenderState:
     color: bool
+    user_label: str = "you"
+    assistant_label: str = "pagent"
     reasoning_parts: list[str] = field(default_factory=list)
     text_parts: list[str] = field(default_factory=list)
     previous_kind: str = ""
@@ -321,7 +341,13 @@ class RenderState:
     def flush_text(self) -> None:
         if not self.text_parts:
             return
-        emit("".join(self.text_parts))
+        emit(
+            format_assistant_line(
+                "".join(self.text_parts),
+                color=self.color,
+                assistant_label=self.assistant_label,
+            )
+        )
         self.text_parts.clear()
 
     def flush_buffers(self) -> None:
@@ -395,27 +421,39 @@ class RenderState:
         emit()
 
 
+def render_event(event, state: RenderState) -> None:
+    if isinstance(event, ReasoningDelta):
+        state.append_reasoning(event.text)
+    elif isinstance(event, ToolCallBegin):
+        state.print_tool_call(event.tool_call_id, event.name, event.arguments)
+    elif isinstance(event, ToolResult):
+        state.print_tool_result(event.tool_call_id, event.content, ok=event.ok)
+    elif isinstance(event, TextDelta):
+        state.append_text(event.text)
+    elif isinstance(event, TurnEnd) and event.stop_reason == "cancelled":
+        emit(c("[cancelled]", YELLOW, on=state.color))
+
+
+async def consume_run(runner: Runner, user_input: str, state: RenderState) -> None:
+    async for event in runner.run(user_input):
+        render_event(event, state)
+    state.finish()
+
+
 async def render_turn(
     runner: Runner,
     user_input: str,
     *,
     color: bool,
     state: RenderState | None = None,
+    user_label: str = "you",
+    assistant_label: str = "pagent",
 ) -> RenderState:
     if state is None:
-        state = RenderState(color=color)
-    async for event in runner.run(user_input):
-        if isinstance(event, ReasoningDelta):
-            state.append_reasoning(event.text)
-
-        elif isinstance(event, ToolCallBegin):
-            state.print_tool_call(event.tool_call_id, event.name, event.arguments)
-
-        elif isinstance(event, ToolResult):
-            state.print_tool_result(event.tool_call_id, event.content, ok=event.ok)
-
-        elif isinstance(event, TextDelta):
-            state.append_text(event.text)
-
-    state.finish()
+        state = RenderState(
+            color=color,
+            user_label=user_label,
+            assistant_label=assistant_label,
+        )
+    await consume_run(runner, user_input, state)
     return state

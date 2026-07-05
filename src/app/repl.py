@@ -28,8 +28,8 @@ from .terminal import emit, emit_prompt
 EXTRA_SYSTEM = "你是 pagent 。回答简短直接。"
 
 
-def read_prompt_line(*, color: bool) -> str:
-    message = ANSI(f"{BLUE}you> {RESET}") if color else "you> "
+def read_prompt_line(*, color: bool, user_label: str = "you") -> str:
+    message = ANSI(f"{BLUE}{user_label}> {RESET}") if color else f"{user_label}> "
     return emit_prompt(message)
 
 
@@ -139,9 +139,11 @@ async def handle_command(cmd: str, runner: Runner, *, color: bool) -> bool:
     return False
 
 
-async def prompt(color: bool) -> str | None:
+async def prompt(color: bool, *, user_label: str = "you") -> str | None:
     try:
-        return await asyncio.to_thread(read_prompt_line, color=color)
+        return await asyncio.to_thread(
+            read_prompt_line, color=color, user_label=user_label
+        )
     except (EOFError, KeyboardInterrupt):
         return None
 
@@ -169,7 +171,7 @@ def format_fatal_error(exc: BaseException, *, phase: str) -> str:
     return f"pagent {label}失败: {name}: {exc}"
 
 
-async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
+async def run_blocking_repl(config: ReplConfig, *, color: bool | None = None) -> int:
     use_color = sys.stdout.isatty() if color is None else color
     runner: Runner | None = None
     exit_code = 0
@@ -179,7 +181,7 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
         emit(format_banner(runner, color=use_color), flush=True)
 
         while True:
-            line = await prompt(use_color)
+            line = await prompt(use_color, user_label=config.resolved_user_label())
             if line is None:
                 emit()
                 say_goodbye(color=use_color)
@@ -195,7 +197,13 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
                     break
                 continue
             try:
-                await render_turn(runner, line, color=use_color)
+                await render_turn(
+                    runner,
+                    line,
+                    color=use_color,
+                    user_label=config.resolved_user_label(),
+                    assistant_label=config.resolved_assistant_label(),
+                )
                 had_user_turn = True
             except KeyboardInterrupt:
                 emit()
@@ -228,6 +236,15 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
             if clean_message:
                 emit(c(clean_message, DIM, on=use_color), flush=True)
     return exit_code
+
+
+async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
+    """TTY 默认底栏固定输入；管道/重定向或 ``--blocking`` 用阻塞模式。"""
+    if sys.stdout.isatty() and not config.blocking:
+        from .concurrent_repl import run_concurrent_repl
+
+        return await run_concurrent_repl(config, color=color)
+    return await run_blocking_repl(config, color=color)
 
 
 def main(argv: list[str] | None = None) -> None:

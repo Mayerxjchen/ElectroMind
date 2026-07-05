@@ -3,6 +3,10 @@
 
 max_turns = 12
 
+[repl]
+user_label = "you"        # 输出区 / 输入行用户前缀：{label}>
+assistant_label = "pagent"  # 输出区助手回复前缀：{label}>
+
 [provider]
 model = "deepseek-v4-flash"
 api_key = ""  # 留空则用 DEEPSEEK_API_KEY 环境变量

@@ -1,6 +1,6 @@
 import pytest
 
-from pagentv4 import FunctionTool, Runner, TurnEnd
+from pagentv4 import FunctionTool, Runner, ToolCallBegin, TurnEnd
 
 
 class FakeStreamChunk:
@@ -122,6 +122,55 @@ async def test_runner_steer_appends_user_message(tmp_path, monkeypatch):
             if message.role == "user"
         ]
         assert users == ["start", "follow up"]
+    finally:
+        await runner.close()
+
+
+@pytest.mark.asyncio
+async def test_runner_steer_during_tool_round_is_deferred(tmp_path, monkeypatch):
+    async def echo_tool(x: int) -> str:
+        return f"echo:{x}"
+
+    provider = FakeProvider(
+        [
+            [tool_call_chunk()],
+            [FakeStreamChunk(content="done")],
+        ]
+    )
+    runner = await open_runner(
+        tmp_path,
+        monkeypatch,
+        provider,
+        tools=[
+            FunctionTool(
+                "echo",
+                "echo",
+                {
+                    "type": "object",
+                    "properties": {"x": {"type": "integer"}},
+                    "required": ["x"],
+                },
+                echo_tool,
+            )
+        ],
+        max_turns=4,
+    )
+    try:
+        async for event in runner.run("start"):
+            if isinstance(event, ToolCallBegin):
+                runner.steer("too early")
+                users = [
+                    message.content.text
+                    for message in runner.messages.data
+                    if message.role == "user"
+                ]
+                assert users == ["start"]
+        users = [
+            message.content.text
+            for message in runner.messages.data
+            if message.role == "user"
+        ]
+        assert users == ["start", "too early"]
     finally:
         await runner.close()
 

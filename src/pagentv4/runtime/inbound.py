@@ -7,7 +7,10 @@
 
 应用层 ``mailbox.steer(text)`` / ``mailbox.cancel()``；
 Runner 在 ``_events`` 每个出站 event 之后按 :class:`CheckpointPolicy` 调用
-``mailbox.drain_if_policy(...)``。
+``mailbox.drain_for_checkpoint(...)``。
+
+Steer 只在「轮次边界」注入（避免 assistant+tool_calls 后插入 user 消息）；
+Cancel 可在 tool 执行与流式输出检查点生效。
 """
 
 from __future__ import annotations
@@ -48,32 +51,47 @@ InboundEvent: TypeAlias = Steer | CancelRun
 class CheckpointPolicy:
     """出站 event yield 之后，是否 drain 入站邮箱。"""
 
-    poll_after_run_begin: bool = True
-    poll_after_turn_begin: bool = True
-    poll_after_turn_result: bool = True
-    poll_after_turn_end: bool = True
-    poll_after_tool_call_begin: bool = True
-    poll_after_tool_result: bool = True
-    poll_after_stream_delta: bool = False
+    poll_steer_after_run_begin: bool = True
+    poll_steer_after_turn_begin: bool = True
+    poll_steer_after_turn_end: bool = True
+
+    poll_cancel_after_run_begin: bool = True
+    poll_cancel_after_turn_begin: bool = True
+    poll_cancel_after_turn_result: bool = True
+    poll_cancel_after_turn_end: bool = True
+    poll_cancel_after_tool_call_begin: bool = True
+    poll_cancel_after_tool_result: bool = True
+    poll_cancel_after_stream_delta: bool = False
     stream_poll_interval: float = 0.25
 
     _last_stream_poll: float | None = field(default=None, init=False, repr=False)
 
-    def should_poll(self, outbound_event: object, *, now: float | None = None) -> bool:
+    def should_poll_steer(self, outbound_event: object) -> bool:
         if isinstance(outbound_event, RunBegin):
-            return self.poll_after_run_begin
+            return self.poll_steer_after_run_begin
         if isinstance(outbound_event, TurnBegin):
-            return self.poll_after_turn_begin
-        if isinstance(outbound_event, TurnResult):
-            return self.poll_after_turn_result
+            return self.poll_steer_after_turn_begin
         if isinstance(outbound_event, TurnEnd):
-            return self.poll_after_turn_end
+            return self.poll_steer_after_turn_end
+        return False
+
+    def should_poll_cancel(
+        self, outbound_event: object, *, now: float | None = None
+    ) -> bool:
+        if isinstance(outbound_event, RunBegin):
+            return self.poll_cancel_after_run_begin
+        if isinstance(outbound_event, TurnBegin):
+            return self.poll_cancel_after_turn_begin
+        if isinstance(outbound_event, TurnResult):
+            return self.poll_cancel_after_turn_result
+        if isinstance(outbound_event, TurnEnd):
+            return self.poll_cancel_after_turn_end
         if isinstance(outbound_event, ToolCallBegin):
-            return self.poll_after_tool_call_begin
+            return self.poll_cancel_after_tool_call_begin
         if isinstance(outbound_event, ToolResult):
-            return self.poll_after_tool_result
+            return self.poll_cancel_after_tool_result
         if isinstance(outbound_event, TextDelta | ReasoningDelta):
-            if not self.poll_after_stream_delta:
+            if not self.poll_cancel_after_stream_delta:
                 return False
             clock = time.monotonic() if now is None else now
             if (
@@ -84,6 +102,11 @@ class CheckpointPolicy:
             self._last_stream_poll = clock
             return True
         return False
+
+    def should_poll(self, outbound_event: object, *, now: float | None = None) -> bool:
+        return self.should_poll_steer(outbound_event) or self.should_poll_cancel(
+            outbound_event, now=now
+        )
 
 
 class RunCancelled(Exception):
@@ -146,6 +169,47 @@ class InboundMailbox:
                 break
         return fold_inbound(events)
 
+    def drain_for_checkpoint(
+        self,
+        outbound_event: object,
+        policy: CheckpointPolicy,
+        *,
+        now: float | None = None,
+    ) -> DrainResult | None:
+        steer_ok = policy.should_poll_steer(outbound_event)
+        cancel_ok = policy.should_poll_cancel(outbound_event, now=now)
+        if not steer_ok and not cancel_ok:
+            return None
+
+        raw: list[InboundEvent] = []
+        while True:
+            try:
+                raw.append(self._queue.get_nowait())
+            except asyncio.QueueEmpty:
+                break
+        if not raw:
+            return DrainResult()
+
+        steers_apply: list[str] = []
+        steers_requeue: list[Steer] = []
+        cancelled = False
+        for event in raw:
+            if isinstance(event, CancelRun):
+                cancelled = True
+            elif isinstance(event, Steer):
+                text = event.text.strip()
+                if not text or cancelled:
+                    continue
+                if steer_ok:
+                    steers_apply.append(text)
+                else:
+                    steers_requeue.append(event)
+
+        for event in steers_requeue:
+            self._queue.put_nowait(event)
+
+        return DrainResult(steers=tuple(steers_apply), cancelled=cancelled)
+
     def drain_if_policy(
         self,
         outbound_event: object,
@@ -153,6 +217,4 @@ class InboundMailbox:
         *,
         now: float | None = None,
     ) -> DrainResult | None:
-        if not policy.should_poll(outbound_event, now=now):
-            return None
-        return self.drain()
+        return self.drain_for_checkpoint(outbound_event, policy, now=now)

@@ -1,8 +1,10 @@
 from app.config import (
+    BUNDLED_CONFIG,
     ReplConfig,
     build_parser,
     config_from_args,
     load_config,
+    load_config_file,
     merge_config,
     parse_repl_config,
 )
@@ -107,6 +109,20 @@ def test_parse_repl_config():
     assert config.ssh_host == "dev"
     assert config.ssh_workdir == "/tmp/agent"
     assert config.skill_roots == ("./skills", "~/.agents/skills")
+
+
+def test_parse_repl_config_labels():
+    config = parse_repl_config(
+        {"repl": {"user_label": "human", "assistant_label": "bot"}}
+    )
+    assert config.resolved_user_label() == "human"
+    assert config.resolved_assistant_label() == "bot"
+
+
+def test_bundled_config_default_labels():
+    config = load_config_file(BUNDLED_CONFIG)
+    assert config.resolved_user_label() == "you"
+    assert config.resolved_assistant_label() == "pagent"
 
 
 def test_resolved_skill_roots_default():

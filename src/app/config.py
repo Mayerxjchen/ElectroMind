@@ -13,6 +13,7 @@ CONFIG_FILENAMES = ("pagent.toml",)
 @dataclass(slots=True)
 class ReplConfig:
     thread_id: str | None = None
+    blocking: bool = False
     model: str | None = None
     api_key: str | None = None
     provider_base_url: str | None = None
@@ -25,6 +26,8 @@ class ReplConfig:
     ssh_config: str | None = None
     ssh_workdir: str | None = None
     skill_roots: tuple[str, ...] | None = None
+    user_label: str | None = None
+    assistant_label: str | None = None
 
     def resolved_api_key(self) -> str | None:
         if self.api_key and self.api_key.strip():
@@ -42,6 +45,14 @@ class ReplConfig:
 
     def resolved_skill_roots(self) -> tuple[str, ...]:
         return self.skill_roots or ()
+
+    def resolved_user_label(self) -> str:
+        label = (self.user_label or "you").strip()
+        return label or "you"
+
+    def resolved_assistant_label(self) -> str:
+        label = (self.assistant_label or "pagent").strip()
+        return label or "pagent"
 
     def thread_overrides(self) -> dict:
         kwargs: dict = {}
@@ -74,6 +85,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
     sandbox = data.get("sandbox", {})
     ssh = data.get("ssh", {})
     skills = data.get("skills", {})
+    repl = data.get("repl", {})
 
     max_turns = data.get("max_turns")
     if max_turns is not None and not isinstance(max_turns, int):
@@ -122,6 +134,18 @@ def parse_repl_config(data: dict) -> ReplConfig:
     else:
         raise ValueError("skills.roots must be a string or list of strings")
 
+    user_label = repl.get("user_label")
+    if user_label is not None and not isinstance(user_label, str):
+        raise ValueError("repl.user_label must be a string")
+    if user_label == "":
+        user_label = None
+
+    assistant_label = repl.get("assistant_label")
+    if assistant_label is not None and not isinstance(assistant_label, str):
+        raise ValueError("repl.assistant_label must be a string")
+    if assistant_label == "":
+        assistant_label = None
+
     return ReplConfig(
         model=model,
         api_key=api_key,
@@ -135,6 +159,8 @@ def parse_repl_config(data: dict) -> ReplConfig:
         ssh_config=ssh.get("config_path"),
         ssh_workdir=ssh.get("workdir"),
         skill_roots=skill_roots,
+        user_label=user_label,
+        assistant_label=assistant_label,
     )
 
 
@@ -209,11 +235,21 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="resume thread; omit to create thread-<timestamp>",
     )
+    parser.add_argument(
+        "--blocking",
+        action="store_true",
+        help="阻塞 REPL：跑完一轮再显示输入（默认 TTY 为底栏固定输入）",
+    )
     return parser
 
 
 def config_from_args(args: argparse.Namespace) -> ReplConfig:
     config = load_config(config_path=args.config)
+    fields: dict = {}
     if args.thread_id:
-        config = replace(config, thread_id=args.thread_id)
+        fields["thread_id"] = args.thread_id
+    if args.blocking:
+        fields["blocking"] = True
+    if fields:
+        config = replace(config, **fields)
     return config

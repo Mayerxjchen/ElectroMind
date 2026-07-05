@@ -2,13 +2,24 @@
 
 from __future__ import annotations
 
+import asyncio
 import sys
-from typing import TextIO
+from contextlib import contextmanager
+from contextvars import ContextVar
+from typing import Iterator, TextIO
 
 from prompt_toolkit import PromptSession, print_formatted_text
 from prompt_toolkit.formatted_text import ANSI, FormattedText
+from prompt_toolkit.key_binding import KeyBindings
+from prompt_toolkit.patch_stdout import patch_stdout
+
+from .layout_terminal import LayoutTerminal
 
 _session: PromptSession | None = None
+_patched_stdout: ContextVar[bool] = ContextVar("patched_stdout", default=False)
+layout_terminal: ContextVar[LayoutTerminal | None] = ContextVar(
+    "layout_terminal", default=None
+)
 
 
 def prompt_session() -> PromptSession:
@@ -35,7 +46,20 @@ def emit(
     file: TextIO | None = None,
     flush: bool = False,
 ) -> None:
-    """打印一行或多行；字符串含 ANSI 转义时自动走 :class:`ANSI` 解析。"""
+    """打印一行或多行。
+
+    并发 REPL（``stdout_patch``）内走标准 ``print``，由 patch_stdout 画在 prompt 上方；
+    其余场景用 ``print_formatted_text`` + ``ANSI``。
+    """
+    layout = layout_terminal.get()
+    if layout is not None and file is None:
+        layout.write(text, end=end)
+        return
+
+    if _patched_stdout.get() and file is None:
+        _builtin_emit(text, end=end, file=file, flush=flush)
+        return
+
     stream = file or sys.stdout
     buffer = getattr(stream, "buffer", None)
     if buffer is not None and getattr(buffer, "closed", False):
@@ -49,5 +73,82 @@ def emit(
         _builtin_emit(text, end=end, file=file, flush=flush)
 
 
+@contextmanager
+def stdout_patch() -> Iterator[None]:
+    """与 ``prompt_async`` 同用：输出固定在底栏 prompt 上方。"""
+    token = _patched_stdout.set(True)
+    try:
+        with patch_stdout(raw=True):
+            yield
+    finally:
+        _patched_stdout.reset(token)
+
+
 def emit_prompt(message: str | FormattedText | ANSI) -> str:
     return prompt_session().prompt(message)
+
+
+async def emit_prompt_async(
+    message: str | FormattedText | ANSI,
+    *,
+    session: PromptSession | None = None,
+) -> str:
+    return await (session or prompt_session()).prompt_async(message)
+
+
+async def start_prompt(
+    message: str | FormattedText | ANSI,
+    *,
+    session: PromptSession,
+) -> asyncio.Task[str]:
+    task = asyncio.create_task(emit_prompt_async(message, session=session))
+    await asyncio.sleep(0)
+    return task
+
+
+async def replace_prompt(
+    prompt_task: asyncio.Task[str],
+    *,
+    message: str | FormattedText | ANSI,
+    session: PromptSession,
+) -> asyncio.Task[str]:
+    if not prompt_task.done():
+        prompt_task.cancel()
+        try:
+            await prompt_task
+        except asyncio.CancelledError:
+            pass
+    task = asyncio.create_task(emit_prompt_async(message, session=session))
+    await asyncio.sleep(0)
+    return task
+
+
+async def next_prompt(
+    prompt_task: asyncio.Task[str],
+    message: str | FormattedText | ANSI,
+    *,
+    session: PromptSession,
+) -> asyncio.Task[str]:
+    if prompt_task.done():
+        return await start_prompt(message, session=session)
+    return await replace_prompt(prompt_task, message=message, session=session)
+
+
+def build_prompt_session(runner, run_state: dict) -> PromptSession:
+    kb = KeyBindings()
+
+    @kb.add("c-c")
+    def cancel_or_exit(event) -> None:
+        if run_state.get("active"):
+            runner.cancel_run()
+            event.app.invalidate()
+        else:
+            event.app.exit(exception=KeyboardInterrupt())
+
+    @kb.add("escape")
+    def cancel_run(event) -> None:
+        if run_state.get("active"):
+            runner.cancel_run()
+            event.app.invalidate()
+
+    return PromptSession(key_bindings=kb)

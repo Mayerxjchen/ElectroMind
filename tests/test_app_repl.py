@@ -1,7 +1,16 @@
+import asyncio
+
 import pytest
 
 from app import render
-from app.render import RenderState, format_tool_call, format_tool_result, render_turn
+from app.render import (
+    RenderState,
+    emit_user_line,
+    format_tool_call,
+    format_tool_result,
+    render_event,
+    render_turn,
+)
 from app.repl import (
     format_fatal_error,
     handle_command,
@@ -10,7 +19,7 @@ from app.repl import (
     say_goodbye,
     split_prefixed_command,
 )
-from pagentv4 import TextDelta, ToolCallBegin, ToolResult
+from pagentv4 import TextDelta, ToolCallBegin, ToolResult, TurnEnd
 
 
 class FakeRunner:
@@ -157,9 +166,9 @@ async def test_render_turn_separates_tool_block_from_text(capsys):
     await render_turn(runner, "test", color=False)
 
     out = capsys.readouterr().out
-    assert "先试一下。\ntool → run_command(" in out
+    assert "pagent> 先试一下。\ntool → run_command(" in out
     assert "curl -s -o /dev/null https://www.baidu.com" in out
-    assert '\n  ok: {"ok": true, "exit_code": 0}\n\n上到网。\n' in out
+    assert '\n  ok: {"ok": true, "exit_code": 0}\n\npagent> 上到网。\n' in out
 
 
 @pytest.mark.asyncio
@@ -191,7 +200,7 @@ async def test_render_turn_merges_text_deltas(capsys):
 
     await render_turn(runner, "test", color=False)
 
-    assert capsys.readouterr().out == "ABC\n"
+    assert capsys.readouterr().out == "pagent> ABC\n"
 
 
 @pytest.mark.asyncio
@@ -202,7 +211,42 @@ async def test_render_turn_merges_reasoning_deltas(capsys):
 
     await render_turn(runner, "test", color=False)
 
-    assert capsys.readouterr().out == "reasoning: 想一下\n答复\n"
+    assert capsys.readouterr().out == "reasoning: 想一下\npagent> 答复\n"
+
+
+def test_emit_user_line(capsys):
+    emit_user_line("你好", color=False)
+    assert capsys.readouterr().out == "you> 你好\n"
+
+
+@pytest.mark.asyncio
+async def test_render_event_cancelled(capsys):
+    state = RenderState(color=False)
+    render_event(TurnEnd(1, stopped=True, stop_reason="cancelled"), state)
+    assert capsys.readouterr().out == "[cancelled]\n"
+
+
+@pytest.mark.asyncio
+async def test_dispatch_user_line_steer_during_run():
+    from app.concurrent_repl import dispatch_user_line
+
+    class SteerRunner:
+        def steer(self, text):
+            self.steered = getattr(self, "steered", [])
+            self.steered.append(text)
+
+    runner = SteerRunner()
+    run_task = asyncio.get_running_loop().create_future()
+
+    action, task = await dispatch_user_line(
+        "follow up",
+        runner=runner,  # type: ignore[arg-type]
+        run_task=run_task,
+        color=False,
+    )
+    assert action == "continue"
+    assert task is run_task
+    assert runner.steered == ["follow up"]
 
 
 @pytest.mark.asyncio
