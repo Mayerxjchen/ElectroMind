@@ -1054,6 +1054,7 @@ For contributors and anyone hacking the library. End users should start at the [
 ```text
 src/pagent/     v1 library
 src/pagentv4/   v4 library (core, runtime, sandbox, skills)
+src/app/        application layer (REPL, CLI) on top of pagentv4
 examples/       runnable demos (see examples/v4runner/ for v4)
 tests/          pytest
 docs/           documentation
@@ -1175,89 +1176,92 @@ sandbox and persistence support.
 
 Prerequisites: [Install](../guide/install) (Python 3.11+, pip / uv / conda).
 
-## One-liner: `run_agent()`
+## Open a thread
 
-For scripts and quick experiments, use `run_agent()`. It creates a temporary
-`Messages` internally and discards it when the run finishes.
+`Runner` is bound to a **thread** for its entire lifetime: sandbox, messages,
+and agent are created together and torn down with `runner.close()`.
 
 ```python
 import asyncio
 import os
 
-from pagentv4 import Agent, DeepSeek, run_agent
+from pagentv4 import DeepSeek, Runner
 
 
 async def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("Set DEEPSEEK_API_KEY first.")
 
-    agent = Agent(
+    runner = await Runner.open(
+        "demo",
         DeepSeek("deepseek-v4-flash"),
-        system="You are helpful and concise.",
+        overrides={"backend": "local"},
+        extra_system="You are helpful and concise.",
     )
-
-    async for text in run_agent(
-        agent, "Explain tail recursion in one sentence.", return_type="text"
-    ):
-        print(text, end="", flush=True)
-    print()
+    try:
+        async for text in runner.run(
+            "Explain tail recursion in one sentence.", return_type="text"
+        ):
+            print(text, end="", flush=True)
+        print()
+    finally:
+        await runner.close()
 
 
 asyncio.run(main())
 ```
 
-## Multi-turn with `Runner`
+## Multi-turn on the same thread
 
-When you need to keep `Messages` across calls:
+Call `runner.run()` again — messages accumulate and persist under
+`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ```python
-from pagentv4 import Agent, DeepSeek, Messages, Runner
-
-agent = Agent(DeepSeek("deepseek-v4-flash"), system="You are helpful.")
-runner = Runner()
-messages = Messages()
-
-async for text in runner.arun(
-    agent, "My name is Ada.", messages, return_type="text"
-):
-    print(text, end="")
-
-async for text in runner.arun(
-    agent, "What is my name?", messages, return_type="text"
-):
-    print(text, end="")
+runner = await Runner.open("demo", provider, overrides={"backend": "local"})
+try:
+    async for text in runner.run("My name is Ada.", return_type="text"):
+        print(text, end="")
+    async for text in runner.run("What is my name?", return_type="text"):
+        print(text, end="")
+finally:
+    await runner.close()
 ```
 
-## Sandbox session
+Re-open the same `thread_id` later to resume.
 
-When the agent needs files or shell commands, use `Runner.session()`. It
-creates a sandbox, binds eight built-in tools, runs the agent, then closes
-the sandbox.
+## Sandbox + tools
+
+`Runner.open()` creates the sandbox from the thread spec, binds built-in file
+and command tools, and merges any extra tools you pass:
 
 ```python
-from pagentv4 import DeepSeek, Runner
-
-async for event in Runner().session(
+runner = await Runner.open(
+    "demo",
     DeepSeek("deepseek-v4-flash"),
-    "Create hello.txt under /home/agent with one greeting line.",
-    system="Use tools when needed.",
-    workspace_id="default",  # → <cwd>/.pagent/workspaces/default/
-):
-    ...
+    overrides={"backend": "local"},
+    extra_system="Use tools when needed.",
+)
+try:
+    async for event in runner.run(
+        "Create hello.txt under /home/agent with one greeting line."
+    ):
+        ...
+finally:
+    await runner.close()
 ```
 
 See [Sandbox](./sandbox) for backends (`local`, `docker`, `podman`, `ssh`).
 
 ## Streaming modes
 
-`Runner.arun()` defaults to `return_type="event"`.
+`runner.run()` defaults to `return_type="event"`.
 
 | API | Returns | Use when |
 |-----|---------|----------|
-| `runner.arun(..., return_type="event")` | `Event` objects | Full timeline, Python UI |
-| `runner.arun(..., return_type="text")` | `str` chunks | Answer text only |
-| `runner.arun(..., return_type="message")` | `Message` objects | Observe assistant/tool messages |
-| `runner.arun(..., return_type="acp")` | NDJSON lines | Socket / ACP / JSON consumers |
+| `runner.run(..., return_type="event")` | `Event` objects | Full timeline, Python UI |
+| `runner.run(..., return_type="text")` | `str` chunks | Answer text only |
+| `runner.run(..., return_type="message")` | `Message` objects | Observe assistant/tool messages |
+| `runner.run(..., return_type="acp")` | NDJSON lines | Socket / ACP / JSON consumers |
 
 ## Built-in providers
 
@@ -1298,8 +1302,7 @@ sglang = Sglang("my-model")
 |--------|------|
 | `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang`, … | OpenAI-compatible streaming clients |
 | `Agent(provider, system=None, tools=None, max_turns=8)` | Model + tool configuration |
-| `Runner(store=None)` | Multi-turn loop, persistence, sandbox sessions |
-| `run_agent(agent, user_input, …)` | One-shot sugar over `Runner().arun()` |
+| `Runner` | Thread-bound orchestrator: sandbox + messages + tool loop |
 | `Message` | One typed message item with `role` + `content` |
 | `Messages` | In-memory message list with `to_openai()` conversion |
 | `ConversationStore`, `JsonlConversationStore`, `SqliteConversationStore` | Persist messages by id |
@@ -1340,30 +1343,34 @@ Notes:
 
 ## Runner
 
-`Runner` owns the multi-turn tool loop and optional persistence.
+`Runner` is created only via `Runner.open()` and lives as long as its thread.
+It owns the multi-turn tool loop, sandbox, messages, and persistence.
 
 | Method | Role |
 |--------|------|
-| `runner.arun(agent, user_input, messages, …)` | Full run with `return_type` projection |
-| `runner.events(agent, user_input, messages, …)` | Raw event stream |
-| `runner.session(provider, user_input, …)` | Create sandbox → bind tools → run → close |
-| `runner.load_conversation(id, messages)` | Load from store if messages empty |
-| `runner.flush_conversation(id, messages)` | Save to store |
-
-Pass `conversation_id=` to `arun()` / `session()` when `Runner` has a store:
+| `Runner.open(thread_id, provider, …)` | Open thread → sandbox → agent |
+| `runner.run(user_input, …)` | One user turn with `return_type` projection |
+| `runner.close()` | Close sandbox |
 
 ```python
-from pagentv4 import JsonlConversationStore, Runner
+from pagentv4 import DeepSeek, Runner
 
-runner = Runner(store=JsonlConversationStore())
-async for event in runner.arun(
-    agent, "hi", messages, conversation_id="demo"
-):
-    ...
+runner = await Runner.open(
+    "demo",
+    DeepSeek("deepseek-v4-flash"),
+    overrides={"backend": "local"},
+    extra_system="You are helpful.",
+    tools=[my_tool],  # optional extras merged with sandbox tools
+)
+try:
+    async for event in runner.run("hi"):
+        ...
+finally:
+    await runner.close()
 ```
 
-Messages are flushed at each `TurnEnd`. Default JSONL root:
-`<cwd>/.pagent/conversations/`.
+Messages are flushed at each `TurnEnd` into
+`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ## Thread
 
@@ -1407,7 +1414,7 @@ Reserved keys in `Provider.complete()`:
 | `Vllm` | `VLLM_API_KEY` |
 | `Sglang` | `SGLANG_API_KEY` |
 
-## `arun()` return types
+## `run()` return types
 
 Valid `return_type` values:
 
@@ -1646,6 +1653,44 @@ Skills are optional instruction packs loaded from `SKILL.md` directories.
 Use `SkillRegistry.from_defaults()` and `make_use_skill_tool(registry)` to
 let the model load skill instructions on demand. See `examples/v4runner/repl.py`.
 
+## Tool hooks
+
+`Runner.open(..., tool_hooks=...)` runs callbacks around each tool execution.
+Event order is unchanged: `ToolCallBegin` is emitted first, then hooks run, then
+the tool (or skip), then `ToolResult`.
+
+```python
+from pagentv4 import Runner, ToolDecision, ToolHooks
+from pagentv4.runtime.hooks import ToolHookContext, PostToolHookContext
+
+
+async def approve_dangerous(ctx: ToolHookContext):
+    if ctx.name == "run_command":
+        ok = await ctx.runner.wait_tool_permit(ctx.tool_call_id)
+        if not ok:
+            return ToolDecision.deny("not permitted")
+    return None  # allow
+
+
+def redact_result(ctx: PostToolHookContext):
+    return ctx.output  # or return a new ToolOutput to replace
+
+
+runner = await Runner.open(
+    "demo",
+    provider,
+    tool_hooks=ToolHooks(before=[approve_dangerous], after=[redact_result]),
+)
+```
+
+- `ToolDecision.deny(message)` — skip execution, emit failed `ToolResult`
+- `ToolDecision.replace(content)` — skip execution, emit success with fixed content
+- `runner.permit_tool(id)` / `runner.deny_tool(id)` — or `runner.inbound.permit(id)` / `deny(id)`
+- `await ctx.runner.wait_tool_permit(id)` — consumes inbound `PermitTool` / `DenyTool` / `CancelRun`
+- `tool_hooks=None` — same behavior as before (zero overhead path)
+
+Inbound steer/cancel remains separate from hooks; see `runtime/inbound.py`.
+
 ## Notes
 
 - Tool names must be unique inside one `Agent`.
@@ -1659,8 +1704,7 @@ let the model load skill instructions on demand. See `examples/v4runner/repl.py`
 
 # pagentv4 Events
 
-`Runner.events()` emits the full multi-turn timeline. `Runner.arun()`
-projects that same stream into one of four return types.
+`runner.run()` emits the full multi-turn timeline, projected by `return_type`.
 
 ## Event types
 
@@ -1715,31 +1759,25 @@ RunBegin
 
 ## Consumers
 
-### Raw event stream
-
 ```python
-from pagentv4 import Messages, Runner, TextDelta, ToolCallBegin, ToolResult
+from pagentv4 import DeepSeek, Runner, TextDelta, ToolCallBegin, ToolResult
 
-messages = Messages()
-async for event in Runner().events(agent, "Hello", messages):
-    if isinstance(event, TextDelta):
-        print(event.text, end="")
-    elif isinstance(event, ToolCallBegin):
-        print(f"\n[tool {event.name}]")
-    elif isinstance(event, ToolResult):
-        print(f"\n[result {event.ok}: {event.content}]")
-```
-
-### `arun(return_type="event")`
-
-```python
-async for event in Runner().arun(agent, "Hello", messages, return_type="event"):
-    ...
+runner = await Runner.open("demo", DeepSeek("deepseek-v4-flash"), overrides={"backend": "local"})
+try:
+    async for event in runner.run("Hello", return_type="event"):
+        if isinstance(event, TextDelta):
+            print(event.text, end="")
+        elif isinstance(event, ToolCallBegin):
+            print(f"\n[tool {event.name}]")
+        elif isinstance(event, ToolResult):
+            print(f"\n[result {event.ok}: {event.content}]")
+finally:
+    await runner.close()
 ```
 
 ## Other `return_type` projections
 
-`Runner.arun()` supports:
+`runner.run()` supports:
 
 - `"event"`: raw event objects
 - `"text"`: `TextDelta.text` only
@@ -1760,27 +1798,33 @@ A **sandbox** is the agent's companion computer: an isolated workspace where
 it can run commands and read/write files. Paths are normalized to a virtual
 home (default `/home/agent`) across all backends.
 
-## Quick path: `Runner.session()`
+## Quick path: `Runner.open()`
 
 The simplest way to give an agent a computer:
 
 ```python
 from pagentv4 import DeepSeek, Runner
 
-async for event in Runner().session(
+runner = await Runner.open(
+    "demo",
     DeepSeek("deepseek-v4-flash"),
-    "List files under /home/agent, then create notes.md.",
-    workspace_id="default",
-):
-    ...
+    overrides={"backend": "local"},
+)
+try:
+    async for event in runner.run(
+        "List files under /home/agent, then create notes.md."
+    ):
+        ...
+finally:
+    await runner.close()
 ```
 
 Flow:
 
-1. Create sandbox from `backend` / workspace params
-2. Bind sandbox tools + any extra tools
-3. Build `Agent` and run via `Runner.arun()`
-4. Close sandbox when done (even on error)
+1. Open thread → create sandbox from thread spec
+2. Bind sandbox tools + any extra tools passed to `open()`
+3. Build `Agent` and run via `runner.run()`
+4. Close sandbox with `runner.close()`
 
 ## Backends
 
@@ -1792,26 +1836,30 @@ Flow:
 | `"ssh"` | Remote host via asyncssh |
 
 ```python
-async for event in Runner().session(
+runner = await Runner.open(
+    "demo",
     provider,
-    user_input,
-    backend="docker",
-    image="python:3.12-slim",
-    workspace_id="demo",
-):
-    ...
+    overrides={"backend": "docker", "image": "python:3.12-slim"},
+)
+try:
+    async for event in runner.run(user_input):
+        ...
+finally:
+    await runner.close()
 ```
 
-SSH example:
+SSH example — set `ssh_host` in thread spec or overrides:
 
 ```python
-async for event in Runner().session(
+runner = await Runner.open(
+    "remote",
     provider,
-    user_input,
-    backend="ssh",
-    connection={"host": "user@example.com", "workdir": "/tmp/agent"},
-):
-    ...
+    overrides={
+        "backend": "ssh",
+        "ssh_host": "user@example.com",
+        "ssh_workdir": "/tmp/agent",
+    },
+)
 ```
 
 ## Workspace layout

@@ -123,6 +123,20 @@ def test_bundled_config_default_labels():
     config = load_config_file(BUNDLED_CONFIG)
     assert config.resolved_user_label() == "you"
     assert config.resolved_assistant_label() == "pagent"
+    assert not config.permission_auto()
+
+
+def test_parse_repl_config_permission_auto():
+    config = parse_repl_config({"permission": {"mode": "auto"}})
+    assert config.permission_auto()
+    assert config.resolved_permission_mode() == "auto"
+
+
+def test_config_from_args_auto_flag(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    parser = build_parser()
+    config = config_from_args(parser.parse_args(["--auto"]))
+    assert config.permission_auto()
 
 
 def test_resolved_skill_roots_default():

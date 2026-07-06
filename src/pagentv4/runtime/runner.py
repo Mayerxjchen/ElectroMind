@@ -27,7 +27,16 @@ from ..skills import (
     make_use_skill_tool,
 )
 from .conversation import JsonlConversationStore
-from .inbound import CheckpointPolicy, InboundMailbox, RunCancelled
+from .hooks import PostToolHookContext, ToolHookContext, ToolHooks
+from .inbound import (
+    CancelRun,
+    CheckpointPolicy,
+    DenyTool,
+    InboundMailbox,
+    PermitTool,
+    RunCancelled,
+    ToolPermitResult,
+)
 from .thread import Thread
 
 ArunReturnType = Literal["event", "text", "acp", "message"]
@@ -106,6 +115,7 @@ class Runner:
         conversation_id: str,
         inbound: InboundMailbox | None = None,
         checkpoint_policy: CheckpointPolicy | None = None,
+        tool_hooks: ToolHooks | None = None,
     ):
         self.thread = thread
         self.sandbox = sandbox
@@ -116,12 +126,52 @@ class Runner:
         self.conversation_id = conversation_id
         self.inbound = inbound or InboundMailbox()
         self.checkpoint_policy = checkpoint_policy or CheckpointPolicy()
+        self.tool_hooks = tool_hooks
 
     def steer(self, text: str) -> None:
         self.inbound.steer(text)
 
     def cancel_run(self) -> None:
         self.inbound.cancel()
+
+    def permit_tool(self, tool_call_id: str) -> None:
+        self.inbound.permit(tool_call_id)
+
+    def deny_tool(self, tool_call_id: str, *, reason: str = "") -> None:
+        self.inbound.deny(tool_call_id, reason=reason)
+
+    async def wait_tool_permit(self, tool_call_id: str) -> ToolPermitResult:
+        """阻塞直到入站 ``PermitTool`` / ``DenyTool`` / ``CancelRun``。"""
+        deferred: list[object] = []
+        try:
+            while True:
+                event = deferred.pop(0) if deferred else await self.inbound.wait()
+                resolved = self._resolve_tool_permit(event, tool_call_id)
+                if resolved is not None:
+                    return resolved
+                deferred.append(event)
+        finally:
+            for event in deferred:
+                self.inbound.push(event)
+
+    @staticmethod
+    def _resolve_tool_permit(
+        event: object, tool_call_id: str
+    ) -> ToolPermitResult | None:
+        if isinstance(event, PermitTool):
+            if event.tool_call_id == tool_call_id:
+                return ToolPermitResult(approved=True)
+            return None
+        if isinstance(event, DenyTool):
+            if event.tool_call_id == tool_call_id:
+                return ToolPermitResult(approved=False, reason=event.reason)
+            return None
+        if isinstance(event, CancelRun):
+            return ToolPermitResult(
+                approved=False,
+                reason="run cancelled by user",
+            )
+        return None
 
     def _apply_inbound_drain(
         self, outbound_event: object, *, turn_id: int, turn: int
@@ -176,13 +226,51 @@ class Runner:
             if not isinstance(arguments, str):
                 arguments = str(arguments)
             yield ToolCallBegin(tool_call["id"], name, arguments)
-            output = await self.execute_tool(tool_call, tool_map)
+
+            ctx = ToolHookContext(
+                self,
+                tool_call["id"],
+                name,
+                arguments,
+                turn_id,
+            )
+            output = await self._run_tool_with_hooks(ctx, tool_call, tool_map)
+
             append_message(
                 self.messages,
                 Message.tool_result(tool_call["id"], output.content),
                 turn_id=turn_id,
             )
             yield ToolResult(tool_call["id"], name, output.content, ok=output.ok)
+
+    async def _run_tool_with_hooks(
+        self,
+        ctx: ToolHookContext,
+        tool_call: dict,
+        tool_map: dict[str, FunctionTool],
+    ) -> ToolOutput:
+        if self.tool_hooks is not None:
+            decision = await self.tool_hooks.run_before(ctx)
+            if decision is not None:
+                return ToolOutput(
+                    content=decision.content or "",
+                    ok=decision.ok,
+                )
+
+        output = await self.execute_tool(tool_call, tool_map)
+
+        if self.tool_hooks is None:
+            return output
+
+        post_ctx = PostToolHookContext(
+            ctx.runner,
+            ctx.tool_call_id,
+            ctx.name,
+            ctx.arguments,
+            ctx.turn_id,
+            output,
+        )
+        return await self.tool_hooks.run_after(post_ctx, output)
 
     async def stream_agent_messages(
         self,
@@ -308,6 +396,7 @@ class Runner:
         max_turns: int = 8,
         skill_roots: Sequence[str | Path] = (),
         tools: Sequence[FunctionTool] = (),
+        tool_hooks: ToolHooks | None = None,
     ) -> Runner:
         thread = Thread.open(thread_id, overrides=overrides)
         sandbox = await cls._open_sandbox(thread)
@@ -344,6 +433,7 @@ class Runner:
             ),
             skills=skills,
             conversation_id=conversation_id,
+            tool_hooks=tool_hooks,
         )
 
     @staticmethod

@@ -27,6 +27,7 @@ from .repl import (
     say_goodbye,
 )
 from .terminal import emit, layout_terminal
+from .tool_permit import apply_permit_answer, parse_permit_answer
 
 
 async def dispatch_user_line(
@@ -55,6 +56,7 @@ async def run_layout_loop(
     color: bool,
     user_label: str,
     assistant_label: str,
+    permit_auto: bool = False,
 ) -> bool:
     run_task: asyncio.Task | None = None
     had_user_turn = False
@@ -64,7 +66,12 @@ async def run_layout_loop(
     while True:
         run_state["active"] = run_task is not None and not run_task.done()
         idle_prefix = f"{user_label}> "
-        terminal.set_prefix("steer> " if run_state["active"] else idle_prefix)
+        if run_state.get("permit") is not None:
+            terminal.set_prefix("permit> ")
+        elif run_state["active"]:
+            terminal.set_prefix("steer> ")
+        else:
+            terminal.set_prefix(idle_prefix)
 
         wait_set: set[asyncio.Task] = {input_task}
         if run_state["active"] and run_task is not None:
@@ -114,6 +121,20 @@ async def run_layout_loop(
                 break
             continue
 
+        permit_event = run_state.get("permit")
+        if permit_event is not None:
+            answer = parse_permit_answer(text)
+            if answer is None:
+                emit(c("输入 y 批准 / n 拒绝", DIM, on=color))
+                continue
+            apply_permit_answer(runner, permit_event.tool_call_id, answer)
+            label = "已批准" if answer else "已拒绝"
+            emit(c(label, DIM, on=color))
+            wait = run_state.get("permit_wait")
+            if wait is not None:
+                wait.set()
+            continue
+
         if run_task is not None and not run_task.done():
             runner.steer(text)
             emit(c(f"↳ steer: {text}", DIM, on=color))
@@ -125,7 +146,15 @@ async def run_layout_loop(
             user_label=user_label,
             assistant_label=assistant_label,
         )
-        run_task = asyncio.create_task(consume_run(runner, text, state))
+        run_task = asyncio.create_task(
+            consume_run(
+                runner,
+                text,
+                state,
+                run_state=run_state,
+                permit_auto=permit_auto,
+            )
+        )
         had_user_turn = True
 
     return had_user_turn
@@ -145,7 +174,7 @@ async def run_concurrent_repl(config: ReplConfig, *, color: bool | None = None) 
     had_user_turn = False
     try:
         runner = await open_runner(config)
-        run_state: dict = {"active": False}
+        run_state: dict = {"active": False, "permit": None}
         terminal = LayoutTerminal(color=use_color)
         app = terminal.build_application(run_state=run_state, runner=runner)
 
@@ -154,7 +183,9 @@ async def run_concurrent_repl(config: ReplConfig, *, color: bool | None = None) 
             terminal.write(format_banner(runner, color=use_color))
             terminal.write(
                 c(
-                    "输入行固定在最底；run 中 Enter=steer，Esc/Ctrl+C=cancel",
+                    "输入行固定在最底；run 中 Enter=steer"
+                    + ("" if config.permission_auto() else "，危险工具需 permit> 审批")
+                    + "，Esc/Ctrl+C=cancel",
                     DIM,
                     on=use_color,
                 )
@@ -168,6 +199,7 @@ async def run_concurrent_repl(config: ReplConfig, *, color: bool | None = None) 
                     color=use_color,
                     user_label=config.resolved_user_label(),
                     assistant_label=config.resolved_assistant_label(),
+                    permit_auto=config.permission_auto(),
                 )
             )
             app_task = asyncio.create_task(app.run_async())

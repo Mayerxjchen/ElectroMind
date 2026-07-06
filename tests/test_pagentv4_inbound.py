@@ -6,8 +6,10 @@ from pagentv4.core.events import RunBegin, TextDelta, ToolCallBegin, ToolResult,
 from pagentv4.runtime.inbound import (
     CancelRun,
     CheckpointPolicy,
+    DenyTool,
     DrainResult,
     InboundMailbox,
+    PermitTool,
     Steer,
     fold_inbound,
 )
@@ -76,3 +78,35 @@ async def test_mailbox_async_put():
     box = InboundMailbox()
     await asyncio.to_thread(box.steer, "async")
     assert box.drain().steers == ("async",)
+
+
+@pytest.mark.asyncio
+async def test_drain_for_checkpoint_preserves_permit_events():
+    policy = CheckpointPolicy()
+    box = InboundMailbox()
+    box.permit("call_1")
+    box.steer("later")
+    result = box.drain_for_checkpoint(
+        ToolCallBegin("id", "run_command", "{}"),
+        policy,
+    )
+    assert result == DrainResult()
+    assert box.pending() == 2
+    assert await box.wait() == PermitTool("call_1")
+
+
+@pytest.mark.asyncio
+async def test_mailbox_permit_and_deny():
+    box = InboundMailbox()
+    box.permit("a")
+    box.deny("b", reason="nope")
+
+    async def take():
+        events = []
+        while box.pending():
+            events.append(await box.wait())
+        return events
+
+    events = await take()
+    assert events[0] == PermitTool("a")
+    assert events[1] == DenyTool("b", "nope")

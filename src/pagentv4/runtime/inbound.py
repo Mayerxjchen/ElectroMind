@@ -3,14 +3,11 @@
 与 :mod:`pagentv4.core.events` 的出站 ``Event`` 分离：
 
 - **出站**：RunBegin、TextDelta、ToolResult… —— agent 发生了什么
-- **入站**：Steer、CancelRun —— 用户在 run 进行中要做什么
+- **入站**：Steer、CancelRun、PermitTool、DenyTool —— 用户在 run 进行中要做什么
 
-应用层 ``mailbox.steer(text)`` / ``mailbox.cancel()``；
-Runner 在 ``_events`` 每个出站 event 之后按 :class:`CheckpointPolicy` 调用
-``mailbox.drain_for_checkpoint(...)``。
-
-Steer 只在「轮次边界」注入（避免 assistant+tool_calls 后插入 user 消息）；
-Cancel 可在 tool 执行与流式输出检查点生效。
+应用层 ``mailbox.steer(text)`` / ``mailbox.cancel()`` / ``mailbox.permit(id)`` /
+``mailbox.deny(id)``；Runner 在出站 event 检查点 drain steer/cancel；
+``wait_tool_permit`` 从同一邮箱消费 permit/deny。
 """
 
 from __future__ import annotations
@@ -44,7 +41,28 @@ class CancelRun:
     """中止当前 run；已写入 messages 的保留，未执行的工具不再跑。"""
 
 
-InboundEvent: TypeAlias = Steer | CancelRun
+@dataclass(frozen=True, slots=True)
+class PermitTool:
+    """批准执行 ``tool_call_id`` 对应的工具（供 ``wait_tool_permit`` 消费）。"""
+
+    tool_call_id: str
+
+
+@dataclass(frozen=True, slots=True)
+class DenyTool:
+    """拒绝执行工具；``reason`` 写入 tool result，让模型知道是用户拒绝。"""
+
+    tool_call_id: str
+    reason: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class ToolPermitResult:
+    approved: bool
+    reason: str = ""
+
+
+InboundEvent: TypeAlias = Steer | CancelRun | PermitTool | DenyTool
 
 
 @dataclass
@@ -154,8 +172,17 @@ class InboundMailbox:
     def cancel(self) -> None:
         self._queue.put_nowait(CancelRun())
 
+    def permit(self, tool_call_id: str) -> None:
+        self._queue.put_nowait(PermitTool(tool_call_id))
+
+    def deny(self, tool_call_id: str, *, reason: str = "") -> None:
+        self._queue.put_nowait(DenyTool(tool_call_id, reason))
+
     def push(self, event: InboundEvent) -> None:
         self._queue.put_nowait(event)
+
+    async def wait(self) -> InboundEvent:
+        return await self._queue.get()
 
     def pending(self) -> int:
         return self._queue.qsize()
@@ -192,9 +219,12 @@ class InboundMailbox:
 
         steers_apply: list[str] = []
         steers_requeue: list[Steer] = []
+        passthrough: list[InboundEvent] = []
         cancelled = False
         for event in raw:
-            if isinstance(event, CancelRun):
+            if isinstance(event, PermitTool | DenyTool):
+                passthrough.append(event)
+            elif isinstance(event, CancelRun):
                 cancelled = True
             elif isinstance(event, Steer):
                 text = event.text.strip()
@@ -205,6 +235,8 @@ class InboundMailbox:
                 else:
                     steers_requeue.append(event)
 
+        for event in passthrough:
+            self._queue.put_nowait(event)
         for event in steers_requeue:
             self._queue.put_nowait(event)
 

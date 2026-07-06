@@ -24,6 +24,7 @@ from .render import (
     render_turn,
 )
 from .terminal import emit, emit_prompt
+from .tool_permit import build_app_tool_hooks
 
 EXTRA_SYSTEM = "你是 pagent 。回答简短直接。"
 
@@ -53,6 +54,7 @@ async def open_runner(config: ReplConfig) -> Runner:
         max_turns=config.resolved_max_turns(),
         skill_roots=config.resolved_skill_roots(),
         tools=HARNESS_WEB_TOOLS,
+        tool_hooks=build_app_tool_hooks(auto=config.permission_auto()),
     )
 
 
@@ -203,6 +205,7 @@ async def run_blocking_repl(config: ReplConfig, *, color: bool | None = None) ->
                     color=use_color,
                     user_label=config.resolved_user_label(),
                     assistant_label=config.resolved_assistant_label(),
+                    permit_auto=config.permission_auto(),
                 )
                 had_user_turn = True
             except KeyboardInterrupt:

@@ -17,6 +17,12 @@ from pagentv4 import (
 )
 
 from .terminal import emit
+from .tool_permit import (
+    needs_tool_permit,
+    prompt_permit_blocking,
+    runner_supports_permit,
+    wait_for_layout_permit,
+)
 
 CYAN = "\033[36m"
 DIM = "\033[90m"
@@ -434,9 +440,28 @@ def render_event(event, state: RenderState) -> None:
         emit(c("[cancelled]", YELLOW, on=state.color))
 
 
-async def consume_run(runner: Runner, user_input: str, state: RenderState) -> None:
+async def consume_run(
+    runner: Runner,
+    user_input: str,
+    state: RenderState,
+    *,
+    run_state: dict | None = None,
+    permit_auto: bool = False,
+) -> None:
     async for event in runner.run(user_input):
         render_event(event, state)
+        if (
+            not permit_auto
+            and isinstance(event, ToolCallBegin)
+            and needs_tool_permit(event.name)
+            and runner_supports_permit(runner)
+        ):
+            if run_state is not None:
+                await wait_for_layout_permit(
+                    runner, event, run_state, color=state.color
+                )
+            else:
+                await prompt_permit_blocking(runner, event, color=state.color)
     state.finish()
 
 
@@ -448,6 +473,7 @@ async def render_turn(
     state: RenderState | None = None,
     user_label: str = "you",
     assistant_label: str = "pagent",
+    permit_auto: bool = False,
 ) -> RenderState:
     if state is None:
         state = RenderState(
@@ -455,5 +481,5 @@ async def render_turn(
             user_label=user_label,
             assistant_label=assistant_label,
         )
-    await consume_run(runner, user_input, state)
+    await consume_run(runner, user_input, state, permit_auto=permit_auto)
     return state

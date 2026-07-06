@@ -28,6 +28,7 @@ class ReplConfig:
     skill_roots: tuple[str, ...] | None = None
     user_label: str | None = None
     assistant_label: str | None = None
+    permission_mode: str | None = None
 
     def resolved_api_key(self) -> str | None:
         if self.api_key and self.api_key.strip():
@@ -53,6 +54,13 @@ class ReplConfig:
     def resolved_assistant_label(self) -> str:
         label = (self.assistant_label or "pagent").strip()
         return label or "pagent"
+
+    def resolved_permission_mode(self) -> str:
+        mode = (self.permission_mode or "prompt").strip().lower()
+        return mode if mode in ("prompt", "auto") else "prompt"
+
+    def permission_auto(self) -> bool:
+        return self.resolved_permission_mode() == "auto"
 
     def thread_overrides(self) -> dict:
         kwargs: dict = {}
@@ -86,6 +94,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
     ssh = data.get("ssh", {})
     skills = data.get("skills", {})
     repl = data.get("repl", {})
+    permission = data.get("permission", {})
 
     max_turns = data.get("max_turns")
     if max_turns is not None and not isinstance(max_turns, int):
@@ -146,6 +155,14 @@ def parse_repl_config(data: dict) -> ReplConfig:
     if assistant_label == "":
         assistant_label = None
 
+    permission_mode = permission.get("mode")
+    if permission_mode is not None:
+        if not isinstance(permission_mode, str):
+            raise ValueError("permission.mode must be a string")
+        permission_mode = permission_mode.strip().lower()
+        if permission_mode not in ("prompt", "auto"):
+            raise ValueError("permission.mode must be 'prompt' or 'auto'")
+
     return ReplConfig(
         model=model,
         api_key=api_key,
@@ -161,6 +178,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
         skill_roots=skill_roots,
         user_label=user_label,
         assistant_label=assistant_label,
+        permission_mode=permission_mode,
     )
 
 
@@ -240,6 +258,11 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="阻塞 REPL：跑完一轮再显示输入（默认 TTY 为底栏固定输入）",
     )
+    parser.add_argument(
+        "--auto",
+        action="store_true",
+        help="危险工具自动审批（等同 [permission] mode=auto）",
+    )
     return parser
 
 
@@ -250,6 +273,8 @@ def config_from_args(args: argparse.Namespace) -> ReplConfig:
         fields["thread_id"] = args.thread_id
     if args.blocking:
         fields["blocking"] = True
+    if args.auto:
+        fields["permission_mode"] = "auto"
     if fields:
         config = replace(config, **fields)
     return config

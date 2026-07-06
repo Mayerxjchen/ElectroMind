@@ -108,6 +108,44 @@ Skills are optional instruction packs loaded from `SKILL.md` directories.
 Use `SkillRegistry.from_defaults()` and `make_use_skill_tool(registry)` to
 let the model load skill instructions on demand. See `examples/v4runner/repl.py`.
 
+## Tool hooks
+
+`Runner.open(..., tool_hooks=...)` runs callbacks around each tool execution.
+Event order is unchanged: `ToolCallBegin` is emitted first, then hooks run, then
+the tool (or skip), then `ToolResult`.
+
+```python
+from pagentv4 import Runner, ToolDecision, ToolHooks
+from pagentv4.runtime.hooks import ToolHookContext, PostToolHookContext
+
+
+async def approve_dangerous(ctx: ToolHookContext):
+    if ctx.name == "run_command":
+        ok = await ctx.runner.wait_tool_permit(ctx.tool_call_id)
+        if not ok:
+            return ToolDecision.deny("not permitted")
+    return None  # allow
+
+
+def redact_result(ctx: PostToolHookContext):
+    return ctx.output  # or return a new ToolOutput to replace
+
+
+runner = await Runner.open(
+    "demo",
+    provider,
+    tool_hooks=ToolHooks(before=[approve_dangerous], after=[redact_result]),
+)
+```
+
+- `ToolDecision.deny(message)` — skip execution, emit failed `ToolResult`
+- `ToolDecision.replace(content)` — skip execution, emit success with fixed content
+- `runner.permit_tool(id)` / `runner.deny_tool(id)` — or `runner.inbound.permit(id)` / `deny(id)`
+- `await ctx.runner.wait_tool_permit(id)` — consumes inbound `PermitTool` / `DenyTool` / `CancelRun`
+- `tool_hooks=None` — same behavior as before (zero overhead path)
+
+Inbound steer/cancel remains separate from hooks; see `runtime/inbound.py`.
+
 ## Notes
 
 - Tool names must be unique inside one `Agent`.
