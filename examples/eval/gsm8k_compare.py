@@ -166,14 +166,24 @@ async def eval_simple(rows, *, verbose: bool) -> list[RowScore]:
     results: list[RowScore] = []
     total = len(rows)
     for index, row in enumerate(rows, start=1):
-        placeholder = RowScore(index=index, question=row["question"], gold=None, pred=None, ok=False)
-        print_progress("simple", index, total, phase="start", result=placeholder, verbose=verbose)
+        placeholder = RowScore(
+            index=index, question=row["question"], gold=None, pred=None, ok=False
+        )
+        print_progress(
+            "simple", index, total, phase="start", result=placeholder, verbose=verbose
+        )
         prompt = row["question"] + QUESTION_SUFFIX
         ans = await runner.run(prompt)
         result = score_row(index, row["question"], row["answer"], ans)
         results.append(result)
         print_progress(
-            "simple", index, total, phase="done", result=result, answer=ans, verbose=verbose
+            "simple",
+            index,
+            total,
+            phase="done",
+            result=result,
+            answer=ans,
+            verbose=verbose,
         )
     return results
 
@@ -186,14 +196,24 @@ async def eval_agentic(rows, *, verbose: bool) -> list[RowScore]:
     results: list[RowScore] = []
     total = len(rows)
     for index, row in enumerate(rows, start=1):
-        placeholder = RowScore(index=index, question=row["question"], gold=None, pred=None, ok=False)
-        print_progress("agentic", index, total, phase="start", result=placeholder, verbose=verbose)
+        placeholder = RowScore(
+            index=index, question=row["question"], gold=None, pred=None, ok=False
+        )
+        print_progress(
+            "agentic", index, total, phase="start", result=placeholder, verbose=verbose
+        )
         prompt = row["question"] + QUESTION_SUFFIX
         ans = await runner.run(prompt, tools=[calc])
         result = score_row(index, row["question"], row["answer"], ans)
         results.append(result)
         print_progress(
-            "agentic", index, total, phase="done", result=result, answer=ans, verbose=verbose
+            "agentic",
+            index,
+            total,
+            phase="done",
+            result=result,
+            answer=ans,
+            verbose=verbose,
         )
     return results
 
@@ -210,7 +230,9 @@ def parse_args() -> argparse.Namespace:
         description="Compare SimpleQuestionAnswerRunner vs AgenticRunner on GSM8K"
     )
     parser.add_argument("--split", default="test", choices=("train", "test"))
-    parser.add_argument("--limit", type=int, default=20, help="subset size (default 20)")
+    parser.add_argument(
+        "--limit", type=int, default=20, help="subset size (default 20)"
+    )
     parser.add_argument(
         "--sample",
         default="hard",
@@ -254,9 +276,7 @@ async def main() -> None:
     print(summarize("AgenticRunner (+calc)     ", agentic))
 
     failed_both = [
-        (s, a)
-        for s, a in zip(simple, agentic, strict=True)
-        if not s.ok and not a.ok
+        (s, a) for s, a in zip(simple, agentic, strict=True) if not s.ok and not a.ok
     ]
     if failed_both:
         print("\nBoth failed:")
