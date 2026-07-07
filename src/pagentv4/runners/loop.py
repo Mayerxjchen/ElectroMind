@@ -18,6 +18,20 @@ async def execute_tool(agent: Agent, tool_call: dict) -> ToolOutput:
     return await tool.acall(function_call["arguments"])
 
 
+async def stream_turn(
+    agent: Agent,
+    messages: Messages,
+    turn_id: int,
+    run_kwargs: dict,
+) -> TurnResult | None:
+    turn_start = len(messages.data)
+    async for message in agent.stream_messages(messages, **run_kwargs):
+        append_message(messages, message, turn_id=turn_id)
+    if turn_start >= len(messages.data):
+        return None
+    return TurnResult.from_slice(messages.data, turn_start)
+
+
 async def run_agent(
     agent: Agent,
     prompt: str,
@@ -33,14 +47,8 @@ async def run_agent(
     append_message(messages, Message.user(prompt), turn_id=turn_id)
 
     for turn in range(agent.max_turns):
-        turn_start = len(messages.data)
-
-        async for message in agent.stream_messages(messages, **run_kwargs):
-            append_message(messages, message, turn_id=turn_id)
-
-        result = TurnResult.from_slice(messages.data, turn_start)
-
-        if turn_start >= len(messages.data):
+        result = await stream_turn(agent, messages, turn_id, run_kwargs)
+        if result is None:
             return ""
 
         if not result.has_tool_calls:
@@ -55,7 +63,18 @@ async def run_agent(
             )
 
         if turn + 1 >= agent.max_turns:
-            tail = TurnResult.from_slice(messages.data, turn_start)
-            return tail.content
+            # 最后一轮工具已跑完：额外给模型一轮读 tool result 并作答。
+            final = await stream_turn(agent, messages, turn_id, run_kwargs)
+            if final is None:
+                return ""
+            if final.has_tool_calls:
+                for tool_call in final.tool_calls:
+                    output = await execute_tool(agent, tool_call)
+                    append_message(
+                        messages,
+                        Message.tool_result(tool_call["id"], output.content),
+                        turn_id=turn_id,
+                    )
+            return final.content
 
     raise RuntimeError("unreachable")

@@ -100,6 +100,28 @@ async def test_agentic_runner_per_run_tools():
 
 
 @pytest.mark.asyncio
+async def test_max_turns_grants_synthesis_turn():
+    tc = SimpleNamespace(
+        index=0,
+        id="c1",
+        type="function",
+        function=SimpleNamespace(name="echo", arguments='{"msg":"ping"}'),
+    )
+    provider = FakeProvider(
+        [
+            [FakeStreamChunk(tool_calls=[tc])],
+            [FakeStreamChunk(content="579")],
+        ]
+    )
+    runner = AgenticRunner(
+        RunConfig(provider=provider, system="test", max_turns=1),
+        tools=[echo],
+    )
+    answer = await runner.run("solve")
+    assert answer == "579"
+
+
+@pytest.mark.asyncio
 async def test_code_agent(tmp_path, monkeypatch):
     provider = FakeProvider([[FakeStreamChunk(content="patched file")]])
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
