@@ -1,10 +1,17 @@
-"""OpenAI-compatible provider — stateless HTTP only."""
+"""OpenAI-compatible provider — stateless HTTP only.
+
+TODO:
+- API key: cloud providers fail fast when missing; local (Ollama/Vllm/Sglang) keep dummy key.
+- DeepSeek: default model_id=\"deepseek-v4-flash\" (align with RunConfig).
+- Test: mock AsyncOpenAI.create and assert complete() kwargs.
+"""
 
 import os
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Protocol
 
-from openai import AsyncOpenAI
+from openai import AsyncOpenAI, AsyncStream
+from openai.types.chat import ChatCompletionChunk
 
 RESERVED_KEYS = frozenset({"model", "messages", "stream", "tools"})
 
@@ -23,6 +30,15 @@ def must_apikey(api_key_env_var: str, apikey: str | None) -> str:
     if existing is not None and str(existing).strip():
         return str(existing).strip()
     return "not-needed"
+
+
+class ProviderProtocol(Protocol):
+    async def complete(
+        self,
+        messages: list[dict[str, Any]],
+        tools: list[dict[str, Any]] | None = None,
+        **run_kwargs: Any,
+    ) -> AsyncStream[ChatCompletionChunk]: ...
 
 
 class Provider:
@@ -51,7 +67,7 @@ class Provider:
         messages: list[dict[str, Any]],
         tools: list[dict[str, Any]] | None = None,
         **run_kwargs: Any,
-    ):
+    ) -> AsyncStream[ChatCompletionChunk]:
         check_run_kwargs(run_kwargs)
         kwargs: dict[str, Any] = {
             **self.request_kwargs,

@@ -115,9 +115,14 @@ provider = Provider(
 |----------|----------|
 | `Provider` | `OPENAI_API_KEY` |
 | `DeepSeek` | `DEEPSEEK_API_KEY` |
+| `Kimi` | `MOONSHOT_API_KEY` |
+| `MiMo` | `MIMO_API_KEY` |
+| `LongCat` | `LONGCAT_API_KEY` |
 | `Ollama` | `OLLAMA_API_KEY` |
 | `Vllm` | `VLLM_API_KEY` |
 | `Sglang` | `SGLANG_API_KEY` |
+
+`ProviderProtocol` 是 `complete()` 的结构化类型；测试或自定义后端可实现它，无需继承 `Provider`。
 
 ## `arun()` 返回类型
 

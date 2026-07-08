@@ -120,9 +120,15 @@ Reserved keys in `Provider.complete()`:
 |----------|---------------------|
 | `Provider` | `OPENAI_API_KEY` |
 | `DeepSeek` | `DEEPSEEK_API_KEY` |
+| `Kimi` | `MOONSHOT_API_KEY` |
+| `MiMo` | `MIMO_API_KEY` |
+| `LongCat` | `LONGCAT_API_KEY` |
 | `Ollama` | `OLLAMA_API_KEY` |
 | `Vllm` | `VLLM_API_KEY` |
 | `Sglang` | `SGLANG_API_KEY` |
+
+`ProviderProtocol` is the structural type for `complete()` (tests and custom
+backends may implement it without subclassing `Provider`).
 
 ## `run()` return types
 

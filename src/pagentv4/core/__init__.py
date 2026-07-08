@@ -34,7 +34,17 @@ from .message import (
     UserChunk,
     reply_text,
 )
-from .provider import DeepSeek, Kimi, LongCat, MiMo, Ollama, Provider, Sglang, Vllm
+from .provider import (
+    DeepSeek,
+    Kimi,
+    LongCat,
+    MiMo,
+    Ollama,
+    Provider,
+    ProviderProtocol,
+    Sglang,
+    Vllm,
+)
 from .tool import FunctionTool, ToolOutput, to_openai_tools, tool
 from .turn_result import TurnResult
 
@@ -53,6 +63,7 @@ __all__ = [
     "MiMo",
     "Ollama",
     "Provider",
+    "ProviderProtocol",
     "ReasoningDelta",
     "RunBegin",
     "Sglang",

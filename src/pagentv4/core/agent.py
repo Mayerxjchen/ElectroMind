@@ -1,14 +1,14 @@
 from collections.abc import AsyncIterator
 
 from .message import Message, Messages, ToolCall
-from .provider import Provider
+from .provider import ProviderProtocol
 from .tool import FunctionTool, to_openai_tools
 
 
 class Agent:
     def __init__(
         self,
-        provider: Provider,
+        provider: ProviderProtocol,
         *,
         system: str | None = None,
         tools: list[FunctionTool] | None = None,

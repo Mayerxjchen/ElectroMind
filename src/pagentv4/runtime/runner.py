@@ -17,7 +17,7 @@ from ..core.events import (
     TurnEnd,
 )
 from ..core.message import Message, Messages, TextChunk, ThinkingChunk, ToolCall
-from ..core.provider import Provider
+from ..core.provider import ProviderProtocol
 from ..core.tool import FunctionTool, ToolOutput
 from ..core.turn_result import TurnResult
 from ..sandbox import Sandbox, SshConnection
@@ -389,7 +389,7 @@ class Runner:
     async def open(
         cls,
         thread_id: str,
-        provider: Provider,
+        provider: ProviderProtocol,
         *,
         overrides: dict | None = None,
         extra_system: str = "",
