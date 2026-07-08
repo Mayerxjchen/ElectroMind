@@ -22,7 +22,6 @@ Documentation = "https://synclionpaw.github.io/pagent/"
 [project.optional-dependencies]
 search = ["ddgs>=7"]
 tokens = ["transformers>=4.40"]
-acp = ["agent-client-protocol>=0.10", "ddgs>=7"]
 ssh = ["asyncssh>=2.14"]
 
 [project.scripts]
@@ -37,7 +36,6 @@ module-name = ["pagent", "pagentv4", "app"]
 
 [dependency-groups]
 dev = [
-    "agent-client-protocol>=0.10",
     "asyncssh>=2.14",
     "coverage[toml]>=7.15.0",
     "ddgs>=7",
@@ -89,10 +87,6 @@ extend-exclude = ["src/pagentv4/core/hacked_agent.py"]  # intentional invalid sy
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]
-
-[tool.ruff.lint.per-file-ignores]
-"examples/acp_agent/main.py" = ["E402"]
-"tests/test_acp_tools.py" = ["E402"]
 
 [tool.ruff.format]
 quote-style = "double"
