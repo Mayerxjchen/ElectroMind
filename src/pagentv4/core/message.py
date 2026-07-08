@@ -5,11 +5,15 @@ from pydantic import BaseModel, Field, HttpUrl, model_validator
 
 
 class ImageUrl(BaseModel):
+    """User input: remote image (exported as OpenAI image_url part)."""
+
     type: Literal["image_url"]
     url: str
 
 
 class AudioUrl(BaseModel):
+    """User input: remote audio + transcript fallback (see user_content_to_openai)."""
+
     type: Literal["audio_url"]
     url: HttpUrl
     text: str
@@ -55,11 +59,13 @@ class ThinkingChunk(BaseModel):
     text: str
 
 
+# User-side input parts (one Message row = one chunk; merged on export).
 UserChunk = Annotated[
     Union[TextChunk, ImageUrl, AudioUrl],
     Field(discriminator="type"),
 ]
 
+# Model-side output parts (streaming may append many rows per API turn).
 AssistantChunk = Annotated[
     Union[TextChunk, ThinkingChunk, ToolCall],
     Field(discriminator="type"),
@@ -74,6 +80,7 @@ class Message(BaseModel):
 
     @model_validator(mode="after")
     def content_matches_role(self) -> "Message":
+        # Union on content is wide; this ties each role to allowed chunk types.
         c = self.content
         if self.role == "system" and not isinstance(c, TextChunk):
             raise ValueError("system message must be text")
@@ -96,6 +103,8 @@ class Message(BaseModel):
         message_id: str | None = None,
         turn_id: int | None = None,
     ) -> "Message":
+        # Low-level: caller picks chunk shape (text / thinking / function).
+        # Agent streaming uses {"type": "text", ...} and {"type": "thinking", ...}.
         payload = {"role": "assistant", "content": content}
         if message_id is not None:
             payload["message_id"] = message_id
@@ -265,6 +274,7 @@ class Messages(BaseModel):
     data: list[Message] = Field(default_factory=list)
 
     def __iadd__(self, other: Message):
+        # Streamed assistant text/thinking appends merge into the last row.
         if not self.data:
             if other.message_id is None:
                 other.message_id = next_message_id()
@@ -333,6 +343,7 @@ class Messages(BaseModel):
         return messages
 
     def to_openai(self) -> list[dict]:
+        # Collapse many Message rows back into OpenAI chat message dicts.
         out: list[dict] = []
         i = 0
         data = self.data
