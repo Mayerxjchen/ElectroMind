@@ -33,7 +33,5 @@ skills/     SKILL.md 发现与按需加载
 
 ## 状态说明
 
-这套文档目前是增量补充。顶层 `pagent` 文档仍描述稳定的
-`Session + LLM + arun_events()` API。
-
-仓库里仍保留 `pagentv2` 供旧示例和测试使用；新工作请从 `pagentv4` 开始。
+新工作请使用 `pagentv4` 与 `app`（终端 REPL）。顶层 `pagent` 包仍保留较旧的
+`Session + LLM` API 文档。

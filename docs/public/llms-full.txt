@@ -1157,11 +1157,8 @@ skills/     SKILL.md discovery and on-demand loading
 
 ## Status
 
-This documentation set is additive for now. The existing top-level `pagent`
-docs still describe the stable `Session + LLM + arun_events()` API.
-
-`pagentv2` remains in the repo for older examples and tests; new work should
-start from `pagentv4`.
+New work should use `pagentv4` and `app` (terminal REPL). The top-level `pagent`
+package still documents the older `Session + LLM` API for now.
 
 
 ---

@@ -61,8 +61,6 @@ omit = [
     "*/__main__.py",
     # 故意的非法语法 demo，无法被 import
     "src/pagentv4/core/hacked_agent.py",
-    # v3 准备淘汰，整体不计入覆盖率（保留测试直到彻底移除）
-    "src/pagentv3/*",
     # 故意不测的旧 Agent 实现（已被 core/agent.py 取代）
     "src/pagentv4/core/agent_restored.py",
     # 需要真实环境（docker / ssh / ACP server）才能测，纯单测覆盖不到
@@ -93,7 +91,6 @@ extend-exclude = ["src/pagentv4/core/hacked_agent.py"]  # intentional invalid sy
 select = ["E4", "E7", "E9", "F", "I"]
 
 [tool.ruff.lint.per-file-ignores]
-"examples/demo2/*.py" = ["E402"]  # sys.path adjusted before local / sibling imports
 "examples/acp_agent/main.py" = ["E402"]
 "tests/test_acp_tools.py" = ["E402"]
 

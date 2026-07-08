@@ -48,9 +48,5 @@ htmlcov/
 debug
 
 # example runtime data
-data/pagentv3_demo/
-data/pagentv3_cli/
-data/pagentv3_cli.db
-
 .pagent/
 artifacts/
