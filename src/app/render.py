@@ -336,24 +336,15 @@ class RenderState:
     def flush_reasoning(self) -> None:
         if not self.reasoning_parts:
             return
-        prefix = "reasoning: "
-        body = "".join(self.reasoning_parts)
-        if self.color:
-            emit(f"{DIM}{prefix}{body}{RESET}")
-        else:
-            emit(f"{prefix}{body}")
+        # Content already streamed; just finish the line.
+        emit(flush=True)
         self.reasoning_parts.clear()
 
     def flush_text(self) -> None:
         if not self.text_parts:
             return
-        emit(
-            format_assistant_line(
-                "".join(self.text_parts),
-                color=self.color,
-                assistant_label=self.assistant_label,
-            )
-        )
+        # Content already streamed; just finish the line.
+        emit(flush=True)
         self.text_parts.clear()
 
     def flush_buffers(self) -> None:
@@ -363,6 +354,9 @@ class RenderState:
     def append_reasoning(self, text: str) -> None:
         if self.text_parts:
             self.flush_text()
+        if not self.reasoning_parts:
+            emit(c("reasoning: ", DIM, on=self.color), end="", flush=True)
+        emit(c(text, DIM, on=self.color), end="", flush=True)
         self.reasoning_parts.append(text)
         self.previous_kind = "reasoning"
 
@@ -371,6 +365,13 @@ class RenderState:
             self.flush_reasoning()
         if self.previous_kind == "tool_result" and not self.text_parts:
             emit()
+        if not self.text_parts:
+            emit(
+                c(f"{self.assistant_label}> ", GREEN, on=self.color),
+                end="",
+                flush=True,
+            )
+        emit(c(text, GREEN, on=self.color), end="", flush=True)
         self.text_parts.append(text)
         self.previous_kind = "text"
 
