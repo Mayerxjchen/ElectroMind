@@ -149,7 +149,7 @@ async for line in agent.arun_wire("Hello"):
     ...
 ```
 
-Runnable demos: `examples/reasoning_stream.py`, `examples/cli.py` (uses `arun` internally).
+Runnable demos are grouped under `examples/`; start with `examples/README.md`.
 
 ## Models & API keys
 
@@ -172,17 +172,17 @@ Server must expose OpenAI-compatible `/v1/chat/completions`.
 
 | Command | Description |
 |---------|-------------|
-| `uv run examples/cli.py` | Interactive CLI (`DEEPSEEK_API_KEY`), `/context` for usage |
-| `uv run examples/simple_qa.py` | Tools demo |
-| `uv run examples/reasoning_run.py` | `reasoning_content` (non-streaming) |
-| `uv run examples/reasoning_stream.py` | Stream reasoning + answer |
-| `uv run --with fastapi --with uvicorn python examples/wire_demo/server.py` | Wire NDJSON + browser UI |
+| `uv run pagent` | Interactive pagentv4 terminal app |
+| `uv run python -m examples.pagentv4.thread_based.conversation_only` | Thread-based conversation persistence |
+| `uv run python -m examples.pagentv4.thread_based.code_runner` | CodeRunner with sandbox tools |
+| `uv run python -m examples.pagentv4.runner.return_types` | `text` / `message` / `acp` / `event` projections |
+| `uv run --with fastapi --with uvicorn python examples/wire_browser/server.py` | Wire NDJSON + browser UI |
 
-Guide: [docs/reasoning.md](docs/reasoning.md). Full-stack wire demo: [examples/wire_demo/](examples/wire_demo/).
+Guide: [docs/reasoning.md](docs/reasoning.md). Full-stack wire demo: [examples/wire_browser/](examples/wire_browser/).
 
 ```bash
 export DEEPSEEK_API_KEY="your-key"
-uv run examples/reasoning_stream.py --zh
+uv run python -m examples.pagentv4.thread_based.conversation_only
 ```
 
 ## Optional built-in tools

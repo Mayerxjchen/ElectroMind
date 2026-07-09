@@ -1,0 +1,24 @@
+# thread.toml —— Thread 的长期配置
+# 首次 open 时由 pagent 冻结写入，后续 open 以磁盘为准。
+# 想改配置可直接编辑此文件，或删掉整个 thread 目录重建。
+
+[conversation]
+backend = "jsonl"           # "jsonl" | "sqlite"
+root = "."                  # conversation 文件存放根目录（相对 thread 根目录）
+db_path = "conversations.sqlite"  # SQLite 后端时的数据库文件名
+messages_id = "messages"    # 主对话的 conversation ID
+
+[sandbox]
+backend = "local"           # "local" | "docker" | "podman" | "ssh"
+image = null                # docker/podman 后端时的镜像，如 "ubuntu:22.04"
+container_ttl_seconds = null  # 容器自动销毁秒数（仅 docker/podman）
+command_policy = "workdir"  # "workdir" | "allowlist" | "denylist"
+
+[ssh]
+host = null                 # SSH 后端时的主机名（对应 ~/.ssh/config 里的 Host）
+config = "~/.ssh/config"    # ssh config 文件路径
+workdir = "~/agent"         # 远端工作目录
+
+[agent]
+model = "deepseek-v4-flash"  # 默认模型
+system = ""                  # 追加到 system prompt 末尾的文本

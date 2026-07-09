@@ -6,14 +6,14 @@ A **sandbox** is the agent's companion computer: an isolated workspace where
 it can run commands and read/write files. Paths are normalized to a virtual
 home (default `/home/agent`) across all backends.
 
-## Quick path: `Runner.open()`
+## Quick path: `Runner.create()`
 
 The simplest way to give an agent a computer:
 
 ```python
 from pagentv4 import DeepSeek, Runner
 
-runner = await Runner.open(
+runner = await Runner.create(
     "demo",
     DeepSeek("deepseek-v4-flash"),
     overrides={"backend": "local"},
@@ -30,21 +30,21 @@ finally:
 Flow:
 
 1. Open thread → create sandbox from thread spec
-2. Bind sandbox tools + any extra tools passed to `open()`
-3. Build `Agent` and run via `runner.run()`
+2. Bind sandbox tools + any extra tools passed to `create()`
+3. Build `AgentCore` and run via `runner.run()`
 4. Close sandbox with `runner.close()`
 
 ## Backends
 
 | `backend=` | Notes |
 |------------|-------|
-| `"local"` | Default. Workspace on host under `.pagent/workspaces/<id>/` |
+| `"local"` | Default. Thread workspace on host under `.pagent/threads/<thread_id>/workspace/` |
 | `"docker"` | Container with bind mount |
 | `"podman"` | Same as docker, Podman CLI |
 | `"ssh"` | Remote host via asyncssh |
 
 ```python
-runner = await Runner.open(
+runner = await Runner.create(
     "demo",
     provider,
     overrides={"backend": "docker", "image": "python:3.12-slim"},
@@ -59,7 +59,7 @@ finally:
 SSH example — set `ssh_host` in thread spec or overrides:
 
 ```python
-runner = await Runner.open(
+runner = await Runner.create(
     "remote",
     provider,
     overrides={
@@ -72,18 +72,19 @@ runner = await Runner.open(
 
 ## Workspace layout
 
-With `workspace_id="default"`:
+With `thread_id="demo"`:
 
 ```text
-<cwd>/.pagent/workspaces/default/
+<cwd>/.pagent/threads/demo/workspace/
 ```
 
-Pass `workdir="/absolute/path"` to override. The sandbox maps agent paths
-under `/home/agent` to this directory.
+Persistent runners get their workspace from the thread. The sandbox maps agent
+paths under `/home/agent` to this directory.
 
 ## Direct `Sandbox` API
 
-For lower-level control:
+For lower-level control, you can create a sandbox directly and choose a
+`workspace_id` or `workdir` yourself:
 
 ```python
 from pagentv4 import Sandbox
@@ -114,7 +115,7 @@ Wording shown to the model avoids internal terms like "sandbox".
 A [Thread](./core-types#thread) stores sandbox spec, messages, and workspace
 together under `.pagent/threads/<id>/`. Use this when you need the same
 computer and conversation to survive across process restarts — see
-`examples/v4runner/repl.py`.
+`examples/pagentv4/runner/sandbox.py`.
 
 ## Limits
 

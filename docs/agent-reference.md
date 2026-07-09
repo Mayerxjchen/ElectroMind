@@ -121,7 +121,7 @@ src/pagent/llm.py        LLM providers, RunEnd
 src/pagent/tool.py       @tool, FunctionTool
 src/pagent/events.py     Event dataclasses
 src/pagent/wire.py       JSON-RPC encode/decode
-examples/wire_demo/      FastAPI + browser NDJSON consumer
+examples/wire_browser/      FastAPI + browser NDJSON consumer
 tests/                   pytest
 ```
 

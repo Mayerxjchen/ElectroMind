@@ -63,7 +63,7 @@ def tool_call_chunk(
 
 async def open_runner(tmp_path, monkeypatch, provider, *, tools=(), tool_hooks=None):
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
-    return await Runner.open(
+    return await Runner.create(
         "test",
         provider,
         overrides={"backend": "local"},
@@ -222,6 +222,30 @@ async def test_wait_tool_permit_blocks_until_approved(tmp_path, monkeypatch):
         await task
         assert len(begins) == 1
         assert results == [ToolResult("call_1", "echo", "echo:1", ok=True)]
+    finally:
+        await runner.close()
+
+
+@pytest.mark.asyncio
+async def test_wait_tool_permit_requeues_unrelated_inbound_events(
+    tmp_path, monkeypatch
+):
+    provider = FakeProvider([])
+    runner = await open_runner(tmp_path, monkeypatch, provider)
+
+    async def approve_later():
+        await asyncio.sleep(0.05)
+        runner.permit_tool("call_1")
+
+    try:
+        runner.steer("keep this")
+        task = asyncio.create_task(approve_later())
+        result = await asyncio.wait_for(runner.wait_tool_permit("call_1"), timeout=0.2)
+        await task
+
+        assert result.approved is True
+        drain = runner.inbound.drain()
+        assert drain.steers == ("keep this",)
     finally:
         await runner.close()
 

@@ -11,7 +11,7 @@
 #     # 或
 #     cd src/app && docker build -t pagent:latest .
 #
-# bundled pagent.toml 默认 backend=docker, image=pagent:latest
+# bundled pagent.toml 默认 backend=podman, image=pagent:latest
 
 FROM alpine:3.21
 

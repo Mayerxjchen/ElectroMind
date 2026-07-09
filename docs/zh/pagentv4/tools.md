@@ -23,12 +23,12 @@ def get_weather(city: str) -> str:
 - 描述：docstring
 - 参数 schema：类型注解
 
-## 配合 `Agent` + `Runner`
+## 配合 `AgentCore` + `Runner`
 
 ```python
-from pagentv4 import Agent, DeepSeek, Messages, Runner
+from pagentv4 import AgentCore, DeepSeek, Messages, Runner
 
-agent = Agent(
+agent = AgentCore(
     DeepSeek("deepseek-v4-flash"),
     system="需要时用工具。",
     tools=[get_weather],
@@ -80,11 +80,11 @@ async def fetch(city: str) -> str:
     return f"{city} 今天晴"
 ```
 
-照常注册到 `Agent` 即可。
+照常注册到 `AgentCore` 即可。
 
 ## Sandbox 工具
 
-使用 `Runner.session()` 或手动绑定 `Sandbox` 时，有 8 个内置工具：
+使用 `Runner.create()` 并启用 sandbox 后，或手动绑定 `Sandbox` 时，有 8 个内置工具：
 
 | 工具 | 作用 |
 |------|------|
@@ -98,16 +98,16 @@ async def fetch(city: str) -> str:
 | `copy_to_host` | 从 sandbox 复制到宿主机 |
 
 用 `build_sandbox_tools(sandbox)` 或 `sandbox.tools()` 获取。
-`Runner.session()` 会把 sandbox 工具与你传入的额外工具合并。
+`Runner.create()` 会把 sandbox 工具与你传入的额外工具合并。
 
 ## Skills
 
 Skill 是从 `SKILL.md` 目录加载的可选指令包。
 用 `SkillRegistry.from_defaults()` 和 `make_use_skill_tool(registry)` 让模型按需加载 skill 说明。
-见 `examples/v4runner/repl.py`。
+见 `examples/app/repl.py`。
 
 ## 注意
 
-- 同一 `Agent` 内工具名必须唯一。
+- 同一 `AgentCore` 内工具名必须唯一。
 - docstring 要短而具体，模型会读到。
 - 工具调用使用 OpenAI function-call 形态。

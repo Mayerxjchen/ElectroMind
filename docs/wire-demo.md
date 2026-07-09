@@ -92,7 +92,7 @@ git clone https://github.com/SyncLionPaw/pagent.git
 cd pagent
 export DEEPSEEK_API_KEY="your-key"
 
-uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
+uv run --with fastapi --with uvicorn python examples/wire_browser/server.py
 ```
 
 Open **http://127.0.0.1:8765**
@@ -108,4 +108,4 @@ Open **http://127.0.0.1:8765**
 - Side drawer with raw Wire NDJSON lines
 - Same protocol as [Wire protocol](./wire) — not a separate message system
 
-Source: [examples/wire_demo/](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) on GitHub.
+Source: [examples/wire_browser/](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser) on GitHub.

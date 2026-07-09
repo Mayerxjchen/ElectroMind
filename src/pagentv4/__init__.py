@@ -1,18 +1,28 @@
 """pagentv4 —— 顶层门面。
 
 模块分层：
-- core/       Agent + Message + Provider + Tool + Event
-- runtime/    Runner + Conversation（编排 + 持久化）
+- core/       AgentCore + Message + Provider + Tool + Event
+- ithread/    IThread Protocol + ThreadSpec（Thread 层抽象）
+- conversation/ ConversationStore（对话持久化）
+- runtime/    Runner + Thread（编排 + 持久化）
 - sandbox/    伴身电脑（Backend Protocol + Sandbox 门面 + tools 适配）
 - adapters/   与外部协议的编解码（当前只有 ACP）
 
-用户面：`from pagentv4 import Agent, Runner, ...` 全部保留，
+用户面：`from pagentv4 import AgentCore, Runner, ...` 是推荐写法，
+`Agent` 作为兼容别名保留。
 子包深路径也稳定可用（`from pagentv4.core import ...`）。
 """
 
 from .adapters import decode_event_line, encode_event_line
+from .conversation import (
+    ConversationStore,
+    JsonlConversationStore,
+    SqliteConversationStore,
+    default_conversations_root,
+)
 from .core import (
     Agent,
+    AgentCore,
     AssistantChunk,
     AudioUrl,
     DeepSeek,
@@ -29,6 +39,7 @@ from .core import (
     ProviderProtocol,
     ReasoningDelta,
     RunBegin,
+    RunEnd,
     Sglang,
     StopReason,
     TextChunk,
@@ -47,28 +58,26 @@ from .core import (
     to_openai_tools,
     tool,
 )
-from .runners import (
-    AgenticRunner,
-    CodeAgent,
-    RunConfig,
-    SimpleQuestionAnswerRunner,
-)
+from .ithread import IThread, ThreadSpec, validate_thread_id
 from .runtime import (
+    AgentRunner,
     ArunReturnType,
-    ConversationStore,
+    BaseRunner,
+    ChatAgent,
+    ChatRunner,
+    CodeAgent,
+    CodeRunner,
     EventHandler,
-    JsonlConversationStore,
     PostToolHookContext,
     Runner,
-    SqliteConversationStore,
     Thread,
-    ThreadSpec,
+    ThreadAgent,
     ToolDecision,
     ToolHookContext,
     ToolHooks,
-    default_conversations_root,
+    VanillaAgent,
+    VanillaRunner,
     default_threads_root,
-    validate_thread_id,
 )
 from .sandbox import (
     Backend,
@@ -99,14 +108,19 @@ from .skills import (
 
 __all__ = [
     "Agent",
-    "AgenticRunner",
+    "AgentCore",
+    "AgentRunner",
     "ArunReturnType",
     "AssistantChunk",
     "AudioUrl",
     "Backend",
     "BackendGuard",
     "BackendIdentity",
+    "BaseRunner",
+    "ChatAgent",
+    "ChatRunner",
     "CodeAgent",
+    "CodeRunner",
     "CommandResult",
     "ConversationStore",
     "DeepSeek",
@@ -114,6 +128,7 @@ __all__ = [
     "Event",
     "EventHandler",
     "FunctionTool",
+    "IThread",
     "ImageUrl",
     "JsonlConversationStore",
     "Kimi",
@@ -128,9 +143,8 @@ __all__ = [
     "ProviderProtocol",
     "ReasoningDelta",
     "RunBegin",
-    "RunConfig",
+    "RunEnd",
     "Runner",
-    "SimpleQuestionAnswerRunner",
     "Sandbox",
     "SandboxDeadError",
     "SandboxLimits",
@@ -146,6 +160,7 @@ __all__ = [
     "TextDelta",
     "ThinkingChunk",
     "Thread",
+    "ThreadAgent",
     "ThreadSpec",
     "ToolCall",
     "ToolCallBegin",
@@ -158,6 +173,8 @@ __all__ = [
     "TurnEnd",
     "TurnResult",
     "UserChunk",
+    "VanillaAgent",
+    "VanillaRunner",
     "Vllm",
     "build_backend",
     "build_computer_description",

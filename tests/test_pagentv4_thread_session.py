@@ -6,7 +6,7 @@ from pagentv4 import DeepSeek, Runner
 @pytest.mark.asyncio
 async def test_runner_open_local(tmp_path, monkeypatch):
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
-    runner = await Runner.open(
+    runner = await Runner.create(
         "demo",
         DeepSeek("deepseek-v4-flash", apikey="test-key"),
         overrides={"backend": "local", "model": "deepseek-v4-flash"},

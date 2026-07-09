@@ -187,7 +187,7 @@ function onLine(line: string) {
 
 ## 実行可能デモ
 
-[`examples/wire_demo/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) — FastAPI + 単一ページ UI。本サイトの [Wire demo](./wire-demo) を参照。
+[`examples/wire_browser/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser) — FastAPI + 単一ページ UI。本サイトの [Wire demo](./wire-demo) を参照。
 
 ## ソース
 

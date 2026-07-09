@@ -184,7 +184,7 @@ function onLine(line: string) {
 
 ## 可运行示例
 
-[`examples/wire_demo/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) — FastAPI + 单页 UI。本站说明：[Wire demo](./wire-demo)。
+[`examples/wire_browser/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser) — FastAPI + 单页 UI。本站说明：[Wire demo](./wire-demo)。
 
 ## 源码
 

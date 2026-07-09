@@ -92,7 +92,7 @@ git clone https://github.com/SyncLionPaw/pagent.git
 cd pagent
 export DEEPSEEK_API_KEY="your-key"
 
-uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
+uv run --with fastapi --with uvicorn python examples/wire_browser/server.py
 ```
 
 浏览器打开 **http://127.0.0.1:8765**
@@ -108,4 +108,4 @@ uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
 - 右侧抽屉查看原始 Wire NDJSON 行
 - 与 [Wire 协议](./wire) 相同，不是另一套消息系统
 
-源码：[examples/wire_demo/](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo)
+源码：[examples/wire_browser/](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser)

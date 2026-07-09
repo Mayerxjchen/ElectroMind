@@ -24,7 +24,7 @@ async def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("Set DEEPSEEK_API_KEY first.")
 
-    runner = await Runner.open(
+    runner = await Runner.create(
         "demo",
         DeepSeek("deepseek-v4-flash"),
         overrides={"backend": "local"},
@@ -45,11 +45,12 @@ asyncio.run(main())
 
 ## Multi-turn on the same thread
 
-Call `runner.run()` again — messages accumulate and persist under
+Call `runner.run()` again — messages accumulate and persist in the conversation
+store configured by the thread. With the default JSONL backend, the path is
 `<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ```python
-runner = await Runner.open("demo", provider, overrides={"backend": "local"})
+runner = await Runner.create("demo", provider, overrides={"backend": "local"})
 try:
     async for text in runner.run("My name is Ada.", return_type="text"):
         print(text, end="")
@@ -63,11 +64,11 @@ Re-open the same `thread_id` later to resume.
 
 ## Sandbox + tools
 
-`Runner.open()` creates the sandbox from the thread spec, binds built-in file
+`Runner.create()` creates the sandbox from the thread spec, binds built-in file
 and command tools, and merges any extra tools you pass:
 
 ```python
-runner = await Runner.open(
+runner = await Runner.create(
     "demo",
     DeepSeek("deepseek-v4-flash"),
     overrides={"backend": "local"},

@@ -6,30 +6,10 @@ Models such as DeepSeek may return **`reasoning_content`** (chain-of-thought) al
 
 Event reference: [events.md](./events.md)
 
-## Example scripts
+## Usage
 
-| File | Mode | Description |
-|------|------|-------------|
-| [reasoning_run.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_run.py) | Non-streaming | `agent.run()` → `RunEnd` |
-| [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | Streaming | `agent.arun_events()` → `ReasoningDelta` + `TextDelta` |
-| [reasoning_common.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_common.py) | Shared | Questions, `make_agent()` |
-
-Also see [simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py) (tools) and [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) (interactive CLI).
-
-## Run
-
-```bash
-export DEEPSEEK_API_KEY="your-key-here"
-
-uv run examples/reasoning_run.py
-uv run examples/reasoning_stream.py
-
-# Chinese (chicken–rabbit cage problem)
-uv run examples/reasoning_run.py --zh
-uv run examples/reasoning_stream.py --zh
-```
-
-`--zh` selects a Chinese system prompt and the 鸡兔同笼 problem; the default is an English logic puzzle (mislabeled boxes).
+The examples below show the direct API shape. Runnable examples are grouped in
+[`examples/README.md`](https://github.com/SyncLionPaw/pagent/blob/main/examples/README.md).
 
 ## Non-streaming: RunEnd
 

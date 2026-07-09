@@ -1,14 +1,19 @@
 """pagentv4.runtime —— 调度 + 持久化门面。
 
-Runner 与 thread 同生共死：`await Runner.open(...)` → `runner.run(...)` → `runner.close()`。
+Runner 与 thread 同生共死：`await Runner.create(...)` → `runner.run(...)` → `runner.close()`。
 """
 
-from .conversation import (
+from ..conversation import (
     ConversationStore,
     JsonlConversationStore,
     SqliteConversationStore,
     default_conversations_root,
 )
+from ..ithread import IThread, ThreadSpec, validate_thread_id
+from .base_runner import BaseRunner
+from .chat_runner import ChatRunner
+from .code_runner import CodeRunner
+from .helper import ArunReturnType, EventHandler
 from .hooks import (
     PostToolHookContext,
     ToolDecision,
@@ -28,17 +33,31 @@ from .inbound import (
     ToolPermitResult,
     fold_inbound,
 )
-from .runner import ArunReturnType, EventHandler, Runner
-from .thread import Thread, ThreadSpec, default_threads_root, validate_thread_id
+from .protocol import AgentRunner
+from .runner import Runner
+from .thread import Thread, default_threads_root
+from .vanilla import VanillaRunner
+
+ChatAgent = ChatRunner
+CodeAgent = CodeRunner
+ThreadAgent = Runner
+VanillaAgent = VanillaRunner
 
 __all__ = [
     "ArunReturnType",
+    "AgentRunner",
+    "BaseRunner",
+    "ChatAgent",
+    "ChatRunner",
+    "CodeAgent",
+    "CodeRunner",
     "CancelRun",
     "CheckpointPolicy",
     "ConversationStore",
     "DenyTool",
     "DrainResult",
     "EventHandler",
+    "IThread",
     "InboundEvent",
     "InboundMailbox",
     "JsonlConversationStore",
@@ -53,7 +72,10 @@ __all__ = [
     "ToolHookContext",
     "ToolHooks",
     "Thread",
+    "ThreadAgent",
     "ThreadSpec",
+    "VanillaAgent",
+    "VanillaRunner",
     "default_conversations_root",
     "default_threads_root",
     "fold_inbound",

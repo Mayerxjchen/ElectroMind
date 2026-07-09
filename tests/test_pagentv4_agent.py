@@ -1,6 +1,6 @@
 import pytest
 
-from pagentv4 import Runner
+from pagentv4 import Agent, AgentCore, Runner, ThreadAgent
 
 
 class FakeStreamChunk:
@@ -37,7 +37,7 @@ async def open_runner(
     tmp_path, monkeypatch, provider, *, system="test", tools=(), max_turns=8
 ):
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
-    return await Runner.open(
+    return await Runner.create(
         "test",
         provider,
         overrides={"backend": "local"},
@@ -45,6 +45,14 @@ async def open_runner(
         max_turns=max_turns,
         tools=tools,
     )
+
+
+def test_thread_agent_alias_points_to_runner():
+    assert ThreadAgent is Runner
+
+
+def test_agent_alias_points_to_agent_core():
+    assert Agent is AgentCore
 
 
 @pytest.mark.asyncio
@@ -167,13 +175,13 @@ async def test_runner_isolates_separate_threads(tmp_path, monkeypatch):
         ]
     )
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
-    left = await Runner.open(
+    left = await Runner.create(
         "left",
         provider,
         overrides={"backend": "local"},
         extra_system="sys",
     )
-    right = await Runner.open(
+    right = await Runner.create(
         "right",
         provider,
         overrides={"backend": "local"},
@@ -225,6 +233,7 @@ async def test_run_calls_sync_event_handler(tmp_path, monkeypatch):
             pass
         assert "TextDelta" in seen
         assert "RunBegin" in seen
+        assert "RunEnd" in seen
         assert "TurnBegin" in seen
         assert "TurnEnd" in seen
     finally:

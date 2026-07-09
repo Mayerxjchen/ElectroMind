@@ -637,7 +637,7 @@ async def test_runner_open_binds_sandbox_tools(tmp_path, monkeypatch):
         ]
     )
 
-    runner = await Runner.open(
+    runner = await Runner.create(
         "sandbox-test",
         provider,
         overrides={"backend": "local"},
@@ -686,7 +686,7 @@ async def test_runner_open_merges_extra_tools(tmp_path, monkeypatch):
         ]
     )
 
-    runner = await Runner.open(
+    runner = await Runner.create(
         "tools-test",
         provider,
         overrides={"backend": "local"},
@@ -716,7 +716,7 @@ async def test_runner_open_closes_sandbox_on_exception(tmp_path, monkeypatch):
 
     provider = type("BoomProvider", (), {"complete": failing_stream})()
 
-    runner = await Runner.open(
+    runner = await Runner.create(
         "boom-test",
         provider,
         overrides={"backend": "local"},

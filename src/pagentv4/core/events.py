@@ -14,6 +14,12 @@ class RunBegin:
 
 
 @dataclass(frozen=True, slots=True)
+class RunEnd:
+    turn: int
+    stop_reason: StopReason
+
+
+@dataclass(frozen=True, slots=True)
 class TurnBegin:
     turn: int
 
@@ -54,6 +60,7 @@ class ToolResult:
 
 Event: TypeAlias = (
     RunBegin
+    | RunEnd
     | TurnBegin
     | TextDelta
     | ReasoningDelta

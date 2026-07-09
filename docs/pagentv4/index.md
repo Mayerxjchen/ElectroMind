@@ -8,19 +8,25 @@ Use these pages if you want:
 
 - `Provider` instead of `LLM`
 - `Message` / `Messages` instead of `Session`
-- `Runner` for orchestration, persistence, and sandbox sessions
+- `Runner` for thread-based orchestration, persistence, and sandbox workspaces
 - A **sandbox** (companion computer) with file and command tools
 - Optional **Thread** and **Skill** support for long-lived REPL-style apps
 
 ## Module layout
 
 ```text
-core/       Agent, Message, Provider, Tool, Event
-runtime/    Runner, ConversationStore, Thread
+core/       AgentCore, Message, Provider, Tool, Event
+runtime/    loop_core, Runner, VanillaRunner, Thread
+conversation/ ConversationStore implementations used through Thread
 sandbox/    Backend, Sandbox, built-in file/command tools
 adapters/   ACP encode/decode
 skills/     SKILL.md discovery and on-demand loading
 ```
+
+There are two layers inside `runtime/`:
+
+- `loop_core` defines the shared run / turn / tool loop semantics
+- `Runner` and `VanillaRunner` each add their own runtime environment around that shared loop
 
 ## Pages
 

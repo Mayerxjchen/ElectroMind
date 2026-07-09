@@ -5,7 +5,7 @@ from .provider import ProviderProtocol
 from .tool import FunctionTool, to_openai_tools
 
 
-class Agent:
+class AgentCore:
     def __init__(
         self,
         provider: ProviderProtocol,
@@ -30,7 +30,7 @@ class Agent:
             raise ValueError("max_turns must be >= 1")
         self.max_turns = max_turns
 
-    async def stream_messages(
+    async def generate_messages(
         self,
         messages: Messages,
         **run_kwargs,
@@ -89,3 +89,6 @@ class Agent:
 
         for _, tool_call in sorted(tool_calls_by_idx.items()):
             yield Message(role="assistant", content=ToolCall.from_openai(tool_call))
+
+
+Agent = AgentCore

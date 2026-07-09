@@ -57,15 +57,15 @@ git clone https://github.com/SyncLionPaw/pagent.git
 cd pagent
 export DEEPSEEK_API_KEY="your-key"
 
-uv run examples/cli.py
-uv run examples/simple_qa.py
-uv run examples/reasoning_stream.py --zh
-uv run --with fastapi --with uvicorn python examples/wire_demo/server.py
+uv run pagent
+uv run python -m examples.pagentv4.thread_based.conversation_only
+uv run python -m examples.pagentv4.thread_based.code_runner
+uv run --with fastapi --with uvicorn python examples/wire_browser/server.py
 ```
 
-| スクリプト | 説明 |
-|-----------|------|
-| [cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py) | 対話 CLI、`/context` |
-| [simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py) | ツール呼び出し |
-| [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | 思考 + 回答ストリーム |
-| [wire_demo](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) | FastAPI + ブラウザ UI |
+| サンプル | 説明 |
+|----------|------|
+| [`examples/README.md`](https://github.com/SyncLionPaw/pagent/blob/main/examples/README.md) | 分類済みサンプル索引 |
+| [`examples/pagentv4/thread_based`](https://github.com/SyncLionPaw/pagent/tree/main/examples/pagentv4/thread_based) | ChatRunner / CodeRunner examples |
+| [`examples/pagentv4/runner`](https://github.com/SyncLionPaw/pagent/tree/main/examples/pagentv4/runner) | Runner.create examples |
+| [wire_browser](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser) | FastAPI + ブラウザ UI |

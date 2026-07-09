@@ -1,4 +1,4 @@
-"""GSM8K 小子集 — 对比 SimpleQuestionAnswerRunner vs AgenticRunner(+calc)。
+"""GSM8K 小子集 — 对比 VanillaRunner 无工具 vs VanillaRunner(+calc)。
 
 Usage:
     export DEEPSEEK_API_KEY="your-key-here"
@@ -16,7 +16,7 @@ import random
 import re
 from dataclasses import dataclass
 
-from pagentv4 import AgenticRunner, RunConfig, SimpleQuestionAnswerRunner, tool
+from pagentv4 import AgentCore, DeepSeek, VanillaRunner, tool
 
 SIMPLE_SYSTEM = (
     "You solve grade-school math word problems. "
@@ -159,10 +159,25 @@ def print_progress(
         print(f"       A: {clip(answer, 200)}", flush=True)
 
 
-async def eval_simple(rows, *, verbose: bool) -> list[RowScore]:
-    runner = SimpleQuestionAnswerRunner(
-        RunConfig(system=SIMPLE_SYSTEM, max_turns=1),
+async def run_once(
+    prompt: str,
+    *,
+    system: str,
+    max_turns: int,
+    tools=None,
+) -> str:
+    runner = VanillaRunner(
+        AgentCore(
+            DeepSeek("deepseek-v4-flash"),
+            system=system,
+            tools=list(tools or []),
+            max_turns=max_turns,
+        )
     )
+    return "".join([text async for text in runner.run(prompt, return_type="text")])
+
+
+async def eval_simple(rows, *, verbose: bool) -> list[RowScore]:
     results: list[RowScore] = []
     total = len(rows)
     for index, row in enumerate(rows, start=1):
@@ -173,7 +188,7 @@ async def eval_simple(rows, *, verbose: bool) -> list[RowScore]:
             "simple", index, total, phase="start", result=placeholder, verbose=verbose
         )
         prompt = row["question"] + QUESTION_SUFFIX
-        ans = await runner.run(prompt)
+        ans = await run_once(prompt, system=SIMPLE_SYSTEM, max_turns=1)
         result = score_row(index, row["question"], row["answer"], ans)
         results.append(result)
         print_progress(
@@ -189,10 +204,6 @@ async def eval_simple(rows, *, verbose: bool) -> list[RowScore]:
 
 
 async def eval_agentic(rows, *, verbose: bool) -> list[RowScore]:
-    runner = AgenticRunner(
-        RunConfig(system=AGENTIC_SYSTEM, max_turns=6),
-        tools=[calc],
-    )
     results: list[RowScore] = []
     total = len(rows)
     for index, row in enumerate(rows, start=1):
@@ -203,7 +214,7 @@ async def eval_agentic(rows, *, verbose: bool) -> list[RowScore]:
             "agentic", index, total, phase="start", result=placeholder, verbose=verbose
         )
         prompt = row["question"] + QUESTION_SUFFIX
-        ans = await runner.run(prompt, tools=[calc])
+        ans = await run_once(prompt, system=AGENTIC_SYSTEM, max_turns=6, tools=[calc])
         result = score_row(index, row["question"], row["answer"], ans)
         results.append(result)
         print_progress(
@@ -227,7 +238,7 @@ def summarize(name: str, results: list[RowScore]) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Compare SimpleQuestionAnswerRunner vs AgenticRunner on GSM8K"
+        description="Compare VanillaRunner without tools vs VanillaRunner(+calc) on GSM8K"
     )
     parser.add_argument("--split", default="test", choices=("train", "test"))
     parser.add_argument(
@@ -251,10 +262,10 @@ def parse_args() -> argparse.Namespace:
 
 
 async def main() -> None:
+    args = parse_args()
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("请先 export DEEPSEEK_API_KEY=<your-key>")
 
-    args = parse_args()
     rows, subset_label = load_rows(
         args.split,
         args.limit,
@@ -264,16 +275,16 @@ async def main() -> None:
     )
     print(f"GSM8K {subset_label}\n")
 
-    print("Running SimpleQuestionAnswerRunner ...")
+    print("Running VanillaRunner (no tools) ...")
     simple = await eval_simple(rows, verbose=args.verbose)
     print()
 
-    print("Running AgenticRunner (+ calc) ...")
+    print("Running VanillaRunner (+ calc) ...")
     agentic = await eval_agentic(rows, verbose=args.verbose)
     print()
 
-    print(summarize("SimpleQuestionAnswerRunner", simple))
-    print(summarize("AgenticRunner (+calc)     ", agentic))
+    print(summarize("VanillaRunner (no tools)", simple))
+    print(summarize("VanillaRunner (+calc)  ", agentic))
 
     failed_both = [
         (s, a) for s, a in zip(simple, agentic, strict=True) if not s.ok and not a.ok

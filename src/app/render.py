@@ -275,7 +275,7 @@ def format_banner(runner: Runner, *, color: bool) -> str:
     if thread.spec.backend == "ssh":
         lines.insert(
             5,
-            row("messages", str(thread.root / "messages.jsonl"), color=color),
+            row("messages", str(thread.messages_storage_path), color=color),
         )
 
     if thread.ignored_overrides:

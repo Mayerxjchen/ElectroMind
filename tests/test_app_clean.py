@@ -1,5 +1,3 @@
-import json
-
 from app.clean import (
     clean_pagent,
     format_clean_report,
@@ -18,7 +16,9 @@ def write_thread(
 ):
     root = tmp_path / thread_id
     root.mkdir(parents=True)
-    (root / "spec.json").write_text(json.dumps({"backend": "local"}), encoding="utf-8")
+    (root / "thread.toml").write_text(
+        '[sandbox]\nbackend = "local"\n', encoding="utf-8"
+    )
     (root / "workspace").mkdir()
     if user_text is not None:
         messages = Messages()

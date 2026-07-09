@@ -1,6 +1,6 @@
 import pytest
 
-from pagentv4 import FunctionTool, Runner, ToolCallBegin, TurnEnd
+from pagentv4 import FunctionTool, RunEnd, Runner, ToolCallBegin, TurnEnd
 
 
 class FakeStreamChunk:
@@ -33,7 +33,7 @@ class FakeProvider:
 
 async def open_runner(tmp_path, monkeypatch, provider, *, tools=(), max_turns=8):
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
-    return await Runner.open(
+    return await Runner.create(
         "test",
         provider,
         overrides={"backend": "local"},
@@ -77,8 +77,10 @@ async def test_runner_cancel_run_emits_cancelled_turn_end(tmp_path, monkeypatch)
             if len(events) == 2:
                 runner.cancel_run()
         ended = [event for event in events if isinstance(event, TurnEnd)]
+        run_ended = [event for event in events if isinstance(event, RunEnd)]
         assert ended[-1].stop_reason == "cancelled"
         assert ended[-1].stopped is True
+        assert run_ended[-1].stop_reason == "cancelled"
     finally:
         await runner.close()
 

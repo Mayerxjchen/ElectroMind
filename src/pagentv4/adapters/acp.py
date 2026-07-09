@@ -1,10 +1,13 @@
 import json
 from dataclasses import fields
 
+from pydantic import BaseModel
+
 from ..core.events import (
     Event,
     ReasoningDelta,
     RunBegin,
+    RunEnd,
     TextDelta,
     ToolCallBegin,
     ToolResult,
@@ -17,6 +20,7 @@ JSONRPC_VERSION = "2.0"
 
 EVENT_TYPES: dict[str, type] = {
     "RunBegin": RunBegin,
+    "RunEnd": RunEnd,
     "TurnBegin": TurnBegin,
     "TurnEnd": TurnEnd,
     "TextDelta": TextDelta,
@@ -27,8 +31,20 @@ EVENT_TYPES: dict[str, type] = {
 }
 
 
+def json_value(value):
+    if isinstance(value, BaseModel):
+        return value.model_dump(mode="json")
+    if isinstance(value, list):
+        return [json_value(item) for item in value]
+    if isinstance(value, tuple):
+        return [json_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: json_value(item) for key, item in value.items()}
+    return value
+
+
 def encode_event_line(event: Event) -> str:
-    params = {f.name: getattr(event, f.name) for f in fields(event)}
+    params = {f.name: json_value(getattr(event, f.name)) for f in fields(event)}
     return (
         json.dumps(
             {

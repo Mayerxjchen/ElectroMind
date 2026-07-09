@@ -1,31 +1,38 @@
 # examples/eval
 
-用 pagentv4 三类 Runner 做测评 / benchmark 的示例。
+用当前 pagentv4 Runner 做测评 / benchmark 的示例。
 
-| 示例 | Runner |
-|------|--------|
-| [runners_demo.py](runners_demo.py) | 三个 Runner 各跑一例 |
-| [gsm8k_compare.py](gsm8k_compare.py) | GSM8K 小子集：Simple vs Agentic(+calc) 对比 |
+| 示例 | 内容 |
+|------|------|
+| [runners_demo.py](runners_demo.py) | `VanillaRunner` / `ChatRunner` / `CodeRunner` 各跑一例 |
+| [gsm8k_compare.py](gsm8k_compare.py) | GSM8K 小子集：无工具 vs `calc` 工具对比 |
 
 ## API
 
 ```python
-from pagentv4 import RunConfig, SimpleQuestionAnswerRunner, AgenticRunner, CodeAgent
+from pagentv4 import AgentCore, ChatRunner, CodeRunner, DeepSeek, VanillaRunner
 
-config = RunConfig(system="...", model="deepseek-v4-flash")
+# 无持久化、无 sandbox
+runner = VanillaRunner(AgentCore(DeepSeek("deepseek-v4-flash"), system="..."))
+ans = "".join([text async for text in runner.run(question, return_type="text")])
 
-# 文章 + 问题，单轮 QA
-runner = SimpleQuestionAnswerRunner(config)
-ans = await runner.run(article + question)
+# conversation 持久化
+runner = ChatRunner(AgentCore(DeepSeek("deepseek-v4-flash"), system="..."), thread_id="eval")
+try:
+    ans = "".join([text async for text in runner.run(question, return_type="text")])
+finally:
+    await runner.close()
 
-# 自定义工具，无沙箱
-runner = AgenticRunner(config, tools=[web_search])
-ans = await runner.run(question, tools=[web_search])
-
-# 完整沙箱（SWE-bench 等）
-agent = CodeAgent(config, tools=[...])
-ans = await agent.run(task)
-await agent.close()
+# sandbox 文件/命令能力；第一次 run 前自动初始化 sandbox
+runner = CodeRunner(
+    AgentCore(DeepSeek("deepseek-v4-flash"), system="..."),
+    thread_id="eval-code",
+    backend="local",
+)
+try:
+    ans = "".join([text async for text in runner.run(task, return_type="text")])
+finally:
+    await runner.close()
 ```
 
 ## 运行

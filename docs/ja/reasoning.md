@@ -6,26 +6,11 @@ DeepSeek などは **`reasoning_content`**（思考過程）と **`content`**（
 
 イベント一覧: [イベント](./events)
 
-## サンプルスクリプト
+## 使い方
 
-| ファイル | モード | 説明 |
-|----------|--------|------|
-| [reasoning_run.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_run.py) | 非ストリーム | `agent.run()` → `RunEnd` |
-| [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | ストリーム | `arun_events()` → `ReasoningDelta` + `TextDelta` |
-| [reasoning_common.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_common.py) | 共通 | 問題文、`make_agent()` |
-
-ほか [simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py)、[cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py)。
-
-## 実行
-
-```bash
-export DEEPSEEK_API_KEY="your-key"
-
-uv run examples/reasoning_run.py
-uv run examples/reasoning_stream.py
-
-uv run examples/reasoning_stream.py --zh   # 中国語プロンプト（鶏ウサギ問題）
-```
+以下は直接 API の形です。実行可能なサンプルは
+[`examples/README.md`](https://github.com/SyncLionPaw/pagent/blob/main/examples/README.md)
+に分類されています。
 
 ## 非ストリーム: RunEnd
 

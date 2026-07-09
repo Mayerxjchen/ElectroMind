@@ -187,7 +187,7 @@ Same semantics as [events.md](./events.md); `method` equals the Python event cla
 
 ## Runnable demo
 
-[`examples/wire_demo/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_demo) — FastAPI server + single-page UI. See [Wire demo](./wire-demo) on this site.
+[`examples/wire_browser/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser) — FastAPI server + single-page UI. See [Wire demo](./wire-demo) on this site.
 
 ## Source
 

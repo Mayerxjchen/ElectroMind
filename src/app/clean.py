@@ -4,19 +4,14 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pagentv4.core.message import Messages
-from pagentv4.runtime.conversation import (
+from pagentv4 import Thread
+from pagentv4.conversation import (
     JsonlConversationStore,
     default_conversations_root,
 )
-from pagentv4.runtime.thread import (
-    MESSAGES_CONVERSATION_ID,
-    SPEC_FILENAME,
-    WORKSPACE_DIRNAME,
-    default_threads_root,
-)
-
-MESSAGES_FILENAME = "messages.jsonl"
+from pagentv4.core.message import Messages
+from pagentv4.ithread import MESSAGES_CONVERSATION_ID, SPEC_FILENAME, WORKSPACE_DIRNAME
+from pagentv4.runtime.thread import default_threads_root
 
 
 @dataclass(slots=True)
@@ -41,7 +36,11 @@ def workspace_is_empty(workspace: Path) -> bool:
 def thread_is_useless(thread_dir: Path) -> bool:
     if not (thread_dir / SPEC_FILENAME).is_file():
         return False
-    if user_message_count(thread_dir / MESSAGES_FILENAME) > 0:
+    thread = Thread.open(thread_dir.name, root=thread_dir.parent)
+    user_count = sum(
+        1 for message in thread.load_messages().data if message.role == "user"
+    )
+    if user_count > 0:
         return False
     return workspace_is_empty(thread_dir / WORKSPACE_DIRNAME)
 

@@ -5,73 +5,81 @@
 **sandbox** 是 agent 的伴身电脑：隔离的工作空间，可跑命令、读写文件。
 各后端统一映射到虚拟 home（默认 `/home/agent`）。
 
-## 快捷路径：`Runner.session()`
+## 快捷路径：`Runner.create()`
 
 给 agent 配电脑的最简方式：
 
 ```python
 from pagentv4 import DeepSeek, Runner
 
-async for event in Runner().session(
+runner = await Runner.create(
+    "demo",
     DeepSeek("deepseek-v4-flash"),
-    "列出 /home/agent 下的文件，然后创建 notes.md。",
-    workspace_id="default",
-):
-    ...
+    overrides={"backend": "local"},
+)
+try:
+    async for event in runner.run("列出 /home/agent 下的文件，然后创建 notes.md。"):
+        ...
+finally:
+    await runner.close()
 ```
 
 流程：
 
-1. 按 `backend` / workspace 参数创建 sandbox
+1. 打开 thread，并按 thread spec 创建 sandbox
 2. 绑定 sandbox 工具 + 额外工具
-3. 构建 `Agent`，经 `Runner.arun()` 运行
-4. 结束时关闭 sandbox（含异常路径）
+3. 构建 `AgentCore`，经 `runner.run()` 运行
+4. 用 `runner.close()` 关闭 sandbox
 
 ## 后端
 
 | `backend=` | 说明 |
 |------------|------|
-| `"local"` | 默认。宿主目录 `<cwd>/.pagent/workspaces/<id>/` |
+| `"local"` | 默认。thread workspace 在 `<cwd>/.pagent/threads/<thread_id>/workspace/` |
 | `"docker"` | 容器 + bind mount |
 | `"podman"` | 同 docker，用 Podman CLI |
 | `"ssh"` | 经 asyncssh 连远端 |
 
 ```python
-async for event in Runner().session(
+runner = await Runner.create(
+    "demo",
     provider,
-    user_input,
-    backend="docker",
-    image="python:3.12-slim",
-    workspace_id="demo",
-):
-    ...
+    overrides={"backend": "docker", "image": "python:3.12-slim"},
+)
+try:
+    async for event in runner.run(user_input):
+        ...
+finally:
+    await runner.close()
 ```
 
-SSH 示例：
+SSH 示例，在 thread spec 或 overrides 里设置 `ssh_host`：
 
 ```python
-async for event in Runner().session(
+runner = await Runner.create(
+    "remote",
     provider,
-    user_input,
-    backend="ssh",
-    connection={"host": "user@example.com", "workdir": "/tmp/agent"},
-):
-    ...
+    overrides={
+        "backend": "ssh",
+        "ssh_host": "user@example.com",
+        "ssh_workdir": "/tmp/agent",
+    },
+)
 ```
 
 ## Workspace 布局
 
-`workspace_id="default"` 时：
+`thread_id="demo"` 时：
 
 ```text
-<cwd>/.pagent/workspaces/default/
+<cwd>/.pagent/threads/demo/workspace/
 ```
 
-传 `workdir="/absolute/path"` 可覆盖。sandbox 把 agent 看到的 `/home/agent` 下路径映射到此目录。
+持久化 runner 从 thread 获取 workspace。sandbox 把 agent 看到的 `/home/agent` 下路径映射到此目录。
 
 ## 直接使用 `Sandbox` API
 
-需要更低层控制时：
+需要更低层控制时，可以直接创建 sandbox，并自行选择 `workspace_id` 或 `workdir`：
 
 ```python
 from pagentv4 import Sandbox
@@ -101,7 +109,7 @@ async with await Sandbox.create(backend="local", workspace_id="demo") as box:
 
 [Thread](./core-types#thread) 在 `.pagent/threads/<id>/` 下同时保存
 sandbox spec、消息和 workspace。进程重启后仍要同一台电脑和同一段对话时用——见
-`examples/v4runner/repl.py`。
+`examples/pagentv4/runner/sandbox.py`。
 
 ## 资源限制
 

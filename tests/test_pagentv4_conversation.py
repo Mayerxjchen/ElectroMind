@@ -66,7 +66,7 @@ async def test_runner_loads_prior_conversation(tmp_path, monkeypatch):
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
 
     provider_first = FakeProvider([[FakeStreamChunk(content="first")]])
-    runner = await Runner.open(
+    runner = await Runner.create(
         "beta",
         provider_first,
         overrides={"backend": "local"},
@@ -79,7 +79,7 @@ async def test_runner_loads_prior_conversation(tmp_path, monkeypatch):
         await runner.close()
 
     provider_second = FakeProvider([[FakeStreamChunk(content="second")]])
-    runner = await Runner.open(
+    runner = await Runner.create(
         "beta",
         provider_second,
         overrides={"backend": "local"},
@@ -148,7 +148,7 @@ async def test_runner_flushes_each_turn(tmp_path, monkeypatch):
         """no op"""
         return "ok"
 
-    runner = await Runner.open(
+    runner = await Runner.create(
         "gamma",
         provider,
         overrides={"backend": "local"},
@@ -210,7 +210,7 @@ async def test_runner_persists_conversation(tmp_path, monkeypatch):
     monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
 
     provider = FakeProvider([[FakeStreamChunk(content="done")]])
-    runner = await Runner.open(
+    runner = await Runner.create(
         "zeta",
         provider,
         overrides={"backend": "local"},

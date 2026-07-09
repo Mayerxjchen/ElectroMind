@@ -30,7 +30,7 @@ class Agent:
             raise ValueError("max_turns must be >= 1")
         self.max_turns = max_turns
 
-    async def stream_messages(
+    async def generate_messages(
         self,
         messages: Messages,
         **run_kwargs,

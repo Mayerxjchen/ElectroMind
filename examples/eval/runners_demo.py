@@ -1,4 +1,4 @@
-"""三类 Runner 用法示例。
+"""当前 Runner 用法示例。
 
 Usage:
     export DEEPSEEK_API_KEY="your-key-here"
@@ -11,10 +11,11 @@ import asyncio
 import os
 
 from pagentv4 import (
-    AgenticRunner,
-    CodeAgent,
-    RunConfig,
-    SimpleQuestionAnswerRunner,
+    AgentCore,
+    ChatRunner,
+    CodeRunner,
+    DeepSeek,
+    VanillaRunner,
     tool,
 )
 
@@ -33,46 +34,62 @@ ARTICLE = """
 """
 
 
-async def demo_simple() -> None:
-    runner = SimpleQuestionAnswerRunner(
-        RunConfig(system="根据给定文章回答问题，只输出数字。")
-    )
-    ans = await runner.run(ARTICLE + "\n请问主角总共消灭了几个对手？")
-    print("[SimpleQuestionAnswerRunner]", ans)
+async def collect_text(runner, prompt: str) -> str:
+    return "".join([text async for text in runner.run(prompt, return_type="text")])
 
 
-async def demo_agentic() -> None:
-    runner = AgenticRunner(
-        RunConfig(system="你是助手，算题时先用 calc。", max_turns=4),
-        tools=[calc],
-    )
-    ans = await runner.run("123 加 456 等于多少？")
-    print("[AgenticRunner]", ans)
-
-
-async def demo_code_agent() -> None:
-    agent = CodeAgent(
-        RunConfig(
-            system="在 workspace 完成任务，回答简短。",
-            thread_id="runners-demo",
-            backend="local",
-            max_turns=4,
+async def demo_vanilla() -> None:
+    runner = VanillaRunner(
+        AgentCore(
+            DeepSeek("deepseek-v4-flash"),
+            system="根据给定文章回答问题，只输出数字。",
         )
     )
+    ans = await collect_text(runner, ARTICLE + "\n请问主角总共消灭了几个对手？")
+    print("[VanillaRunner]", ans)
+
+
+async def demo_chat() -> None:
+    runner = ChatRunner(
+        AgentCore(
+            DeepSeek("deepseek-v4-flash"),
+            system="你是助手，算题时先用 calc。",
+            tools=[calc],
+            max_turns=4,
+        ),
+        thread_id="eval-chat-demo",
+    )
     try:
-        ans = await agent.run("列出 /home/agent 下的文件名，用一句话总结。")
-        print("[CodeAgent]", ans)
+        ans = await collect_text(runner, "123 加 456 等于多少？")
+        print("[ChatRunner]", ans)
     finally:
-        await agent.close()
+        await runner.close()
+
+
+async def demo_code() -> None:
+    runner = CodeRunner(
+        AgentCore(
+            DeepSeek("deepseek-v4-flash"),
+            system="在 workspace 完成任务，回答简短。",
+            max_turns=4,
+        ),
+        thread_id="eval-code-demo",
+        backend="local",
+    )
+    try:
+        ans = await collect_text(runner, "列出 /home/agent 下的文件名，用一句话总结。")
+        print("[CodeRunner]", ans)
+    finally:
+        await runner.close()
 
 
 async def main() -> None:
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("请先 export DEEPSEEK_API_KEY=<your-key>")
 
-    await demo_simple()
-    await demo_agentic()
-    await demo_code_agent()
+    await demo_vanilla()
+    await demo_chat()
+    await demo_code()
 
 
 if __name__ == "__main__":

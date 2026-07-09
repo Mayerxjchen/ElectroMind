@@ -7,87 +7,107 @@
 
 前置：[安装](../guide/install)（Python 3.11+，pip / uv / conda）。
 
-## 一行搞定：`run_agent()`
+## 打开一个 thread
 
-脚本或快速试模型时，用 `run_agent()`。它会在内部临时创建 `Messages`，跑完即弃。
+`Runner` 在整个生命周期内绑定到一个 **thread**：sandbox、messages 和 agent
+一起创建，并在 `runner.close()` 时关闭。
 
 ```python
 import asyncio
 import os
 
-from pagentv4 import Agent, DeepSeek, run_agent
+from pagentv4 import DeepSeek, Runner
 
 
 async def main():
     if not os.getenv("DEEPSEEK_API_KEY"):
         raise SystemExit("请先设置 DEEPSEEK_API_KEY")
 
-    agent = Agent(
+    runner = await Runner.create(
+        "demo",
         DeepSeek("deepseek-v4-flash"),
-        system="你是简洁助手。",
+        overrides={"backend": "local"},
+        extra_system="你是简洁助手。",
     )
-
-    async for text in run_agent(
-        agent, "用一句话解释什么是尾递归。", return_type="text"
-    ):
-        print(text, end="", flush=True)
-    print()
+    try:
+        async for text in runner.run("用一句话解释什么是尾递归。", return_type="text"):
+            print(text, end="", flush=True)
+        print()
+    finally:
+        await runner.close()
 
 
 asyncio.run(main())
 ```
 
-## 多轮对话：`Runner`
+## 同一个 thread 内多轮对话
 
-需要跨调用保留 `Messages` 时：
+再次调用 `runner.run()` 会复用同一份 messages，并持久化到 thread 配置指定的
+conversation store。默认 JSONL 后端时，路径是
+`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`。
 
 ```python
-from pagentv4 import Agent, DeepSeek, Messages, Runner
+runner = await Runner.create("demo", provider, overrides={"backend": "local"})
+try:
+    async for text in runner.run("我叫 Ada。", return_type="text"):
+        print(text, end="")
 
-agent = Agent(DeepSeek("deepseek-v4-flash"), system="你是简洁助手。")
-runner = Runner()
-messages = Messages()
-
-async for text in runner.arun(
-    agent, "我叫 Ada。", messages, return_type="text"
-):
-    print(text, end="")
-
-async for text in runner.arun(
-    agent, "我叫什么名字？", messages, return_type="text"
-):
-    print(text, end="")
+    async for text in runner.run("我叫什么名字？", return_type="text"):
+        print(text, end="")
+finally:
+    await runner.close()
 ```
 
-## Sandbox 会话
+后续重新打开同一个 `thread_id` 可以继续这条 thread。
 
-Agent 需要读写文件或跑命令时，用 `Runner.session()`。它会创建 sandbox、
-绑定 8 个内置工具、跑 agent，然后关闭 sandbox。
+## Sandbox + tools
+
+`Runner.create()` 会根据 thread spec 创建 sandbox，绑定内置文件和命令工具，
+并合并你传入的额外工具。
 
 ```python
 from pagentv4 import DeepSeek, Runner
 
-async for event in Runner().session(
+runner = await Runner.create(
+    "demo",
     DeepSeek("deepseek-v4-flash"),
-    "在 /home/agent 下创建 hello.txt，写一行问候语。",
-    system="需要时用工具。",
-    workspace_id="default",  # → <cwd>/.pagent/workspaces/default/
-):
-    ...
+    overrides={"backend": "local"},
+    extra_system="需要时使用工具。",
+)
+try:
+    async for event in runner.run("在 /home/agent 下创建 hello.txt，写一行问候语。"):
+        ...
+finally:
+    await runner.close()
 ```
 
 后端选项见 [Sandbox](./sandbox)（`local`、`docker`、`podman`、`ssh`）。
 
+## 轻量内存循环：`VanillaRunner`
+
+脚本里只需要临时 messages 和普通 Python tools 时，用 `VanillaRunner`。
+它没有 thread、sandbox 和持久化。
+
+```python
+from pagentv4 import AgentCore, DeepSeek, VanillaRunner
+
+agent = AgentCore(DeepSeek("deepseek-v4-flash"), system="你是简洁助手。")
+runner = VanillaRunner(agent)
+
+async for text in runner.run("用一句话解释什么是尾递归。", return_type="text"):
+    print(text, end="")
+```
+
 ## 流式模式
 
-`Runner.arun()` 默认 `return_type="event"`。
+`runner.run()` 默认 `return_type="event"`。
 
 | API | 返回 | 适用场景 |
 |-----|------|----------|
-| `runner.arun(..., return_type="event")` | `Event` 对象 | 完整时间线、Python UI |
-| `runner.arun(..., return_type="text")` | `str` 片段 | 只要回答文本 |
-| `runner.arun(..., return_type="message")` | `Message` 对象 | 观察 assistant/tool 消息 |
-| `runner.arun(..., return_type="acp")` | NDJSON 行 | Socket / ACP / JSON 消费者 |
+| `runner.run(..., return_type="event")` | `Event` 对象 | 完整时间线、Python UI |
+| `runner.run(..., return_type="text")` | `str` 片段 | 只要回答文本 |
+| `runner.run(..., return_type="message")` | `Message` 对象 | 观察 assistant/tool 消息 |
+| `runner.run(..., return_type="acp")` | NDJSON 行 | Socket / ACP / JSON 消费者 |
 
 ## 内置 Provider
 

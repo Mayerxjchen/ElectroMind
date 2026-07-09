@@ -6,27 +6,10 @@ DeepSeek 这类模型可以返回 **`reasoning_content`**（脑壳里头啷个�
 
 详见：[事件流](./events)
 
-## 示例脚本
+## 用法
 
-| 文件 | 模式 | 说明 |
-|------|------|------|
-| [reasoning_run.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_run.py) | 非流式 | `agent.run()` → `RunEnd` |
-| [reasoning_stream.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_stream.py) | 流式 | `agent.arun_events()` → `ReasoningDelta` + `TextDelta` |
-| [reasoning_common.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/reasoning_common.py) | 共用 | 题目、`make_agent()` |
-
-还有：[simple_qa.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/simple_qa.py)、[cli.py](https://github.com/SyncLionPaw/pagent/blob/main/examples/cli.py)。
-
-## 跑起来
-
-```bash
-export DEEPSEEK_API_KEY="your-key-here"
-
-uv run examples/reasoning_run.py
-uv run examples/reasoning_stream.py
-
-uv run examples/reasoning_run.py --zh
-uv run examples/reasoning_stream.py --zh
-```
+下面展示直接 API 写法。能跑的示例统一放在
+[`examples/README.md`](https://github.com/SyncLionPaw/pagent/blob/main/examples/README.md)。
 
 `--zh` 用中文 system prompt 跟鸡兔同笼题；默认英文逻辑题（三盒标签）。
 

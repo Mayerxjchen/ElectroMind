@@ -3,13 +3,28 @@ from dataclasses import dataclass, field
 from .message import Message, TextChunk, ThinkingChunk, ToolCall
 
 
+def normalize_tool_call(value) -> ToolCall:
+    if isinstance(value, ToolCall):
+        return value
+    if isinstance(value, dict) and "function" in value:
+        return ToolCall.from_openai(value)
+    return ToolCall.model_validate(value)
+
+
 @dataclass(frozen=True, slots=True)
 class TurnResult:
     """One model invocation: assembled content, reasoning, and tool calls."""
 
     content: str = ""
-    tool_calls: list = field(default_factory=list)
+    tool_calls: list[ToolCall] = field(default_factory=list)
     reasoning_content: str = ""
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "tool_calls",
+            [normalize_tool_call(tool_call) for tool_call in self.tool_calls],
+        )
 
     @classmethod
     def from_slice(cls, messages: list[Message], start: int = 0) -> "TurnResult":
@@ -23,8 +38,8 @@ class TurnResult:
             for m in messages[start:]
             if m.role == "assistant" and isinstance(m.content, ThinkingChunk)
         )
-        tool_calls = [
-            m.content.to_openai()
+        tool_calls: list[ToolCall] = [
+            m.content
             for m in messages[start:]
             if m.role == "assistant" and isinstance(m.content, ToolCall)
         ]

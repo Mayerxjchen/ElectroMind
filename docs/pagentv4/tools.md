@@ -23,12 +23,12 @@ The decorator derives:
 - description from the docstring
 - argument schema from type hints
 
-## Use with `Agent` + `Runner`
+## Use with `AgentCore` + `Runner`
 
 ```python
-from pagentv4 import Agent, DeepSeek, Messages, Runner
+from pagentv4 import AgentCore, DeepSeek, Messages, Runner
 
-agent = Agent(
+agent = AgentCore(
     DeepSeek("deepseek-v4-flash"),
     system="Use tools when needed.",
     tools=[get_weather],
@@ -81,11 +81,12 @@ async def fetch(city: str) -> str:
     return f"Sunny in {city}"
 ```
 
-Register the tool on `Agent` as usual.
+Register the tool on `AgentCore` as usual.
 
 ## Sandbox tools
 
-When you use `Runner.session()` or bind a `Sandbox` manually, eight built-in
+When you use `Runner.create()` with a sandbox backend or bind a `Sandbox`
+manually, eight built-in
 tools are available:
 
 | Tool | Purpose |
@@ -100,17 +101,17 @@ tools are available:
 | `copy_to_host` | Copy sandbox file to the host |
 
 Use `build_sandbox_tools(sandbox)` or `sandbox.tools()` to get them.
-`Runner.session()` merges sandbox tools with any extra tools you pass.
+`Runner.create()` merges sandbox tools with any extra tools you pass.
 
 ## Skills
 
 Skills are optional instruction packs loaded from `SKILL.md` directories.
 Use `SkillRegistry.from_defaults()` and `make_use_skill_tool(registry)` to
-let the model load skill instructions on demand. See `examples/v4runner/repl.py`.
+let the model load skill instructions on demand. See `examples/app/repl.py`.
 
 ## Tool hooks
 
-`Runner.open(..., tool_hooks=...)` runs callbacks around each tool execution.
+`Runner.create(..., tool_hooks=...)` runs callbacks around each tool execution.
 Event order is unchanged: `ToolCallBegin` is emitted first, then hooks run, then
 the tool (or skip), then `ToolResult`.
 
@@ -131,7 +132,7 @@ def redact_result(ctx: PostToolHookContext):
     return ctx.output  # or return a new ToolOutput to replace
 
 
-runner = await Runner.open(
+runner = await Runner.create(
     "demo",
     provider,
     tool_hooks=ToolHooks(before=[approve_dangerous], after=[redact_result]),
@@ -148,6 +149,6 @@ Inbound steer/cancel remains separate from hooks; see `runtime/inbound.py`.
 
 ## Notes
 
-- Tool names must be unique inside one `Agent`.
+- Tool names must be unique inside one `AgentCore`.
 - Keep docstrings short and concrete. The model sees them.
 - Tool calls use the OpenAI function-call shape.

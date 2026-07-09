@@ -20,6 +20,14 @@ from pagent import (
     rpc_to_event,
 )
 from pagent.wire import usage_to_dict
+from pagentv4.adapters import decode_event_line as decode_v4_event_line
+from pagentv4.adapters import encode_event_line as encode_v4_event_line
+from pagentv4.core.events import RunBegin as V4RunBegin
+from pagentv4.core.events import RunEnd as V4RunEnd
+from pagentv4.core.events import TurnBegin as V4TurnBegin
+from pagentv4.core.events import TurnEnd as V4TurnEnd
+from pagentv4.core.message import ToolCall as V4ToolCall
+from pagentv4.core.turn_result import TurnResult as V4TurnResult
 
 
 class FakeUsage:
@@ -55,6 +63,40 @@ def test_event_rpc_roundtrip(event):
                 assert getattr(restored, field.name) == getattr(event, field.name)
     else:
         assert restored == event
+
+
+def test_v4_turn_result_wire_roundtrip_with_typed_tool_call():
+    event = V4TurnResult(
+        tool_calls=[
+            V4ToolCall(
+                type="function",
+                id="c1",
+                name="echo",
+                arguments='{"msg":"ping"}',
+            )
+        ]
+    )
+
+    restored = decode_v4_event_line(encode_v4_event_line(event))
+
+    assert isinstance(restored.tool_calls[0], V4ToolCall)
+    assert restored.tool_calls[0].id == "c1"
+    assert restored.tool_calls[0].name == "echo"
+
+
+@pytest.mark.parametrize(
+    "event",
+    [
+        V4RunBegin("hello"),
+        V4TurnBegin(1),
+        V4TurnEnd(1, stopped=True, stop_reason="no_tool_calls"),
+        V4RunEnd(1, stop_reason="no_tool_calls"),
+    ],
+)
+def test_v4_event_wire_roundtrip(event):
+    restored = decode_v4_event_line(encode_v4_event_line(event))
+
+    assert restored == event
 
 
 def test_event_to_rpc_shape():

@@ -10,7 +10,7 @@ For contributors and anyone hacking the library. End users should start at the [
 src/pagent/     v1 library
 src/pagentv4/   v4 library (core, runtime, sandbox, skills)
 src/app/        application layer (REPL, CLI) on top of pagentv4
-examples/       runnable demos (see examples/v4runner/ for v4)
+examples/       runnable demos grouped by category (see examples/pagentv4/)
 tests/          pytest
 docs/           documentation
 ```

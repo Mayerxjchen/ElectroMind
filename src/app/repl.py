@@ -46,7 +46,7 @@ async def open_runner(config: ReplConfig) -> Runner:
     if config.provider_base_url:
         provider_kwargs["base_url"] = config.provider_base_url
     provider = DeepSeek(config.resolved_model(), **provider_kwargs)
-    return await Runner.open(
+    return await Runner.create(
         thread_id,
         provider,
         overrides=config.thread_overrides(),

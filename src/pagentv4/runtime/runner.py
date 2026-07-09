@@ -1,32 +1,29 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Awaitable, Callable, Sequence
+from collections.abc import AsyncIterator, Sequence
 from inspect import isawaitable
 from pathlib import Path
-from typing import Any, Literal
 
-from ..adapters.acp import encode_event_line
+from ..conversation import ConversationStore
 from ..core.agent import Agent
-from ..core.events import (
-    ReasoningDelta,
-    RunBegin,
-    TextDelta,
-    ToolCallBegin,
-    ToolResult,
-    TurnBegin,
-    TurnEnd,
-)
-from ..core.message import Message, Messages, TextChunk, ThinkingChunk, ToolCall
+from ..core.events import RunEnd, ToolCallBegin, ToolResult, TurnEnd
+from ..core.message import Message, Messages, ToolCall
 from ..core.provider import ProviderProtocol
 from ..core.tool import FunctionTool, ToolOutput
-from ..core.turn_result import TurnResult
-from ..sandbox import Sandbox, SshConnection
+from ..sandbox import Sandbox
 from ..skills import (
     SkillRegistry,
     build_skills_system_prompt,
     make_use_skill_tool,
 )
-from .conversation import JsonlConversationStore
+from .helper import (
+    ArunReturnType,
+    EventHandler,
+    append_message,
+    ensure_system,
+    message_to_event,
+    project_event,
+)
 from .hooks import PostToolHookContext, ToolHookContext, ToolHooks
 from .inbound import (
     CancelRun,
@@ -37,70 +34,14 @@ from .inbound import (
     RunCancelled,
     ToolPermitResult,
 )
+from .loop_core import run_event_loop
 from .thread import Thread
-
-ArunReturnType = Literal["event", "text", "acp", "message"]
-
-EventHandler = Callable[[Any], Awaitable[None] | None]
-
-
-def append_message(messages: Messages, message: Message, turn_id: int | None) -> None:
-    if message.turn_id is None and message.role != "system":
-        message.turn_id = turn_id
-    messages += message
-
-
-def ensure_system(messages: Messages, system: str | None) -> None:
-    if system is None:
-        return
-    if any(message.role == "system" for message in messages):
-        return
-    append_message(messages, Message.system(system), turn_id=0)
-
-
-def message_to_event(message: Message):
-    chunk = message.content
-    if isinstance(chunk, TextChunk):
-        return TextDelta(chunk.text)
-    if isinstance(chunk, ThinkingChunk):
-        return ReasoningDelta(chunk.text)
-    return None
-
-
-def project_event(event, return_type: ArunReturnType):
-    if return_type == "event":
-        return event
-    if return_type == "text":
-        if not isinstance(event, TextDelta):
-            return None
-        return event.text
-    if return_type == "acp":
-        return encode_event_line(event)
-    if return_type == "message":
-        if isinstance(event, TextDelta):
-            return Message.assistant({"type": "text", "text": event.text})
-        if isinstance(event, ReasoningDelta):
-            return Message.assistant({"type": "thinking", "text": event.text})
-        if isinstance(event, ToolCallBegin):
-            return Message(
-                role="assistant",
-                content=ToolCall(
-                    type="function",
-                    id=event.tool_call_id,
-                    name=event.name,
-                    arguments=event.arguments,
-                ),
-            )
-        if isinstance(event, ToolResult):
-            return Message.tool_result(event.tool_call_id, event.content)
-        return None
-    raise ValueError(f"unknown return_type: {return_type!r}")
 
 
 class Runner:
     """Run 调度器，与 thread 同生共死。
 
-    `await Runner.open(...)` → 多次 `runner.run(user_input)` → `await runner.close()`
+    `await Runner.create(...)` → 多次 `runner.run(user_input)` → `await runner.close()`
     """
 
     def __init__(
@@ -108,7 +49,7 @@ class Runner:
         *,
         thread: Thread,
         sandbox: Sandbox,
-        store: JsonlConversationStore,
+        store: ConversationStore,
         messages: Messages,
         agent: Agent,
         skills: SkillRegistry,
@@ -145,7 +86,7 @@ class Runner:
         deferred: list[object] = []
         try:
             while True:
-                event = deferred.pop(0) if deferred else await self.inbound.wait()
+                event = await self.inbound.wait()
                 resolved = self._resolve_tool_permit(event, tool_call_id)
                 if resolved is not None:
                     return resolved
@@ -186,7 +127,7 @@ class Runner:
         if drain.cancelled:
             raise RunCancelled(turn)
 
-    async def _emit(
+    async def emit(
         self,
         event,
         *,
@@ -197,57 +138,57 @@ class Runner:
         self._apply_inbound_drain(event, turn_id=turn_id, turn=turn)
 
     async def close(self) -> None:
+        close_store = getattr(self.store, "close", None)
+        if callable(close_store):
+            close_store()
         await self.sandbox.close()
 
     async def execute_tool(
         self,
-        tool_call: dict,
-        tool_map: dict[str, FunctionTool],
+        tool_call: ToolCall,
     ) -> ToolOutput:
-        function_call = tool_call["function"]
-        name = function_call["name"]
-        tool = tool_map.get(name)
+        name = tool_call.name
+        tool: FunctionTool | None = self.agent.tool_map.get(name)
         if tool is None:
             return ToolOutput.fail(
-                f"error: unknown tool {name!r}; available: {sorted(tool_map)}"
+                f"error: unknown tool {name!r}; available: {sorted(self.agent.tool_map)}"
             )
-        return await tool.acall(function_call["arguments"])
+        return await tool.acall(tool_call.arguments)
 
     async def emit_tool_events(
         self,
-        tool_calls: list[dict],
-        tool_map: dict[str, FunctionTool],
+        tool_calls: list[ToolCall],
         turn_id: int,
+        turn: int,
     ) -> AsyncIterator:
+        del turn
         for tool_call in tool_calls:
-            function_call = tool_call["function"]
-            name = function_call["name"]
-            arguments = function_call["arguments"]
+            name = tool_call.name
+            arguments = tool_call.arguments
             if not isinstance(arguments, str):
                 arguments = str(arguments)
-            yield ToolCallBegin(tool_call["id"], name, arguments)
+            yield ToolCallBegin(tool_call.id, name, arguments)
 
             ctx = ToolHookContext(
                 self,
-                tool_call["id"],
+                tool_call.id,
                 name,
                 arguments,
                 turn_id,
             )
-            output = await self._run_tool_with_hooks(ctx, tool_call, tool_map)
+            output = await self.run_tool_with_hooks(ctx, tool_call)
 
             append_message(
                 self.messages,
-                Message.tool_result(tool_call["id"], output.content),
+                Message.tool_result(tool_call.id, output.content),
                 turn_id=turn_id,
             )
-            yield ToolResult(tool_call["id"], name, output.content, ok=output.ok)
+            yield ToolResult(tool_call.id, name, output.content, ok=output.ok)
 
-    async def _run_tool_with_hooks(
+    async def run_tool_with_hooks(
         self,
         ctx: ToolHookContext,
-        tool_call: dict,
-        tool_map: dict[str, FunctionTool],
+        tool_call: ToolCall,
     ) -> ToolOutput:
         if self.tool_hooks is not None:
             decision = await self.tool_hooks.run_before(ctx)
@@ -257,7 +198,7 @@ class Runner:
                     ok=decision.ok,
                 )
 
-        output = await self.execute_tool(tool_call, tool_map)
+        output = await self.execute_tool(tool_call)
 
         if self.tool_hooks is None:
             return output
@@ -272,12 +213,12 @@ class Runner:
         )
         return await self.tool_hooks.run_after(post_ctx, output)
 
-    async def stream_agent_messages(
+    async def stream_agent_events(
         self,
         turn_id: int,
         **run_kwargs,
     ) -> AsyncIterator:
-        async for message in self.agent.stream_messages(self.messages, **run_kwargs):
+        async for message in self.agent.generate_messages(self.messages, **run_kwargs):
             append_message(self.messages, message, turn_id=turn_id)
             event = message_to_event(message)
             if event is not None:
@@ -285,6 +226,14 @@ class Runner:
 
     def flush_conversation(self) -> None:
         self.store.save(self.conversation_id, self.messages)
+
+    async def after_continuing(self, *, turn: int) -> None:
+        del turn
+        self.flush_conversation()
+
+    async def after_run_end(self, *, turn: int) -> None:
+        del turn
+        self.flush_conversation()
 
     async def run(
         self,
@@ -316,77 +265,20 @@ class Runner:
         self, user_input: str, turn_id: int, **run_kwargs
     ) -> AsyncIterator:
         try:
-            async for event in self._event_loop(user_input, turn_id, **run_kwargs):
+            async for event in run_event_loop(
+                self,
+                user_input=user_input,
+                turn_id=turn_id,
+                **run_kwargs,
+            ):
                 yield event
         except RunCancelled as exc:
             yield TurnEnd(exc.turn, stopped=True, stop_reason="cancelled")
-            self.flush_conversation()
-
-    async def _event_loop(
-        self, user_input: str, turn_id: int, **run_kwargs
-    ) -> AsyncIterator:
-        async for event in self._emit(RunBegin(user_input), turn_id=turn_id, turn=0):
-            yield event
-
-        for turn in range(self.agent.max_turns):
-            async for event in self._emit(TurnBegin(turn), turn_id=turn_id, turn=turn):
-                yield event
-            turn_start = len(self.messages.data)
-
-            async for event in self.stream_agent_messages(turn_id, **run_kwargs):
-                async for out in self._emit(event, turn_id=turn_id, turn=turn):
-                    yield out
-
-            result = TurnResult.from_slice(self.messages.data, turn_start)
-            async for event in self._emit(result, turn_id=turn_id, turn=turn):
-                yield event
-
-            if turn_start >= len(self.messages.data):
-                async for event in self._emit(
-                    TurnEnd(turn, stopped=True, stop_reason="empty_response"),
-                    turn_id=turn_id,
-                    turn=turn,
-                ):
-                    yield event
-                self.flush_conversation()
-                return
-
-            if not result.has_tool_calls:
-                async for event in self._emit(
-                    TurnEnd(turn, stopped=True, stop_reason="no_tool_calls"),
-                    turn_id=turn_id,
-                    turn=turn,
-                ):
-                    yield event
-                self.flush_conversation()
-                return
-
-            async for event in self.emit_tool_events(
-                result.tool_calls, self.agent.tool_map, turn_id
-            ):
-                async for out in self._emit(event, turn_id=turn_id, turn=turn):
-                    yield out
-
-            if turn + 1 >= self.agent.max_turns:
-                async for event in self._emit(
-                    TurnEnd(turn, stopped=True, stop_reason="max_turns"),
-                    turn_id=turn_id,
-                    turn=turn,
-                ):
-                    yield event
-                self.flush_conversation()
-                return
-
-            async for event in self._emit(
-                TurnEnd(turn, stopped=False, stop_reason="continuing"),
-                turn_id=turn_id,
-                turn=turn,
-            ):
-                yield event
+            yield RunEnd(exc.turn, stop_reason="cancelled")
             self.flush_conversation()
 
     @classmethod
-    async def open(
+    async def create(
         cls,
         thread_id: str,
         provider: ProviderProtocol,
@@ -398,9 +290,10 @@ class Runner:
         tools: Sequence[FunctionTool] = (),
         tool_hooks: ToolHooks | None = None,
     ) -> Runner:
+        """创建完整 Runner：打开 thread、sandbox、conversation 和 skills。"""
         thread = Thread.open(thread_id, overrides=overrides)
-        sandbox = await cls._open_sandbox(thread)
-        store = JsonlConversationStore(root=thread.root)
+        sandbox = await thread.open_sandbox()
+        store = thread.open_store()
 
         skills = SkillRegistry.from_defaults(*skill_roots)
         mount = await sandbox.install_skills(skills) if skills.names() else {}
@@ -415,10 +308,8 @@ class Runner:
             part for part in (computer_desc, skills_prompt, system_tail) if part
         )
 
-        messages = Messages()
         conversation_id = thread.messages_conversation_id
-        for message in store.load(conversation_id).data:
-            messages += message
+        messages = thread.load_messages()
 
         return cls(
             thread=thread,
@@ -436,43 +327,27 @@ class Runner:
             tool_hooks=tool_hooks,
         )
 
-    @staticmethod
-    async def _open_sandbox(thread: Thread) -> Sandbox:
-        spec = thread.spec
-        workdir = str(thread.workspace_path)
-
-        if spec.backend == "local":
-            return await Sandbox.create(
-                backend="local",
-                workdir=workdir,
-                command_policy=spec.command_policy,
-            )
-
-        if spec.backend in ("docker", "podman"):
-            if not spec.image:
-                raise ValueError(
-                    f"thread {thread.id!r}: backend {spec.backend!r} requires image"
-                )
-            return await Sandbox.create(
-                backend=spec.backend,
-                workdir=workdir,
-                image=spec.image,
-                container_ttl_seconds=spec.container_ttl_seconds,
-                command_policy=spec.command_policy,
-            )
-
-        if not spec.ssh_host:
-            raise ValueError(
-                f"thread {thread.id!r}: backend 'ssh' requires ssh_host in thread spec"
-            )
-        conn = SshConnection.from_ssh_config(
-            spec.ssh_host,
-            config_path=spec.ssh_config,
-            workdir=spec.ssh_workdir,
-        )
-        return await Sandbox.create(
-            backend="ssh",
-            workdir=workdir,
-            connection=conn.to_dict(),
-            command_policy=spec.command_policy,
+    @classmethod
+    async def open(
+        cls,
+        thread_id: str,
+        provider: ProviderProtocol,
+        *,
+        overrides: dict | None = None,
+        extra_system: str = "",
+        max_turns: int = 8,
+        skill_roots: Sequence[str | Path] = (),
+        tools: Sequence[FunctionTool] = (),
+        tool_hooks: ToolHooks | None = None,
+    ) -> Runner:
+        """兼容旧入口；新代码优先使用 `Runner.create(...)`。"""
+        return await cls.create(
+            thread_id,
+            provider,
+            overrides=overrides,
+            extra_system=extra_system,
+            max_turns=max_turns,
+            skill_roots=skill_roots,
+            tools=tools,
+            tool_hooks=tool_hooks,
         )

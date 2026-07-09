@@ -2,7 +2,6 @@
 
 TODO:
 - API key: cloud providers fail fast when missing; local (Ollama/Vllm/Sglang) keep dummy key.
-- DeepSeek: default model_id=\"deepseek-v4-flash\" (align with RunConfig).
 - Test: mock AsyncOpenAI.create and assert complete() kwargs.
 """
 

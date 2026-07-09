@@ -252,7 +252,7 @@ docs/agent-reference.md   实现后补充 Hook API 表
 - [ ] `on_event` 只读审计（不改变事件）
 - [ ] 文档 `docs/hooks.md` + `examples/hooks_tool_approval.py`
 
-**验收：** wire_demo 可加「工具需点批准」示例（服务端 Hook，前端仍用现有 Wire）。
+**验收：** wire_browser 可加「工具需点批准」示例（服务端 Hook，前端仍用现有 Wire）。
 
 ### Phase 2 — 上下文与可观测（2 周）
 
@@ -286,7 +286,7 @@ docs/agent-reference.md   实现后补充 Hook API 表
 
 - 不改 Hook 时，`pytest` 全绿且与当前 main 行为一致。
 - 用 **<30 行** 应用代码实现「危险工具需 `metadata["approved"]`」。
-- wire_demo 可选演示：一个工具默认 deny，POST `/api/approve` 后同 session 重试（示例级）。
+- wire_browser 可选演示：一个工具默认 deny，POST `/api/approve` 后同 session 重试（示例级）。
 - [agent-reference](../agent-reference.md) 与 [llms.txt](../../llms.txt) 在 Phase 1 后更新。
 
 ---

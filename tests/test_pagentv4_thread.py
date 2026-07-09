@@ -1,13 +1,16 @@
-"""Thread / ThreadSpec 单测：目录布局 + 首次冻结 + reset 行为。"""
+"""Thread / ThreadSpec 单测：目录布局 + 首次冻结 + TOML 配置行为。"""
 
 from __future__ import annotations
 
-import json
+import tomllib
 
 import pytest
 
 from pagentv4 import Thread, ThreadSpec
-from pagentv4.runtime.thread import default_threads_root, validate_thread_id
+from pagentv4.conversation import SqliteConversationStore
+from pagentv4.core.message import Message
+from pagentv4.ithread import validate_thread_id
+from pagentv4.runtime.thread import default_threads_root
 
 
 def test_default_threads_root_env_override(monkeypatch, tmp_path):
@@ -36,12 +39,14 @@ def test_thread_open_creates_spec_and_workspace(tmp_path):
     assert thread.created is True
     assert thread.ignored_overrides == ()
     assert thread.root == tmp_path / "demo"
-    assert (tmp_path / "demo" / "spec.json").exists()
+    assert (tmp_path / "demo" / "thread.toml").exists()
     assert (tmp_path / "demo" / "workspace").is_dir()
 
-    payload = json.loads((tmp_path / "demo" / "spec.json").read_text())
-    assert payload["backend"] == "podman"
-    assert payload["image"] == "foo:latest"
+    payload = tomllib.loads((tmp_path / "demo" / "thread.toml").read_text())
+    assert payload["sandbox"]["backend"] == "podman"
+    assert payload["sandbox"]["image"] == "foo:latest"
+    assert payload["conversation"]["backend"] == "jsonl"
+    assert payload["conversation"]["messages_id"] == "messages"
 
 
 def test_thread_open_resume_ignores_overrides(tmp_path):
@@ -93,8 +98,57 @@ def test_threads_are_isolated_from_each_other(tmp_path):
 
 def test_thread_spec_from_dict_carries_unknown_into_extra():
     spec = ThreadSpec.from_dict(
-        {"backend": "ssh", "ssh_host": "foo", "future_field": "x"}
+        {
+            "sandbox": {"backend": "ssh"},
+            "ssh": {"host": "foo"},
+            "future_field": "x",
+        }
     )
     assert spec.backend == "ssh"
     assert spec.ssh_host == "foo"
     assert spec.extra == {"future_field": "x"}
+
+
+def test_thread_open_store_and_load_messages(tmp_path):
+    thread = Thread.open("demo", root=tmp_path)
+    store = thread.open_store()
+
+    messages = thread.load_messages()
+    assert messages.data == []
+
+    messages += Message.system("sys")
+    messages += Message.user("hi", turn_id=1)
+    store.save(thread.messages_conversation_id, messages)
+
+    reloaded = thread.load_messages()
+    assert [message.role for message in reloaded.data] == ["system", "user"]
+    assert reloaded.data[-1].content.text == "hi"
+    assert thread.messages_storage_path.name == "messages.jsonl"
+
+
+def test_thread_open_store_sqlite(tmp_path):
+    thread = Thread.open(
+        "demo",
+        root=tmp_path,
+        overrides={
+            "conversation_backend": "sqlite",
+            "conversation_db_path": "messages.sqlite",
+        },
+    )
+    store = thread.open_store()
+    try:
+        assert isinstance(store, SqliteConversationStore)
+        assert thread.messages_storage_path.name == "messages.sqlite"
+    finally:
+        store.close()
+
+
+@pytest.mark.asyncio
+async def test_thread_open_sandbox_local(tmp_path):
+    thread = Thread.open("demo", root=tmp_path, overrides={"backend": "local"})
+
+    sandbox = await thread.open_sandbox()
+    try:
+        assert sandbox.workdir == str(thread.workspace_path)
+    finally:
+        await sandbox.close()
