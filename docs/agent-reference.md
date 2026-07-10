@@ -8,7 +8,7 @@ Dense API reference for **coding agents** and LLM tools. Human docs: <https://sy
 
 - **Python 3.11+** async library: `Agent` + `Session` + `@tool` functions over **OpenAI-compatible** `POST /v1/chat/completions`.
 - **Not included:** file edit, shell, MCP, RAG, parallel tools, checkpoints — you implement those in your app.
-- **Package:** `pip install pagent` · optional `pagent[search]`, `pagent[tokens]`.
+- **Package:** `pip install pagent` · optional `pagent[search]`, `pagent[tokens]`, `pagent[ssh]`.
 
 ## Core types
 
@@ -18,7 +18,7 @@ Dense API reference for **coding agents** and LLM tools. Human docs: <https://sy
 | `SlidingWindowSession` | Trim by **token** budget (not message count) |
 | `CompactingSession` | LLM summarization when context grows |
 | `LLM`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang` | Provider clients; model name in constructor |
-| `Agent(llm, session, tools=[], max_turns=8)` | Runs the tool loop |
+| `Agent(llm, session, tools=None, max_turns=8)` | Runs the tool loop |
 | `RunEnd` | Final model step: `.content`, `.tool_calls`, `.reasoning_content`, `.usage` |
 | `@tool()` | Decorator; schema from type hints + docstring |
 

@@ -93,8 +93,10 @@ It owns the multi-turn tool loop, sandbox, messages, and persistence.
 The layering looks like this:
 
 - `loop_core` handles the shared run, turn, tool call, `TurnResult`, `TurnEnd`, and `RunEnd` semantics
-- `VanillaRunner` reuses that loop with a minimal in-memory environment
-- `Runner` reuses the same loop and adds thread, sandbox, persistence, inbound control, and tool hooks
+- `LoopAdapter` carries the shared loop skeleton (`execute_tool`, `stream_agent_events`, `emit`, `run`)
+- `VanillaRunner(LoopAdapter)` reuses that loop with a minimal in-memory environment
+- `BaseRunner(LoopAdapter)` adds thread, conversation store, sandbox, and skills, and flushes after each turn
+- `Runner(BaseRunner)` adds the inbound control plane (steer/cancel/permit) and tool hooks
 
 This keeps the different runtime layers aligned on turn/tool behavior while still exposing different runtime capabilities.
 

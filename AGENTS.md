@@ -27,16 +27,20 @@ Prefer **English** paths under `docs/` for machine consumption. Locales: `docs/z
 ```text
 src/pagent/              v1 API — Agent.run / arun_events / Session + LLM
 src/pagentv4/core/       Agent, Message, Provider, Tool, Event
-src/pagentv4/runtime/    Runner, ConversationStore, Thread
+src/pagentv4/ithread/    IThread Protocol + ThreadSpec
+src/pagentv4/conversation/ ConversationStore, JSONL/SQLite backends
+src/pagentv4/runtime/    Runner, VanillaRunner, loop_core, inbound, hooks
 src/pagentv4/sandbox/    Backend, Sandbox, file/command tools
 src/pagentv4/skills/     SKILL.md discovery and loading
+src/pagentv4/adapters/   ACP and other protocol adapters
+src/pagentv4/tools/      reusable tool functions
 src/app/                 application layer (REPL, CLI) on top of pagentv4
 ```
 
 Prefer **pagentv4** for new work (`Runner`, sandbox, persistence). See
-`docs/pagentv4/` and `examples/v4runner/`.
+`docs/pagentv4/` and `examples/pagentv4/`.
 
-**Terminal agent:** `uv run pagent` — same REPL as `examples/v4runner/repl.py`.
+**Terminal agent:** `uv run pagent` — same REPL as `examples/app/repl.py`.
 
 ## CI before commit / push
 

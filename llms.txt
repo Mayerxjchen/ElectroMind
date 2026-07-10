@@ -12,12 +12,12 @@ This file helps LLMs and coding agents find pagent documentation. Prefer **agent
 - [Providers & API keys](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/providers.md): LLM, DeepSeek, Ollama, vLLM, SGLang
 - [Prompt & session](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/prompt.md): System prompt, Session, sliding window, compacting
 - [Tools](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/tools.md): @tool, tool loop
-- [Built-in tools](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/defaults.md): clock, region, web_search, DEFAULT_TOOLS
+- [Built-in tools](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/defaults.md): DEFAULT_TOOLS=[clock, region]; also web_search, bash, readfile
 - [Memory helper](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/guide/memory.md): pagent.memory.Memory (experimental)
 - [Events](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/events.md): RunBegin, TextDelta, ToolCallBegin, RunEnd, sequences
 - [Wire protocol](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire.md): JSON-RPC 2.0 NDJSON for browsers and non-Python clients
 - [Reasoning streams](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/reasoning.md): reasoning_content, ReasoningDelta
-- [Wire demo](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire-demo.md): Local FastAPI + browser UI
+- [Wire demo](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire-demo.md): Local FastAPI + browser UI (examples/wire_browser/)
 - [Developer guide](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/development.md): Repo layout, local dev, docs site
 - [pagentv4 overview](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv4/index.md): Typed API with Runner, sandbox, and persistence
 - [pagentv4 quick start](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv4/quick-start.md): run_agent, Runner, and session

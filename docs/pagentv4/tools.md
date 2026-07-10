@@ -23,10 +23,10 @@ The decorator derives:
 - description from the docstring
 - argument schema from type hints
 
-## Use with `AgentCore` + `Runner`
+## Use with `AgentCore` + `VanillaRunner`
 
 ```python
-from pagentv4 import AgentCore, DeepSeek, Messages, Runner
+from pagentv4 import AgentCore, DeepSeek, Messages, VanillaRunner
 
 agent = AgentCore(
     DeepSeek("deepseek-v4-flash"),
@@ -35,7 +35,8 @@ agent = AgentCore(
 )
 messages = Messages()
 
-async for event in Runner().arun(agent, "Weather in Xiamen?", messages):
+runner = VanillaRunner(agent, messages)
+async for event in runner.run("Weather in Xiamen?", return_type="event"):
     ...
 ```
 

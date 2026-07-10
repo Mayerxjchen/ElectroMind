@@ -16,17 +16,22 @@ Use these pages if you want:
 
 ```text
 core/       AgentCore, Message, Provider, Tool, Event
-runtime/    loop_core, Runner, VanillaRunner, Thread
+ithread/    IThread Protocol + ThreadSpec
+runtime/    loop_core, LoopAdapter, BaseRunner, Runner, VanillaRunner, Thread
 conversation/ ConversationStore implementations used through Thread
 sandbox/    Backend, Sandbox, built-in file/command tools
+tools/      reusable tool functions
 adapters/   ACP encode/decode
 skills/     SKILL.md discovery and on-demand loading
 ```
 
-There are two layers inside `runtime/`:
+There are several layers inside `runtime/`:
 
 - `loop_core` defines the shared run / turn / tool loop semantics
-- `Runner` and `VanillaRunner` each add their own runtime environment around that shared loop
+- `LoopAdapter` carries the shared loop skeleton, and each runner layers on capabilities:
+  - `VanillaRunner(LoopAdapter)` — minimal in-memory environment
+  - `BaseRunner(LoopAdapter)` — adds thread, conversation store, sandbox, skills
+  - `Runner(BaseRunner)` — adds inbound control (steer/cancel/permit) and tool hooks
 
 ## Pages
 
