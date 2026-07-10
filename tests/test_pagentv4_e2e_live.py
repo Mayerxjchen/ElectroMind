@@ -79,9 +79,7 @@ async def test_live_agent_runs_full_loop_with_sandbox_tools(tmp_path, monkeypatc
         assert any(r.ok for r in results), "所有工具调用都失败，sandbox 工具链异常"
 
     # 4) 有产出：调了工具，或给了文本（证明模型流式解析正常）
-    assert begins or any(
-        isinstance(e, TextDelta) for e in events
-    ), "模型无任何产出"
+    assert begins or any(isinstance(e, TextDelta) for e in events), "模型无任何产出"
 
     # 5) 对话落盘
     assert (tmp_path / "e2e-live" / "messages.jsonl").is_file()
