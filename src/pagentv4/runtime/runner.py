@@ -1,7 +1,19 @@
+"""Runner —— 带 inbound 控制面 + tool hooks 的完整 Agent Runner。
+
+继承 `BaseRunner`（从而继承 `LoopAdapter` 的循环骨架与持久化），叠加两个
+能力（见 `docs/pagentv4/refactor-triage.md` 的 P0-1）：
+
+- **inbound 控制面**：steer / cancel / permit / deny；在 `emit` 的每个检查点
+  drain 邮箱，在 `_event_source` 里捕获 `RunCancelled`。
+- **tool hooks**：`emit_tool_events` 走 `run_tool_with_hooks`（before/after）。
+
+`Runner` 与 thread 同生共死：`await Runner.create(...)` → 多次
+`runner.run(user_input)` → `await runner.close()`。
+"""
+
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
-from inspect import isawaitable
+from collections.abc import AsyncGenerator, Sequence
 from pathlib import Path
 
 from ..conversation import ConversationStore
@@ -16,14 +28,8 @@ from ..skills import (
     build_skills_system_prompt,
     make_use_skill_tool,
 )
-from .helper import (
-    ArunReturnType,
-    EventHandler,
-    append_message,
-    ensure_system,
-    message_to_event,
-    project_event,
-)
+from .base_runner import BaseRunner
+from .helper import append_message
 from .hooks import PostToolHookContext, ToolHookContext, ToolHooks
 from .inbound import (
     CancelRun,
@@ -38,7 +44,7 @@ from .loop_core import run_event_loop
 from .thread import Thread
 
 
-class Runner:
+class Runner(BaseRunner):
     """Run 调度器，与 thread 同生共死。
 
     `await Runner.create(...)` → 多次 `runner.run(user_input)` → `await runner.close()`
@@ -58,12 +64,14 @@ class Runner:
         checkpoint_policy: CheckpointPolicy | None = None,
         tool_hooks: ToolHooks | None = None,
     ):
-        self.thread = thread
-        self.sandbox = sandbox
-        self.store = store
-        self.messages = messages
-        self.agent = agent
-        self.skills = skills
+        super().__init__(
+            agent,
+            thread,
+            store=store,
+            messages=messages,
+            sandbox=sandbox,
+            skills=skills,
+        )
         self.conversation_id = conversation_id
         self.inbound = inbound or InboundMailbox()
         self.checkpoint_policy = checkpoint_policy or CheckpointPolicy()
@@ -133,34 +141,16 @@ class Runner:
         *,
         turn_id: int,
         turn: int,
-    ) -> AsyncIterator:
+    ) -> AsyncGenerator:
         yield event
         self._apply_inbound_drain(event, turn_id=turn_id, turn=turn)
-
-    async def close(self) -> None:
-        close_store = getattr(self.store, "close", None)
-        if callable(close_store):
-            close_store()
-        await self.sandbox.close()
-
-    async def execute_tool(
-        self,
-        tool_call: ToolCall,
-    ) -> ToolOutput:
-        name = tool_call.name
-        tool: FunctionTool | None = self.agent.tool_map.get(name)
-        if tool is None:
-            return ToolOutput.fail(
-                f"error: unknown tool {name!r}; available: {sorted(self.agent.tool_map)}"
-            )
-        return await tool.acall(tool_call.arguments)
 
     async def emit_tool_events(
         self,
         tool_calls: list[ToolCall],
         turn_id: int,
         turn: int,
-    ) -> AsyncIterator:
+    ) -> AsyncGenerator:
         del turn
         for tool_call in tool_calls:
             name = tool_call.name
@@ -213,57 +203,12 @@ class Runner:
         )
         return await self.tool_hooks.run_after(post_ctx, output)
 
-    async def stream_agent_events(
-        self,
-        turn_id: int,
-        **run_kwargs,
-    ) -> AsyncIterator:
-        async for message in self.agent.generate_messages(self.messages, **run_kwargs):
-            append_message(self.messages, message, turn_id=turn_id)
-            event = message_to_event(message)
-            if event is not None:
-                yield event
-
-    def flush_conversation(self) -> None:
-        self.store.save(self.conversation_id, self.messages)
-
-    async def after_continuing(self, *, turn: int) -> None:
-        del turn
-        self.flush_conversation()
-
-    async def after_run_end(self, *, turn: int) -> None:
-        del turn
-        self.flush_conversation()
-
-    async def run(
+    async def _event_source(
         self,
         user_input: str,
-        *,
-        return_type: ArunReturnType = "event",
-        event_handler: EventHandler | None = None,
+        turn_id: int,
         **run_kwargs,
-    ) -> AsyncIterator:
-        if return_type not in {"event", "text", "acp", "message"}:
-            raise ValueError(f"unknown return_type: {return_type!r}")
-
-        ensure_system(self.messages, self.agent.system)
-        turn_id = self.messages.max_turn_id() + 1
-        append_message(self.messages, Message.user(user_input), turn_id=turn_id)
-
-        async for event in self._events(user_input, turn_id, **run_kwargs):
-            if event_handler is not None:
-                result = event_handler(event)
-                if isawaitable(result):
-                    await result
-
-            projected = project_event(event, return_type)
-            if projected is None:
-                continue
-            yield projected
-
-    async def _events(
-        self, user_input: str, turn_id: int, **run_kwargs
-    ) -> AsyncIterator:
+    ) -> AsyncGenerator:
         try:
             async for event in run_event_loop(
                 self,
@@ -324,30 +269,5 @@ class Runner:
             ),
             skills=skills,
             conversation_id=conversation_id,
-            tool_hooks=tool_hooks,
-        )
-
-    @classmethod
-    async def open(
-        cls,
-        thread_id: str,
-        provider: ProviderProtocol,
-        *,
-        overrides: dict | None = None,
-        extra_system: str = "",
-        max_turns: int = 8,
-        skill_roots: Sequence[str | Path] = (),
-        tools: Sequence[FunctionTool] = (),
-        tool_hooks: ToolHooks | None = None,
-    ) -> Runner:
-        """兼容旧入口；新代码优先使用 `Runner.create(...)`。"""
-        return await cls.create(
-            thread_id,
-            provider,
-            overrides=overrides,
-            extra_system=extra_system,
-            max_turns=max_turns,
-            skill_roots=skill_roots,
-            tools=tools,
             tool_hooks=tool_hooks,
         )

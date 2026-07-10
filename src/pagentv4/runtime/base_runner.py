@@ -1,7 +1,12 @@
 """BaseRunner —— 根据 spec 动态开资源的 Agent Runner。
 
 BaseRunner 接受一个 thread，里面带着 ThreadSpec、conversation store 和 workspace。
-所有持久化资源都从 thread 出发，避免出现“没有 thread 但单独挂 conversation”的落盘形态。
+所有持久化资源都从 thread 出发，避免出现"没有 thread 但单独挂 conversation"的落盘形态。
+
+循环骨架（`execute_tool` / `stream_agent_events` / `emit` / `emit_tool_events` /
+`run`）继承自 `LoopAdapter`；本类只叠加「持久化」能力：`after_*` 覆写为 flush、
+`close` 关 store + sandbox。三个 runner 的差异分析见
+`docs/pagentv4/refactor-triage.md` 的 P0-1。
 
 BaseRunner 本身不直接被用户使用，由子类暴露具体用法：
 
@@ -12,17 +17,15 @@ BaseRunner 本身不直接被用户使用，由子类暴露具体用法：
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator, Sequence
+from collections.abc import Sequence
 from dataclasses import asdict
-from inspect import isawaitable
 from pathlib import Path
 
 from ..conversation import ConversationStore
 from ..core.agent import Agent
-from ..core.events import ToolCallBegin, ToolResult
-from ..core.message import Message, Messages, ToolCall
+from ..core.message import Messages
 from ..core.provider import ProviderProtocol
-from ..core.tool import FunctionTool, ToolOutput
+from ..core.tool import FunctionTool
 from ..ithread import IThread, ThreadSpec
 from ..sandbox import Sandbox
 from ..skills import (
@@ -30,19 +33,11 @@ from ..skills import (
     build_skills_system_prompt,
     make_use_skill_tool,
 )
-from .helper import (
-    ArunReturnType,
-    EventHandler,
-    append_message,
-    ensure_system,
-    message_to_event,
-    project_event,
-)
-from .loop_core import run_event_loop
+from .loop_adapter import LoopAdapter
 from .thread import Thread
 
 
-class BaseRunner:
+class BaseRunner(LoopAdapter):
     """挂在 thread 上的 Agent Runner 基类。
 
     thread 里有什么就开什么，不强制绑定任何特定资源组合。
@@ -72,7 +67,7 @@ class BaseRunner:
         sandbox: Sandbox | None = None,
         skills: SkillRegistry | None = None,
     ):
-        self.agent = agent
+        super().__init__(agent, messages)
         self.thread = thread
         self.spec = thread.spec
         self.sandbox = sandbox
@@ -81,52 +76,6 @@ class BaseRunner:
         self.store = store or thread.open_store()
         self.conversation_id = thread.messages_conversation_id
         self.messages = messages if messages is not None else thread.load_messages()
-
-    async def execute_tool(self, tool_call: ToolCall) -> ToolOutput:
-        name = tool_call.name
-        tool: FunctionTool = self.agent.tool_map.get(name)
-        if tool is None:
-            return ToolOutput.fail(
-                f"error: unknown tool {name!r}; available: {sorted(self.agent.tool_map)}"
-            )
-        return await tool.acall(tool_call.arguments)
-
-    async def emit(self, event, *, turn_id: int, turn: int) -> AsyncIterator:
-        del turn_id, turn
-        yield event
-
-    async def stream_agent_events(
-        self,
-        turn_id: int,
-        **run_kwargs,
-    ) -> AsyncIterator:
-        async for message in self.agent.generate_messages(self.messages, **run_kwargs):
-            append_message(self.messages, message, turn_id=turn_id)
-            event = message_to_event(message)
-            if event is not None:
-                yield event
-
-    async def emit_tool_events(
-        self,
-        tool_calls: list[ToolCall],
-        turn_id: int,
-        turn: int,
-    ) -> AsyncIterator:
-        del turn
-        for tool_call in tool_calls:
-            yield ToolCallBegin(tool_call.id, tool_call.name, tool_call.arguments)
-            output = await self.execute_tool(tool_call)
-            append_message(
-                self.messages,
-                Message.tool_result(tool_call.id, output.content),
-                turn_id=turn_id,
-            )
-            yield ToolResult(
-                tool_call.id,
-                tool_call.name,
-                output.content,
-                ok=output.ok,
-            )
 
     async def after_continuing(self, *, turn: int) -> None:
         del turn
@@ -145,37 +94,6 @@ class BaseRunner:
             close_store()
         if self.sandbox is not None:
             await self.sandbox.close()
-
-    async def run(
-        self,
-        user_input: str,
-        *,
-        return_type: ArunReturnType = "event",
-        event_handler: EventHandler | None = None,
-        **run_kwargs,
-    ) -> AsyncIterator:
-        if return_type not in {"event", "text", "acp", "message"}:
-            raise ValueError(f"unknown return_type: {return_type!r}")
-
-        ensure_system(self.messages, self.agent.system)
-        turn_id = self.messages.max_turn_id() + 1
-        append_message(self.messages, Message.user(user_input), turn_id=turn_id)
-
-        async for event in run_event_loop(
-            self,
-            user_input=user_input,
-            turn_id=turn_id,
-            **run_kwargs,
-        ):
-            if event_handler is not None:
-                result = event_handler(event)
-                if isawaitable(result):
-                    await result
-
-            projected = project_event(event, return_type)
-            if projected is None:
-                continue
-            yield projected
 
     @classmethod
     async def from_spec(

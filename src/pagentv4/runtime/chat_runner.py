@@ -52,18 +52,21 @@ class ChatRunner(BaseRunner):
         conversation_root: str = ".",
         backend: str = "jsonl",
         messages: Messages | None = None,
+        spec: ThreadSpec | None = None,
     ):
         resolved_thread_id = (
             thread_id
             or conversation_id
             or datetime.now().strftime("thread-%Y%m%d-%H%M%S")
         )
-        spec = ThreadSpec(
+        resolved_spec = spec or ThreadSpec(
             conversation_backend=backend,
             conversation_root=conversation_root,
             backend="none",  # ChatRunner 不开 sandbox
         )
-        thread = Thread.open(resolved_thread_id, root=root, overrides=spec.__dict__)
+        thread = Thread.open(
+            resolved_thread_id, root=root, overrides=resolved_spec.__dict__
+        )
 
         super().__init__(agent, thread, messages=messages)
 
@@ -91,11 +94,10 @@ class ChatRunner(BaseRunner):
         spec = ThreadSpec.from_dict(payload)
         spec.backend = "none"  # ChatRunner 不开 sandbox
 
-        resolved_thread_id = thread_id or datetime.now().strftime(
-            "thread-%Y%m%d-%H%M%S"
+        return cls(
+            agent,
+            thread_id=thread_id,
+            root=root,
+            messages=messages,
+            spec=spec,
         )
-        thread = Thread.open(resolved_thread_id, root=root, overrides=spec.__dict__)
-
-        instance = cls.__new__(cls)
-        BaseRunner.__init__(instance, agent, thread, messages=messages)
-        return instance

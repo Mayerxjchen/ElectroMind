@@ -344,6 +344,9 @@ class Messages(BaseModel):
 
     def to_openai(self) -> list[dict]:
         # Collapse many Message rows back into OpenAI chat message dicts.
+        # 与 __iadd__ 的 append 合并分工不同：__iadd__ 只把同 turn 同类型的
+        # 流式 delta（text/text、thinking/thinking）累积成一行（存储紧凑），
+        # 这里则把任意 chunk 组合折叠成一条 OpenAI message（结构转换）。
         out: list[dict] = []
         i = 0
         data = self.data

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from typing import Protocol
 
 from ..core.agent import Agent
@@ -13,16 +13,16 @@ class LoopCoreAdapter(Protocol):
     agent: Agent
     messages: Messages
 
-    def emit(self, event, *, turn_id: int, turn: int) -> AsyncIterator: ...
+    def emit(self, event, *, turn_id: int, turn: int) -> AsyncGenerator: ...
 
-    def stream_agent_events(self, turn_id: int, **run_kwargs) -> AsyncIterator: ...
+    def stream_agent_events(self, turn_id: int, **run_kwargs) -> AsyncGenerator: ...
 
     def emit_tool_events(
         self,
         tool_calls: list[ToolCall],
         turn_id: int,
         turn: int,
-    ) -> AsyncIterator: ...
+    ) -> AsyncGenerator: ...
 
     async def after_continuing(self, *, turn: int) -> None: ...
 
@@ -35,7 +35,7 @@ async def emit_run_end(
     turn_id: int,
     turn: int,
     stop_reason: StopReason,
-) -> AsyncIterator:
+) -> AsyncGenerator:
     async for event in adapter.emit(
         TurnEnd(turn, stopped=True, stop_reason=stop_reason),
         turn_id=turn_id,
@@ -57,7 +57,7 @@ async def run_synthesis_turn(
     previous_turn: int,
     turn_id: int,
     **run_kwargs,
-) -> AsyncIterator:
+) -> AsyncGenerator:
     turn = previous_turn + 1
     async for event in adapter.emit(TurnBegin(turn), turn_id=turn_id, turn=turn):
         yield event
@@ -106,7 +106,7 @@ async def run_event_loop(
     user_input: str,
     turn_id: int,
     **run_kwargs,
-) -> AsyncIterator:
+) -> AsyncGenerator:
     async for event in adapter.emit(RunBegin(user_input), turn_id=turn_id, turn=0):
         yield event
 
@@ -165,4 +165,4 @@ async def run_event_loop(
             yield event
         await adapter.after_continuing(turn=turn)
 
-    raise RuntimeError("unreachable")
+    assert False, "unreachable"

@@ -91,4 +91,5 @@ class AgentCore:
             yield Message(role="assistant", content=ToolCall.from_openai(tool_call))
 
 
+# 兼容别名：规范名是 AgentCore；Agent 仅为兼容旧用法保留。
 Agent = AgentCore

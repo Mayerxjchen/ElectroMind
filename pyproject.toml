@@ -59,8 +59,6 @@ omit = [
     "*/__main__.py",
     # 故意的非法语法 demo，无法被 import
     "src/pagentv4/core/hacked_agent.py",
-    # 故意不测的旧 Agent 实现（已被 core/agent.py 取代）
-    "src/pagentv4/core/agent_restored.py",
     # 需要真实环境（docker / ssh / ACP server）才能测，纯单测覆盖不到
     "src/pagentv4/sandbox/backends/container.py",
     "src/pagentv4/sandbox/backends/ssh.py",

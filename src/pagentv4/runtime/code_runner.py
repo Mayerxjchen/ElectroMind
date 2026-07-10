@@ -148,7 +148,13 @@ class CodeRunner(BaseRunner):
         self.pending_extra_system = extra_system
 
     async def ensure_initialized(self) -> None:
-        """确保 sandbox、skills 和 sandbox tools 已经绑定到 Agent。"""
+        """确保 sandbox、skills 和 sandbox tools 已经绑定到 Agent。
+
+        首次 ``run`` 之前 ``self.agent`` 是构造时传入的 ``base_agent``（不含
+        sandbox tools / skills system prompt）；初始化后由 ``build_code_agent``
+        重建为带完整工具与系统提示的 agent。因此不要在 ``run`` 之前依赖
+        ``self.agent.tools``。
+        """
         if self.code_initialized:
             return
 

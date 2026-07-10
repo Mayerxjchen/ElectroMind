@@ -38,6 +38,8 @@ from .runner import Runner
 from .thread import Thread, default_threads_root
 from .vanilla import VanillaRunner
 
+# 兼容别名：规范名是 *Runner；以下 *Agent 别名仅为兼容旧用法保留
+# （测试与历史代码直接 import 这些别名，故不删除）。
 ChatAgent = ChatRunner
 CodeAgent = CodeRunner
 ThreadAgent = Runner
