@@ -1,7 +1,7 @@
 """Runner —— 带 inbound 控制面 + tool hooks 的完整 Agent Runner。
 
 继承 `BaseRunner`（从而继承 `LoopAdapter` 的循环骨架与持久化），叠加两个
-能力（见 `docs/pagentv4/refactor-triage.md` 的 P0-1）：
+能力：
 
 - **inbound 控制面**：steer / cancel / permit / deny；在 `emit` 的每个检查点
   drain 邮箱，在 `_event_source` 里捕获 `RunCancelled`。

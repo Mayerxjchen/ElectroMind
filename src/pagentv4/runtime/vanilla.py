@@ -2,8 +2,7 @@
 
 所有循环骨架方法（`execute_tool` / `stream_agent_events` / `emit` /
 `emit_tool_events` / `run`）继承自 `LoopAdapter`；本类只持有 `agent` + `messages`，
-`after_*` 用 `LoopAdapter` 的默认 no-op（不持久化）。三个 runner 的差异分析见
-`docs/pagentv4/refactor-triage.md` 的 P0-1。
+`after_*` 用 `LoopAdapter` 的默认 no-op（不持久化）。
 """
 
 from __future__ import annotations

@@ -5,8 +5,7 @@ BaseRunner 接受一个 thread，里面带着 ThreadSpec、conversation store �
 
 循环骨架（`execute_tool` / `stream_agent_events` / `emit` / `emit_tool_events` /
 `run`）继承自 `LoopAdapter`；本类只叠加「持久化」能力：`after_*` 覆写为 flush、
-`close` 关 store + sandbox。三个 runner 的差异分析见
-`docs/pagentv4/refactor-triage.md` 的 P0-1。
+`close` 关 store + sandbox。
 
 BaseRunner 本身不直接被用户使用，由子类暴露具体用法：
 

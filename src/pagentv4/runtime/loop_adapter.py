@@ -2,9 +2,8 @@
 
 VanillaRunner / BaseRunner / Runner 三个 runner 共享同一套循环骨架
 (`execute_tool` / `stream_agent_events` / `emit` / `emit_tool_events` /
-`run` / `after_*`)；它们的真差异只有四个正交能力开关（见
-`docs/pagentv4/refactor-triage.md` 的 P0-1）：inbound、tool hooks、持久化、
-sandbox。
+`run` / `after_*`)；它们的真差异只有四个正交能力开关：inbound、tool hooks、
+持久化、sandbox。
 
 LoopAdapter 承载这套骨架的默认实现，每个 runner 只覆写自己的差异点：
 
