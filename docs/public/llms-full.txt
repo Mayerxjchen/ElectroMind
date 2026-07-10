@@ -21,7 +21,7 @@ Dense API reference for **coding agents** and LLM tools. Human docs: <https://sy
 
 - **Python 3.11+** async library: `Agent` + `Session` + `@tool` functions over **OpenAI-compatible** `POST /v1/chat/completions`.
 - **Not included:** file edit, shell, MCP, RAG, parallel tools, checkpoints — you implement those in your app.
-- **Package:** `pip install pagent` · optional `pagent[search]`, `pagent[tokens]`.
+- **Package:** `pip install pagent` · optional `pagent[search]`, `pagent[tokens]`, `pagent[ssh]`.
 
 ## Core types
 
@@ -31,7 +31,7 @@ Dense API reference for **coding agents** and LLM tools. Human docs: <https://sy
 | `SlidingWindowSession` | Trim by **token** budget (not message count) |
 | `CompactingSession` | LLM summarization when context grows |
 | `LLM`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang` | Provider clients; model name in constructor |
-| `Agent(llm, session, tools=[], max_turns=8)` | Runs the tool loop |
+| `Agent(llm, session, tools=None, max_turns=8)` | Runs the tool loop |
 | `RunEnd` | Final model step: `.content`, `.tool_calls`, `.reasoning_content`, `.usage` |
 | `@tool()` | Decorator; schema from type hints + docstring |
 
@@ -1119,17 +1119,22 @@ Use these pages if you want:
 
 ```text
 core/       AgentCore, Message, Provider, Tool, Event
-runtime/    loop_core, Runner, VanillaRunner, Thread
+ithread/    IThread Protocol + ThreadSpec
+runtime/    loop_core, LoopAdapter, BaseRunner, Runner, VanillaRunner, Thread
 conversation/ ConversationStore implementations used through Thread
 sandbox/    Backend, Sandbox, built-in file/command tools
+tools/      reusable tool functions
 adapters/   ACP encode/decode
 skills/     SKILL.md discovery and on-demand loading
 ```
 
-There are two layers inside `runtime/`:
+There are several layers inside `runtime/`:
 
 - `loop_core` defines the shared run / turn / tool loop semantics
-- `Runner` and `VanillaRunner` each add their own runtime environment around that shared loop
+- `LoopAdapter` carries the shared loop skeleton, and each runner layers on capabilities:
+  - `VanillaRunner(LoopAdapter)` — minimal in-memory environment
+  - `BaseRunner(LoopAdapter)` — adds thread, conversation store, sandbox, skills
+  - `Runner(BaseRunner)` — adds inbound control (steer/cancel/permit) and tool hooks
 
 ## Pages
 
@@ -1366,8 +1371,10 @@ It owns the multi-turn tool loop, sandbox, messages, and persistence.
 The layering looks like this:
 
 - `loop_core` handles the shared run, turn, tool call, `TurnResult`, `TurnEnd`, and `RunEnd` semantics
-- `VanillaRunner` reuses that loop with a minimal in-memory environment
-- `Runner` reuses the same loop and adds thread, sandbox, persistence, inbound control, and tool hooks
+- `LoopAdapter` carries the shared loop skeleton (`execute_tool`, `stream_agent_events`, `emit`, `run`)
+- `VanillaRunner(LoopAdapter)` reuses that loop with a minimal in-memory environment
+- `BaseRunner(LoopAdapter)` adds thread, conversation store, sandbox, and skills, and flushes after each turn
+- `Runner(BaseRunner)` adds the inbound control plane (steer/cancel/permit) and tool hooks
 
 This keeps the different runtime layers aligned on turn/tool behavior while still exposing different runtime capabilities.
 
@@ -1622,10 +1629,10 @@ The decorator derives:
 - description from the docstring
 - argument schema from type hints
 
-## Use with `AgentCore` + `Runner`
+## Use with `AgentCore` + `VanillaRunner`
 
 ```python
-from pagentv4 import AgentCore, DeepSeek, Messages, Runner
+from pagentv4 import AgentCore, DeepSeek, Messages, VanillaRunner
 
 agent = AgentCore(
     DeepSeek("deepseek-v4-flash"),
@@ -1634,7 +1641,8 @@ agent = AgentCore(
 )
 messages = Messages()
 
-async for event in Runner().arun(agent, "Weather in Xiamen?", messages):
+runner = VanillaRunner(agent, messages)
+async for event in runner.run("Weather in Xiamen?", return_type="event"):
     ...
 ```
 
