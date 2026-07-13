@@ -181,6 +181,45 @@ async def test_code_runner_lazy_init_before_run(tmp_path, fake_sandbox):
 
 
 @pytest.mark.asyncio
+async def test_run_state_waking_sandbox_on_lazy_init(tmp_path, monkeypatch):
+    import asyncio
+
+    async def slow_open_sandbox(self):
+        await asyncio.sleep(0.05)
+        sandbox = FakeSandbox(self.workspace_path)
+        return sandbox
+
+    monkeypatch.setattr(Thread, "open_sandbox", slow_open_sandbox)
+
+    provider = FakeProvider([[FakeStreamChunk(content="lazy done")]])
+    agent = Agent(provider, system="lazy system", tools=[agent_tool])
+    runner = CodeRunner(
+        agent,
+        thread_id="wake-run",
+        root=tmp_path,
+        backend="local",
+    )
+    observed: list[str] = []
+
+    async def poll() -> None:
+        while True:
+            phase = runner.run_state.phase
+            if not observed or observed[-1] != phase:
+                observed.append(phase)
+            if phase == "ended":
+                break
+            await asyncio.sleep(0.005)
+
+    poller = asyncio.create_task(poll())
+    texts = [text async for text in runner.run("hi", return_type="text")]
+    await poller
+
+    assert texts == ["lazy done"]
+    assert "waking_sandbox" in observed
+    await runner.close()
+
+
+@pytest.mark.asyncio
 async def test_code_runner_conversation_id_is_compat_thread_alias(
     tmp_path, fake_sandbox
 ):

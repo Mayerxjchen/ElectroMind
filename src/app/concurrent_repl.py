@@ -18,6 +18,7 @@ from .render import (
     consume_run,
     emit_user_line,
     format_banner,
+    sync_run_state_ui,
 )
 from .repl import (
     format_fatal_error,
@@ -65,6 +66,8 @@ async def run_layout_loop(
 
     while True:
         run_state["active"] = run_task is not None and not run_task.done()
+        sync_run_state_ui(runner, run_state)
+        terminal.invalidate()
         idle_prefix = f"{user_label}> "
         if run_state.get("permit") is not None:
             terminal.set_prefix("permit> ")
@@ -174,7 +177,8 @@ async def run_concurrent_repl(config: ReplConfig, *, color: bool | None = None) 
     had_user_turn = False
     try:
         runner = await open_runner(config)
-        run_state: dict = {"active": False, "permit": None}
+        run_state: dict = {"active": False, "permit": None, "status": "空闲"}
+        sync_run_state_ui(runner, run_state)
         terminal = LayoutTerminal(color=use_color)
         app = terminal.build_application(run_state=run_state, runner=runner)
 

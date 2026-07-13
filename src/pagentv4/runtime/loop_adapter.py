@@ -18,6 +18,7 @@ LoopAdapter 承载这套骨架的默认实现，每个 runner 只覆写自己的
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import AsyncGenerator
 from inspect import isawaitable
 
@@ -34,6 +35,7 @@ from .helper import (
     project_event,
 )
 from .loop_core import run_event_loop
+from .run_state import RunState
 
 
 class LoopAdapter:
@@ -46,6 +48,7 @@ class LoopAdapter:
     def __init__(self, agent: Agent, messages: Messages | None = None) -> None:
         self.agent = agent
         self.messages = messages if messages is not None else Messages()
+        self.run_state = RunState()
 
     async def execute_tool(self, tool_call: ToolCall) -> ToolOutput:
         name = tool_call.name
@@ -124,9 +127,12 @@ class LoopAdapter:
         if return_type not in {"event", "text", "acp", "message"}:
             raise ValueError(f"unknown return_type: {return_type!r}")
 
+        self.run_state = RunState(phase="initializing")
         ensure_system(self.messages, self.agent.system)
         turn_id = self.messages.max_turn_id() + 1
+        self.run_state.turn_id = turn_id
         append_message(self.messages, Message.user(user_input), turn_id=turn_id)
+        await asyncio.sleep(0)
 
         async for event in self._event_source(user_input, turn_id, **run_kwargs):
             if event_handler is not None:

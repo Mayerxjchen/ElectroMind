@@ -67,15 +67,26 @@ class LayoutTerminal:
 
     def set_prefix(self, prefix: str) -> None:
         self.prompt_prefix = prefix
+        self.invalidate()
+
+    def invalidate(self) -> None:
         if self.app is not None:
             self.app.invalidate()
+
+    def status_fragments(self, run_state: dict):
+        from .render import DIM, c
+
+        label = run_state.get("status", "空闲")
+        text = f" {label} "
+        if self.color:
+            return ANSI(c(text, DIM, on=True))
+        return text
 
     def write(self, text: str = "", *, end: str = "\n") -> None:
         self.body += text + end
         if self.output_pane is not None:
             self.output_pane.stick_to_bottom = True
-        if self.app is not None:
-            self.app.invalidate()
+        self.invalidate()
 
     def output_fragments(self):
         if "\033[" in self.body:
@@ -128,6 +139,10 @@ class LayoutTerminal:
             height=Dimension.exact(1),
             get_line_prefix=lambda _ln, _wc: [("", self.prompt_prefix)],
         )
+        status_row = Window(
+            FormattedTextControl(lambda: self.status_fragments(run_state)),
+            height=Dimension.exact(1),
+        )
 
         @kb.add(Keys.PageUp)
         def scroll_output_up(event) -> None:
@@ -152,6 +167,7 @@ class LayoutTerminal:
             HSplit(
                 [
                     self.output_pane,
+                    status_row,
                     input_row,
                 ]
             )

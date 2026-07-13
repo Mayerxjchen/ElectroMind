@@ -110,6 +110,13 @@ async def wait_for_layout_permit(
     emit(_c(f"{format_permit_prompt(event)} [y/N]", YELLOW, on=color))
     run_state["permit"] = event
     run_state["permit_wait"] = asyncio.Event()
+    from .render import sync_run_state_ui
+    from .terminal import layout_terminal
+
+    sync_run_state_ui(runner, run_state)
+    layout = layout_terminal.get()
+    if layout is not None:
+        layout.invalidate()
     try:
         await run_state["permit_wait"].wait()
     finally:
@@ -117,3 +124,7 @@ async def wait_for_layout_permit(
         wait = run_state.pop("permit_wait", None)
         if wait is not None and not wait.is_set():
             wait.set()
+        sync_run_state_ui(runner, run_state)
+        layout = layout_terminal.get()
+        if layout is not None:
+            layout.invalidate()

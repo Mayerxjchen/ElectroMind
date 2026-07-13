@@ -247,3 +247,58 @@ async def test_event_stream_with_tools(tmp_path):
     assert any(isinstance(e, ToolResult) and e.tool_call_id == "c1" for e in events)
     assert isinstance(events[-1], RunEnd)
     await runner.close()
+
+
+@pytest.mark.asyncio
+async def test_run_state_closing_on_close(tmp_path, monkeypatch):
+    import asyncio
+
+    provider = FakeProvider([[FakeStreamChunk(content="hello")]])
+
+    class SlowSandbox:
+        closed = False
+
+        def tools(self):
+            return []
+
+        async def describe(self):
+            return "slow sandbox"
+
+        async def install_skills(self, registry):
+            del registry
+            return {}
+
+        async def close(self):
+            await asyncio.sleep(0.05)
+            self.closed = True
+
+    sandbox = SlowSandbox()
+
+    async def open_sandbox(_self):
+        return sandbox
+
+    monkeypatch.setattr(Thread, "open_sandbox", open_sandbox)
+    runner = await BaseRunner.from_spec(
+        "closing-test",
+        ThreadSpec(backend="local"),
+        provider,
+        root=tmp_path,
+    )
+    observed: list[str] = []
+
+    async def poll() -> None:
+        while True:
+            phase = runner.run_state.phase
+            if not observed or observed[-1] != phase:
+                observed.append(phase)
+            if phase == "idle" and sandbox.closed:
+                break
+            await asyncio.sleep(0.005)
+
+    poller = asyncio.create_task(poll())
+    await runner.close()
+    await poller
+
+    assert "closing" in observed
+    assert runner.run_state.phase == "idle"
+    assert sandbox.closed is True

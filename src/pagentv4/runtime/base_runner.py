@@ -33,6 +33,7 @@ from ..skills import (
     make_use_skill_tool,
 )
 from .loop_adapter import LoopAdapter
+from .run_state import RunState
 from .thread import Thread
 
 
@@ -88,11 +89,13 @@ class BaseRunner(LoopAdapter):
         self.store.save(self.conversation_id, self.messages)
 
     async def close(self) -> None:
+        self.run_state.phase = "closing"
         close_store = getattr(self.store, "close", None)
         if callable(close_store):
             close_store()
         if self.sandbox is not None:
             await self.sandbox.close()
+        self.run_state.phase = "idle"
 
     @classmethod
     async def from_spec(
@@ -114,7 +117,7 @@ class BaseRunner(LoopAdapter):
         """
         thread = Thread.open(thread_id, root=root, overrides=asdict(spec))
 
-        # sandbox：spec 里配了非 "none" 就开
+        run_state = RunState(phase="waking_sandbox")
         sandbox = None
         combined_tools = list(tools)
         computer_desc = ""
@@ -122,6 +125,7 @@ class BaseRunner(LoopAdapter):
             sandbox = await thread.open_sandbox()
             combined_tools.extend(sandbox.tools())
             computer_desc = await sandbox.describe()
+        run_state.phase = "idle"
 
         # skills
         skills = SkillRegistry.from_defaults(*skill_roots)
@@ -138,7 +142,7 @@ class BaseRunner(LoopAdapter):
             part for part in (computer_desc, skills_prompt, system_tail) if part
         )
 
-        return cls(
+        runner = cls(
             Agent(
                 provider,
                 system=system_prompt,
@@ -149,3 +153,5 @@ class BaseRunner(LoopAdapter):
             sandbox=sandbox,
             skills=skills,
         )
+        runner.run_state = run_state
+        return runner

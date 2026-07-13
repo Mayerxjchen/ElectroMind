@@ -39,6 +39,7 @@ from ..sandbox import Sandbox
 from ..skills import SkillRegistry, build_skills_system_prompt, make_use_skill_tool
 from .base_runner import BaseRunner
 from .helper import ArunReturnType, EventHandler
+from .run_state import RunState
 from .thread import Thread
 
 
@@ -64,7 +65,10 @@ async def open_code_resources(
     tools: list[FunctionTool],
     agent_system: str | None,
     extra_system: str,
+    run_state: RunState | None = None,
 ) -> tuple[Sandbox, SkillRegistry, str, list[FunctionTool]]:
+    if run_state is not None:
+        run_state.phase = "waking_sandbox"
     sandbox = await thread.open_sandbox()
     combined_tools = [*sandbox.tools(), *tools]
 
@@ -79,6 +83,8 @@ async def open_code_resources(
     system_prompt = "\n".join(
         part for part in (computer_desc, skills_prompt, system_tail) if part
     )
+    if run_state is not None:
+        run_state.phase = "idle"
     return sandbox, skills, system_prompt, combined_tools
 
 
@@ -168,6 +174,7 @@ class CodeRunner(BaseRunner):
                 tools=self.pending_tools,
                 agent_system=self.base_agent.system,
                 extra_system=self.pending_extra_system,
+                run_state=self.run_state,
             )
             self.agent = build_code_agent(
                 self.base_agent,

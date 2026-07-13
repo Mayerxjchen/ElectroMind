@@ -60,6 +60,7 @@ from .core import (
 )
 from .ithread import IThread, ThreadSpec, validate_thread_id
 from .runtime import (
+    RUN_PHASE_LABELS,
     AgentRunner,
     ArunReturnType,
     BaseRunner,
@@ -70,6 +71,8 @@ from .runtime import (
     EventHandler,
     PostToolHookContext,
     Runner,
+    RunPhase,
+    RunState,
     Thread,
     ThreadAgent,
     ToolDecision,
@@ -144,6 +147,9 @@ __all__ = [
     "ReasoningDelta",
     "RunBegin",
     "RunEnd",
+    "RunPhase",
+    "RUN_PHASE_LABELS",
+    "RunState",
     "Runner",
     "Sandbox",
     "SandboxDeadError",

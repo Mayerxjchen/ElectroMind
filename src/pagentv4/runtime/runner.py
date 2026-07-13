@@ -41,6 +41,7 @@ from .inbound import (
     ToolPermitResult,
 )
 from .loop_core import run_event_loop
+from .run_state import RunState
 from .thread import Thread
 
 
@@ -218,9 +219,14 @@ class Runner(BaseRunner):
             ):
                 yield event
         except RunCancelled as exc:
+            self.run_state.turn = exc.turn
+            self.run_state.stop_reason = "cancelled"
+            self.run_state.phase = "ended"
             yield TurnEnd(exc.turn, stopped=True, stop_reason="cancelled")
             yield RunEnd(exc.turn, stop_reason="cancelled")
+            self.run_state.phase = "tearing_down"
             self.flush_conversation()
+            self.run_state.phase = "ended"
 
     @classmethod
     async def create(
@@ -237,7 +243,9 @@ class Runner(BaseRunner):
     ) -> Runner:
         """创建完整 Runner：打开 thread、sandbox、conversation 和 skills。"""
         thread = Thread.open(thread_id, overrides=overrides)
+        run_state = RunState(phase="waking_sandbox")
         sandbox = await thread.open_sandbox()
+        run_state.phase = "idle"
         store = thread.open_store()
 
         skills = SkillRegistry.from_defaults(*skill_roots)
@@ -256,7 +264,7 @@ class Runner(BaseRunner):
         conversation_id = thread.messages_conversation_id
         messages = thread.load_messages()
 
-        return cls(
+        runner = cls(
             thread=thread,
             sandbox=sandbox,
             store=store,
@@ -271,3 +279,5 @@ class Runner(BaseRunner):
             conversation_id=conversation_id,
             tool_hooks=tool_hooks,
         )
+        runner.run_state = run_state
+        return runner

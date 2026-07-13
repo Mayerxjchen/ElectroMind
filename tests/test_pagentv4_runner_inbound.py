@@ -81,6 +81,9 @@ async def test_runner_cancel_run_emits_cancelled_turn_end(tmp_path, monkeypatch)
         assert ended[-1].stop_reason == "cancelled"
         assert ended[-1].stopped is True
         assert run_ended[-1].stop_reason == "cancelled"
+        assert runner.run_state.phase == "ended"
+        assert runner.run_state.stop_reason == "cancelled"
+        assert not runner.run_state.active
     finally:
         await runner.close()
 

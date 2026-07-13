@@ -8,6 +8,7 @@ import unicodedata
 from dataclasses import dataclass, field
 
 from pagentv4 import (
+    RUN_PHASE_LABELS,
     ReasoningDelta,
     Runner,
     TextDelta,
@@ -247,6 +248,22 @@ def format_sandbox_line(runner: Runner) -> str:
     return f"local · {runner.sandbox.home}"
 
 
+def format_status_label(runner: Runner, run_state: dict) -> str | None:
+    if run_state.get("permit") is not None:
+        return "等待工具审批"
+    if not run_state.get("active") and runner.run_state.phase == "ended":
+        return RUN_PHASE_LABELS["idle"]
+    if runner.run_state.phase == "running":
+        return None
+    return runner.run_state.label
+
+
+def sync_run_state_ui(runner: Runner, run_state: dict) -> None:
+    label = format_status_label(runner, run_state)
+    if label is not None:
+        run_state["status"] = label
+
+
 def format_banner(runner: Runner, *, color: bool) -> str:
     thread = runner.thread
     status = "新建" if thread.created else "续聊"
@@ -264,6 +281,7 @@ def format_banner(runner: Runner, *, color: bool) -> str:
     lines = [
         top,
         row("thread", f"{thread.id} · {status}", color=color, value_code=status_color),
+        row("state", runner.run_state.label, color=color),
         row("model", model, color=color),
         row("sandbox", sandbox, color=color),
         row("workdir", workdir, color=color),
@@ -449,7 +467,14 @@ async def consume_run(
     run_state: dict | None = None,
     permit_auto: bool = False,
 ) -> None:
+    from .terminal import layout_terminal
+
     async for event in runner.run(user_input):
+        if run_state is not None:
+            sync_run_state_ui(runner, run_state)
+            layout = layout_terminal.get()
+            if layout is not None:
+                layout.invalidate()
         render_event(event, state)
         if (
             not permit_auto

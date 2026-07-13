@@ -1,4 +1,5 @@
 from app.render import box_line_width, display_width, format_banner, row
+from pagentv4 import RunState
 
 
 def test_row_aligns_with_cjk_status():
@@ -40,10 +41,12 @@ def test_banner_contains_key_fields():
         messages = type("M", (), {"data": []})()
         agent = FakeAgent()
         skills = FakeSkills()
+        run_state = RunState()
 
     text = format_banner(FakeRunner(), color=False)
     assert "pagent" in text
     assert "thread-demo" in text
+    assert "空闲" in text
     assert "deepseek-v4-flash" in text
     assert "local" in text
     assert "/exit" in text

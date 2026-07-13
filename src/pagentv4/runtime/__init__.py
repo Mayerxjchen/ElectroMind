@@ -34,6 +34,7 @@ from .inbound import (
     fold_inbound,
 )
 from .protocol import AgentRunner
+from .run_state import RUN_PHASE_LABELS, RunPhase, RunState
 from .runner import Runner
 from .thread import Thread, default_threads_root
 from .vanilla import VanillaRunner
@@ -66,6 +67,9 @@ __all__ = [
     "PermitTool",
     "RunCancelled",
     "Runner",
+    "RunPhase",
+    "RUN_PHASE_LABELS",
+    "RunState",
     "SqliteConversationStore",
     "Steer",
     "ToolPermitResult",
