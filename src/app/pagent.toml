@@ -26,7 +26,7 @@ api_key = ""  # 留空则用 DEEPSEEK_API_KEY 环境变量
 # image = "pagent:browser"
 
 [sandbox]
-backend = "podman"
+backend = "docker"
 image = "pagent:latest"
 container_ttl = 300  # 秒；容器主进程 sleep <ttl>，到期 --rm 自清理；0 或不设则用 sleep infinity
 command_policy = "workdir"  # open | workdir — workdir 拦截 run_command 里的越界路径
