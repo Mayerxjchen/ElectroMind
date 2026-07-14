@@ -27,6 +27,7 @@ from .sandbox import (
     Files,
     Sandbox,
     build_backend,
+    detect_container_cli,
     open_sandbox_for_spec,
 )
 from .tools import build_sandbox_tools
@@ -57,6 +58,7 @@ __all__ = [
     "build_computer_description",
     "build_sandbox_tools",
     "default_workspaces_root",
+    "detect_container_cli",
     "environment_extra",
     "node_environment_extra",
     "open_sandbox_for_spec",

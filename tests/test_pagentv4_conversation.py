@@ -40,7 +40,6 @@ class FakeProvider:
 
 
 def test_default_conversations_root_is_project_local(tmp_path, monkeypatch):
-    monkeypatch.delenv("PAGENT_CONVERSATIONS_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
     assert default_conversations_root() == str(tmp_path / ".pagent" / "conversations")
 
@@ -63,7 +62,7 @@ def test_jsonl_store_roundtrip(tmp_path):
 
 @pytest.mark.asyncio
 async def test_runner_loads_prior_conversation(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
 
     provider_first = FakeProvider([[FakeStreamChunk(content="first")]])
     runner = await Runner.create(
@@ -95,14 +94,14 @@ async def test_runner_loads_prior_conversation(tmp_path, monkeypatch):
     finally:
         await runner.close()
 
-    store = JsonlConversationStore(root=tmp_path / "beta")
+    store = JsonlConversationStore(root=tmp_path / ".pagent" / "threads" / "beta")
     reloaded = store.load("messages")
     assert reloaded.data[-1].content.text == "second"
 
 
 @pytest.mark.asyncio
 async def test_runner_flushes_each_turn(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     store = JsonlConversationStore(root=tmp_path / "gamma")
 
     class RecordingStore:
@@ -207,7 +206,7 @@ def test_sqlite_store_roundtrip(tmp_path):
 
 @pytest.mark.asyncio
 async def test_runner_persists_conversation(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
 
     provider = FakeProvider([[FakeStreamChunk(content="done")]])
     runner = await Runner.create(
@@ -222,6 +221,6 @@ async def test_runner_persists_conversation(tmp_path, monkeypatch):
     finally:
         await runner.close()
 
-    store = JsonlConversationStore(root=tmp_path / "zeta")
+    store = JsonlConversationStore(root=tmp_path / ".pagent" / "threads" / "zeta")
     reloaded = store.load("messages")
     assert reloaded.data[-1].content.text == "done"

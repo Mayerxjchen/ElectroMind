@@ -16,9 +16,6 @@ CONVERSATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$")
 
 
 def default_conversations_root() -> str:
-    override = os.environ.get("PAGENT_CONVERSATIONS_DIR")
-    if override:
-        return os.path.abspath(override)
     return os.path.join(os.getcwd(), ".pagent", "conversations")
 
 

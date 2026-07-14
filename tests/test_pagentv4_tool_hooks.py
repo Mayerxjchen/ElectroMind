@@ -62,7 +62,7 @@ def tool_call_chunk(
 
 
 async def open_runner(tmp_path, monkeypatch, provider, *, tools=(), tool_hooks=None):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     return await Runner.create(
         "test",
         provider,

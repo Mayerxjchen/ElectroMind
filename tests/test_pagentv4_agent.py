@@ -36,7 +36,7 @@ class FakeProvider:
 async def open_runner(
     tmp_path, monkeypatch, provider, *, system="test", tools=(), max_turns=8
 ):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     return await Runner.create(
         "test",
         provider,
@@ -174,7 +174,7 @@ async def test_runner_isolates_separate_threads(tmp_path, monkeypatch):
             [FakeStreamChunk(content="b")],
         ]
     )
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     left = await Runner.create(
         "left",
         provider,

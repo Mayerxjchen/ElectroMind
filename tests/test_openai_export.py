@@ -22,7 +22,7 @@ def test_messages_to_openai_json_from_file(tmp_path):
 
 
 def test_messages_to_openai_json_from_thread_id(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     messages = Messages()
     messages += Message.user("ping", turn_id=1)
     messages += Message.assistant({"type": "text", "text": "pong"}, turn_id=1)

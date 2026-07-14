@@ -32,7 +32,7 @@ class FakeProvider:
 
 
 async def open_runner(tmp_path, monkeypatch, provider, *, tools=(), max_turns=8):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     return await Runner.create(
         "test",
         provider,

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from .skill import (
     PROJECT_LOCAL_SKILLS_DIR,
-    SKILLS_ENV_VAR,
     USER_SKILLS_DIR,
     Skill,
     SkillDiscoveryError,
@@ -20,7 +19,6 @@ from .skill import (
 
 __all__ = [
     "PROJECT_LOCAL_SKILLS_DIR",
-    "SKILLS_ENV_VAR",
     "USER_SKILLS_DIR",
     "Skill",
     "SkillDiscoveryError",

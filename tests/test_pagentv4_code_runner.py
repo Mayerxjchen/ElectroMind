@@ -113,7 +113,10 @@ def test_code_runner_constructor_defers_sandbox_init(tmp_path, fake_sandbox):
 
 
 @pytest.mark.asyncio
-async def test_code_runner_create_opens_thread_and_sandbox(tmp_path, fake_sandbox):
+async def test_code_runner_create_opens_thread_and_sandbox(
+    tmp_path, fake_sandbox, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
     provider = FakeProvider([[FakeStreamChunk(content="done")]])
     agent = Agent(provider, system="base system", tools=[agent_tool])
 
@@ -149,7 +152,8 @@ async def test_code_runner_create_opens_thread_and_sandbox(tmp_path, fake_sandbo
 
 
 @pytest.mark.asyncio
-async def test_code_runner_lazy_init_before_run(tmp_path, fake_sandbox):
+async def test_code_runner_lazy_init_before_run(tmp_path, fake_sandbox, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     provider = FakeProvider([[FakeStreamChunk(content="lazy done")]])
     agent = Agent(provider, system="lazy system", tools=[agent_tool])
 
@@ -240,7 +244,10 @@ async def test_code_runner_conversation_id_is_compat_thread_alias(
 
 
 @pytest.mark.asyncio
-async def test_code_runner_from_toml_uses_thread_workspace(tmp_path, fake_sandbox):
+async def test_code_runner_from_toml_uses_thread_workspace(
+    tmp_path, fake_sandbox, monkeypatch
+):
+    monkeypatch.chdir(tmp_path)
     toml_path = tmp_path / "code.toml"
     toml_path.write_text(
         "\n".join(

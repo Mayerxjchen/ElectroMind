@@ -30,9 +30,9 @@ async def test_resolve_workdir_direct(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resolve_workdir_workspace_id(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_WORKSPACES_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     resolved = resolve_workdir(workspace_id="alpha", workdir=None)
-    assert resolved == str((tmp_path / "alpha").resolve())
+    assert resolved == str((tmp_path / ".pagent" / "workspaces" / "alpha").resolve())
     assert os.path.isdir(resolved)
 
 
@@ -42,13 +42,12 @@ def test_resolve_workdir_requires_target():
 
 
 def test_resolve_workdir_rejects_bad_id(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_WORKSPACES_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     with pytest.raises(ValueError):
         resolve_workdir(workspace_id="../escape", workdir=None)
 
 
 def test_default_workspaces_root_is_project_local(tmp_path, monkeypatch):
-    monkeypatch.delenv("PAGENT_WORKSPACES_DIR", raising=False)
     monkeypatch.chdir(tmp_path)
     resolved = resolve_workdir(workspace_id="beta", workdir=None)
     assert resolved == str((tmp_path / ".pagent" / "workspaces" / "beta").resolve())
@@ -57,8 +56,36 @@ def test_default_workspaces_root_is_project_local(tmp_path, monkeypatch):
 
 def test_build_backend_dispatch():
     assert isinstance(build_backend("local"), LocalBackend)
+    assert isinstance(build_backend("docker"), DockerBackend)
+    assert isinstance(build_backend("podman"), PodmanBackend)
     with pytest.raises(ValueError):
         build_backend("nope")
+
+
+def test_build_backend_container_prefers_docker(monkeypatch):
+    """backend=container 时按 docker→podman 探测 PATH，docker 在就用 docker。"""
+    from pagentv4.sandbox import sandbox as sandbox_mod
+
+    monkeypatch.setattr(sandbox_mod.shutil, "which", lambda cli: cli == "docker")
+    assert isinstance(build_backend("container"), DockerBackend)
+
+
+def test_build_backend_container_falls_back_to_podman(monkeypatch):
+    """docker 不在 PATH、podman 在时，container 落到 podman。"""
+    from pagentv4.sandbox import sandbox as sandbox_mod
+
+    monkeypatch.setattr(sandbox_mod.shutil, "which", lambda cli: cli == "podman")
+    assert isinstance(build_backend("container"), PodmanBackend)
+
+
+def test_detect_container_cli_raises_when_none_available(monkeypatch):
+    """docker/podman 都不在 PATH，detect_container_cli 抛 SandboxError 指明安装项。"""
+    from pagentv4.sandbox import SandboxError, detect_container_cli
+    from pagentv4.sandbox import sandbox as sandbox_mod
+
+    monkeypatch.setattr(sandbox_mod.shutil, "which", lambda cli: None)
+    with pytest.raises(SandboxError, match="docker / podman"):
+        detect_container_cli()
 
 
 @pytest.mark.asyncio
@@ -623,7 +650,7 @@ class FakeProvider:
 
 @pytest.mark.asyncio
 async def test_runner_open_binds_sandbox_tools(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     tool_call = FakeToolCallDelta(
         index=0,
         tool_id="call-1",
@@ -650,7 +677,9 @@ async def test_runner_open_binds_sandbox_tools(tmp_path, monkeypatch):
     finally:
         await runner.close()
 
-    note_path = tmp_path / "sandbox-test" / "workspace" / "note.md"
+    note_path = (
+        tmp_path / ".pagent" / "threads" / "sandbox-test" / "workspace" / "note.md"
+    )
     assert note_path.read_text() == "hello via session"
     assert "ToolCallBegin" in events
     assert "ToolResult" in events
@@ -665,7 +694,7 @@ async def test_runner_open_binds_sandbox_tools(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_runner_open_merges_extra_tools(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     from pagentv4 import tool
 
     @tool()
@@ -706,7 +735,7 @@ async def test_runner_open_merges_extra_tools(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_runner_open_closes_sandbox_on_exception(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
 
     class Boom(Exception):
         pass
@@ -726,7 +755,7 @@ async def test_runner_open_closes_sandbox_on_exception(tmp_path, monkeypatch):
             pass
     await runner.close()
 
-    assert (tmp_path / "boom-test" / "workspace").exists()
+    assert (tmp_path / ".pagent" / "threads" / "boom-test" / "workspace").exists()
 
 
 def make_spec(**overrides) -> SandboxSpec:

@@ -112,7 +112,7 @@ def test_write_trace_text_stdout(capsys, tmp_path):
 
 
 def test_load_messages_from_thread_id(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     messages = Messages()
     messages += Message.user("ping", turn_id=1)
     thread = Thread.open("viz-demo", overrides={"backend": "none"})

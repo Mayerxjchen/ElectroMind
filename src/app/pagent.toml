@@ -4,38 +4,35 @@
 max_turns = 12
 
 [repl]
-user_label = "you"        # 输出区 / 输入行用户前缀：{label}>
-assistant_label = "pagent"  # 输出区助手回复前缀：{label}>
+assistant_label = "pagent" # 输出区助手回复前缀：{label}>
+user_label = "you" # 输出区 / 输入行用户前缀：{label}>
 
 # [permission]
 # mode = "auto"  # prompt（默认，终端审批）| auto（自动批准 run_command / copy_from_host）
 
 [provider]
-model = "deepseek-v4-flash"
-api_key = ""  # 留空则用 DEEPSEEK_API_KEY 环境变量
+api_key = "" # 留空则用 DEEPSEEK_API_KEY 环境变量
+model = "deepseek-v4-flash" 
 # base_url = ""  # 可选，覆盖 DeepSeek 默认 endpoint
 
-# podman 示例（需安装 podman CLI；镜像见 src/app/Dockerfile）：
-# [sandbox]
-# backend = "podman"
-# image = "pagent:latest"
-# command_policy = "workdir"
+# backend = "container" 时运行时自动探测 docker / podman（按此顺序取 PATH 里第一个可用的）。
+# 想锁定某个 CLI 就写 backend = "docker" 或 backend = "podman"。
 #
 # headless 浏览器（截图 / 渲染 HTML / PDF）：先构建 src/app/Dockerfile.browser
 #     docker build -t pagent:browser -f src/app/Dockerfile.browser src/app
 # image = "pagent:browser"
 
 [sandbox]
-backend = "docker"
-image = "pagent:latest"
-container_ttl = 300  # 秒；容器主进程 sleep <ttl>，到期 --rm 自清理；0 或不设则用 sleep infinity
-command_policy = "workdir"  # open | workdir — workdir 拦截 run_command 里的越界路径
+backend = "container" # local | container（自动探测 docker/podman）| docker | podman | ssh
+command_policy = "workdir" # open | workdir — workdir 拦截 run_command 里的越界路径
+container_ttl = 300 # 秒；容器主进程 sleep <ttl>，到期 --rm 自清理；0 或不设则用 sleep infinity
+image = "pagent:latest" 
 
 [ssh]
-host = "machine_root"  # ~/.ssh/config 里的 Host 别名
-config_path = "~/.ssh/config"
-workdir = "~/"
+config_path = "~/.ssh/config" 
+host = "machine_root" # ~/.ssh/config 里的 Host 别名
+workdir = "~/" 
 
 [skills]
-# 额外扫描路径；还会自动加载 PAGENT_SKILLS_DIR、./.pagent/skills/、~/.pagent/skills/
+# 额外扫描路径；还会自动加载 ./.pagent/skills/、~/.pagent/skills/
 roots = []

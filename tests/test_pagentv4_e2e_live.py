@@ -38,7 +38,7 @@ pytestmark = pytest.mark.skipif(
 
 @pytest.mark.asyncio
 async def test_live_agent_runs_full_loop_with_sandbox_tools(tmp_path, monkeypatch):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path)
     model = os.getenv("PAGENTV4_E2E_MODEL", "deepseek-v4-flash")
     timeout = float(os.getenv("PAGENTV4_E2E_TIMEOUT", "180"))
 
@@ -82,4 +82,4 @@ async def test_live_agent_runs_full_loop_with_sandbox_tools(tmp_path, monkeypatc
     assert begins or any(isinstance(e, TextDelta) for e in events), "模型无任何产出"
 
     # 5) 对话落盘
-    assert (tmp_path / "e2e-live" / "messages.jsonl").is_file()
+    assert (tmp_path / ".pagent" / "threads" / "e2e-live" / "messages.jsonl").is_file()

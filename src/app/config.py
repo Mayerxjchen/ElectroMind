@@ -188,9 +188,6 @@ def find_project_config(workdir: str | None = None) -> Path | None:
         path = root / name
         if path.is_file():
             return path
-    dotted = root / ".pagent" / "config.toml"
-    if dotted.is_file():
-        return dotted
     return None
 
 
@@ -224,16 +221,9 @@ def load_config(
             raise FileNotFoundError(f"config not found: {explicit}")
         layers.append(load_config_file(explicit))
     else:
-        env_path = os.environ.get("PAGENT_CONFIG")
-        if env_path:
-            path = Path(env_path).expanduser()
-            if not path.is_file():
-                raise FileNotFoundError(f"PAGENT_CONFIG not found: {path}")
-            layers.append(load_config_file(path))
-        else:
-            project_path = find_project_config(workdir)
-            if project_path:
-                layers.append(load_config_file(project_path))
+        project_path = find_project_config(workdir)
+        if project_path:
+            layers.append(load_config_file(project_path))
 
     merged = ReplConfig()
     for layer in layers:

@@ -1,5 +1,4 @@
 import json
-import os
 from pathlib import Path
 
 import pytest
@@ -16,7 +15,6 @@ from pagentv4 import (
 )
 from pagentv4.skills.skill import (
     PROJECT_LOCAL_SKILLS_DIR,
-    SKILLS_ENV_VAR,
     USER_SKILLS_DIR,
     collect_resources,
     parse_skill_md,
@@ -54,6 +52,57 @@ def test_parse_skill_md_without_frontmatter():
     fm, body = parse_skill_md("no frontmatter here\n")
     assert fm == {}
     assert body == "no frontmatter here\n"
+
+
+def test_parse_skill_md_folded_block_scalar_joins_lines():
+    text = (
+        "---\n"
+        "name: packer\n"
+        "description: >\n"
+        "  Use when the user needs to pack molecules\n"
+        "  into an initial box.\n"
+        "always: false\n"
+        "---\n"
+        "body\n"
+    )
+    fm, body = parse_skill_md(text)
+    assert fm["name"] == "packer"
+    assert fm["description"] == (
+        "Use when the user needs to pack molecules into an initial box.\n"
+    )
+    assert fm["always"] is False
+    assert body == "body\n"
+
+
+def test_parse_skill_md_literal_block_scalar_keeps_newlines():
+    text = "---\ndescription: |\n  line one\n  line two\n---\nbody\n"
+    fm, _ = parse_skill_md(text)
+    assert fm["description"] == "line one\nline two"
+
+
+def test_parse_skill_md_reads_nested_list_and_map_blocks():
+    text = (
+        "---\n"
+        "name: packer\n"
+        "description: 简介\n"
+        "tags:\n"
+        "  - packmol\n"
+        "  - 分子装箱\n"
+        "references:\n"
+        "  - path: a.md\n"
+        "    triggers: [x, y]\n"
+        "always: true\n"
+        "---\n"
+        "body\n"
+    )
+    fm, _ = parse_skill_md(text)
+    assert fm == {
+        "name": "packer",
+        "description": "简介",
+        "tags": ["packmol", "分子装箱"],
+        "references": [{"path": "a.md", "triggers": ["x", "y"]}],
+        "always": True,
+    }
 
 
 def test_parse_skill_md_strips_bom():
@@ -209,8 +258,7 @@ def test_use_skill_tool_description_when_empty():
     assert "暂无可用 skill" in tool.description
 
 
-def test_default_skill_roots_no_env(monkeypatch, tmp_path):
-    monkeypatch.delenv(SKILLS_ENV_VAR, raising=False)
+def test_default_skill_roots_project_and_user(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
@@ -221,41 +269,7 @@ def test_default_skill_roots_no_env(monkeypatch, tmp_path):
     ]
 
 
-def test_default_skill_roots_env_prepends_paths(monkeypatch, tmp_path):
-    a = tmp_path / "a"
-    b = tmp_path / "b"
-    monkeypatch.setenv(SKILLS_ENV_VAR, os.pathsep.join([str(a), str(b)]))
-    monkeypatch.chdir(tmp_path)
-
-    roots = default_skill_roots()
-    assert roots[0] == a
-    assert roots[1] == b
-    assert tmp_path / PROJECT_LOCAL_SKILLS_DIR in roots
-
-
-def test_default_skill_roots_env_ignores_empty_parts(monkeypatch, tmp_path):
-    monkeypatch.setenv(SKILLS_ENV_VAR, os.pathsep + "  " + os.pathsep)
-    monkeypatch.chdir(tmp_path)
-    roots = default_skill_roots()
-    # 空段被跳过，只剩项目本地 + 用户级
-    assert all(str(r) for r in roots)
-    assert len(roots) == 2
-
-
-def test_registry_from_defaults_reads_env_dir(monkeypatch, tmp_path):
-    env_dir = tmp_path / "shared_skills"
-    env_dir.mkdir()
-    write_skill_dir(env_dir, "shared", "共享 skill", "body\n")
-    monkeypatch.setenv(SKILLS_ENV_VAR, str(env_dir))
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
-
-    registry = SkillRegistry.from_defaults()
-    assert "shared" in registry.names()
-
-
 def test_registry_from_defaults_accepts_extra_roots(monkeypatch, tmp_path):
-    monkeypatch.delenv(SKILLS_ENV_VAR, raising=False)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
 
@@ -268,7 +282,6 @@ def test_registry_from_defaults_accepts_extra_roots(monkeypatch, tmp_path):
 
 
 def test_registry_from_defaults_missing_dirs_are_ignored(monkeypatch, tmp_path):
-    monkeypatch.delenv(SKILLS_ENV_VAR, raising=False)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
 

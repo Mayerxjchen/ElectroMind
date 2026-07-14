@@ -56,10 +56,7 @@ def dump_thread_toml(payload: dict) -> str:
 
 
 def default_threads_root() -> Path:
-    """`<cwd>/.pagent/threads/`，可用 `PAGENT_THREADS_DIR` 覆盖。"""
-    override = os.environ.get("PAGENT_THREADS_DIR")
-    if override:
-        return Path(os.path.abspath(override))
+    """`<cwd>/.pagent/threads/`；要自定义就给 `Thread.open(root=...)`。"""
     return Path(os.getcwd()) / ".pagent" / "threads"
 
 

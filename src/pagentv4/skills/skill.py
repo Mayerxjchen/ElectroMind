@@ -9,8 +9,8 @@
 
 路径来源：
 - `from_dirs(*roots)` 完全显式，上层想在哪就在哪；这是给做上层配置的用户最直接的入口。
-- `from_defaults(*extra_roots)` 会加载环境变量 `PAGENT_SKILLS_DIR`（多个用 os.pathsep 分隔）+
-  项目本地 `./.pagent/skills/` + 用户级 `~/.pagent/skills/`；`extra_roots` 会拼接在后面。
+- `from_defaults(*extra_roots)` 会加载项目本地 `./.pagent/skills/` + 用户级
+  `~/.pagent/skills/`；`extra_roots` 会拼接在后面。
 - `default_skill_roots()` 单独暴露给需要检查/组合默认路径的上层。
 """
 
@@ -20,10 +20,12 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 from ..core.tool import FunctionTool
 
-SKILLS_ENV_VAR = "PAGENT_SKILLS_DIR"
 PROJECT_LOCAL_SKILLS_DIR = ".pagent/skills"
 USER_SKILLS_DIR = "~/.pagent/skills"
 
@@ -112,22 +114,16 @@ def default_skill_roots() -> list[Path]:
     """默认 skill 搜索路径，按加载顺序返回。
 
     顺序：
-    1. 环境变量 `PAGENT_SKILLS_DIR`（多个路径用 os.pathsep 分隔）；
-    2. 项目本地 `./.pagent/skills/`；
-    3. 用户级 `~/.pagent/skills/`。
+    1. 项目本地 `./.pagent/skills/`；
+    2. 用户级 `~/.pagent/skills/`。
 
     只返回路径本身，不校验是否存在；`load_skills_from_root` 会静默忽略缺失目录。
     上层需要感知有哪些路径生效时可以直接调用它。
     """
-    roots: list[Path] = []
-    env_value = os.environ.get(SKILLS_ENV_VAR, "")
-    for part in env_value.split(os.pathsep):
-        part = part.strip()
-        if part:
-            roots.append(Path(part).expanduser())
-    roots.append(Path.cwd() / PROJECT_LOCAL_SKILLS_DIR)
-    roots.append(Path(USER_SKILLS_DIR).expanduser())
-    return roots
+    return [
+        Path.cwd() / PROJECT_LOCAL_SKILLS_DIR,
+        Path(USER_SKILLS_DIR).expanduser(),
+    ]
 
 
 def load_skills_from_root(root: str | Path) -> list[Skill]:
@@ -155,8 +151,8 @@ def load_skill(skill_dir: str | Path) -> Skill:
         raise SkillDiscoveryError(str(skill_root), "missing SKILL.md")
 
     frontmatter, body = parse_skill_md(skill_md.read_text(encoding="utf-8"))
-    name = frontmatter.get("name", "").strip() or skill_root.name
-    description = frontmatter.get("description", "").strip()
+    name = str(frontmatter.get("name") or "").strip() or skill_root.name
+    description = str(frontmatter.get("description") or "").strip()
     if not description:
         raise SkillDiscoveryError(
             str(skill_md), "frontmatter must include `description`"
@@ -171,11 +167,11 @@ def load_skill(skill_dir: str | Path) -> Skill:
     )
 
 
-def parse_skill_md(text: str) -> tuple[dict[str, str], str]:
-    """极简 frontmatter 解析：`---\\nkey: value\\n---\\n<body>`。
+def parse_skill_md(text: str) -> tuple[dict[str, Any], str]:
+    """解析 SKILL.md 的 frontmatter：`---\\n<yaml>\\n---\\n<body>`。
 
-    只识别顶层 `key: value` 行；不支持嵌套 / 列表 / 引号转义。
-    没有 frontmatter 时返回 ({}, text)。
+    frontmatter 是标准 YAML，直接交给 PyYAML 解析——块标量 `>` / `|`、列表、
+    嵌套映射、引号转义都按 YAML 规范处理。没有 frontmatter 时返回 ({}, text)。
     """
     stripped = text.lstrip("\ufeff")
     if not stripped.startswith("---"):
@@ -191,16 +187,9 @@ def parse_skill_md(text: str) -> tuple[dict[str, str], str]:
     if body.startswith("\n"):
         body = body[1:]
 
-    result: dict[str, str] = {}
-    for raw in fm_block.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" not in line:
-            continue
-        key, _, value = line.partition(":")
-        result[key.strip()] = value.strip().strip('"').strip("'")
-    return result, body
+    loaded = yaml.safe_load(fm_block)
+    frontmatter = loaded if isinstance(loaded, dict) else {}
+    return frontmatter, body
 
 
 def collect_resources(skill_root: Path) -> list[str]:

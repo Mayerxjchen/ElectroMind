@@ -18,11 +18,19 @@ from __future__ import annotations
 
 import os
 import posixpath
+import shutil
 import tarfile
 import tempfile
 from typing import TYPE_CHECKING, Protocol
 
-from .base import Backend, CommandResult, DirEntry, SandboxLimits, SandboxSpec
+from .base import (
+    Backend,
+    CommandResult,
+    DirEntry,
+    SandboxError,
+    SandboxLimits,
+    SandboxSpec,
+)
 from .description import build_computer_description
 from .guard import BackendGuard
 from .policy import check_backend_path, check_command, validate_command_policy
@@ -506,12 +514,30 @@ class Sandbox:
         await self.close()
 
 
+CONTAINER_CLI_PREFERENCE = ("docker", "podman")
+
+
+def detect_container_cli() -> str:
+    """探测 PATH 里可用的容器 CLI，按 docker → podman 顺序返回第一个。
+
+    给 backend="container" 用：用户不关心装的是 docker 还是 podman，运行时探测即可。
+    两者都不在 PATH 时抛 SandboxError，让上层给出明确的安装提示。
+    """
+    for cli in CONTAINER_CLI_PREFERENCE:
+        if shutil.which(cli):
+            return cli
+    joined = " / ".join(CONTAINER_CLI_PREFERENCE)
+    raise SandboxError(f"no container CLI found in PATH; install one of: {joined}")
+
+
 def build_backend(name: str) -> Backend:
     key = name.lower()
     if key == "local":
         from .backends.local import LocalBackend
 
         return LocalBackend()
+    if key == "container":
+        return build_backend(detect_container_cli())
     if key == "docker":
         from .backends.docker import DockerBackend
 
@@ -525,7 +551,7 @@ def build_backend(name: str) -> Backend:
 
         return SshBackend()
     raise ValueError(
-        f"unknown backend: {name!r}; expected one of local/docker/podman/ssh"
+        f"unknown backend: {name!r}; expected one of local/container/docker/podman/ssh"
     )
 
 
@@ -577,7 +603,7 @@ async def open_sandbox_for_spec(
             command_policy=profile.command_policy,
         )
 
-    if backend in ("docker", "podman"):
+    if backend in ("container", "docker", "podman"):
         if not profile.image:
             raise ValueError(f"{prefix}backend {backend!r} requires image")
         return await Sandbox.create(
@@ -606,5 +632,6 @@ async def open_sandbox_for_spec(
         )
 
     raise ValueError(
-        f"{prefix}unknown backend: {backend!r}; expected one of local/docker/podman/ssh"
+        f"{prefix}unknown backend: {backend!r}; "
+        "expected one of local/container/docker/podman/ssh"
     )

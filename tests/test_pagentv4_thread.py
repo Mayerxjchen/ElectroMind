@@ -13,13 +13,7 @@ from pagentv4.ithread import validate_thread_id
 from pagentv4.runtime.thread import default_threads_root
 
 
-def test_default_threads_root_env_override(monkeypatch, tmp_path):
-    monkeypatch.setenv("PAGENT_THREADS_DIR", str(tmp_path))
-    assert default_threads_root() == tmp_path
-
-
-def test_default_threads_root_falls_back_to_cwd(monkeypatch, tmp_path):
-    monkeypatch.delenv("PAGENT_THREADS_DIR", raising=False)
+def test_default_threads_root_is_cwd_dotpagent(monkeypatch, tmp_path):
     monkeypatch.chdir(tmp_path)
     assert default_threads_root() == tmp_path / ".pagent" / "threads"
 
