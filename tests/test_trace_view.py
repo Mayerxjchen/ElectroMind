@@ -1,6 +1,11 @@
 from pagentv4 import Message, Messages, Thread
-from pagentv4.trace_io import load_messages, resolve_messages_path
-from pagentv4.trace_view import render_html, render_text, write_trace
+from pagentv4.trace import (
+    load_messages,
+    render_html,
+    render_text,
+    resolve_messages_path,
+    write_trace,
+)
 
 
 def sample_messages() -> Messages:

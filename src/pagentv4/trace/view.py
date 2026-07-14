@@ -9,7 +9,7 @@ import sys
 import webbrowser
 from pathlib import Path
 
-from .core.message import (
+from ..core.message import (
     AudioUrl,
     ImageUrl,
     Message,
@@ -19,7 +19,7 @@ from .core.message import (
     ToolCall,
     ToolResult,
 )
-from .trace_io import load_messages, resolve_messages_path
+from .io import load_messages, resolve_messages_path
 
 ROLE_LABELS = {
     "system": "system",

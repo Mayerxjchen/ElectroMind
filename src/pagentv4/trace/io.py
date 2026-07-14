@@ -5,8 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from .core.message import Message, Messages
-from .runtime.thread import Thread, default_threads_root
+from ..core.message import Message, Messages
+from ..runtime.thread import Thread, default_threads_root
 
 
 def resolve_messages_path(source: str) -> Path:

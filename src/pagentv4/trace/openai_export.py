@@ -6,7 +6,7 @@ import argparse
 import json
 import sys
 
-from .trace_io import load_messages
+from .io import load_messages
 
 
 def messages_to_openai_json(source: str, *, compact: bool = False) -> str:
