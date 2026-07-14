@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
@@ -35,111 +35,95 @@ def validate_thread_id(thread_id: str) -> None:
     )
 
 
+def toml_field(section: str, key: str, default):
+    """声明一个绑定到 thread.toml `[section] key` 的 ThreadSpec 字段。
+
+    section / key 存进 dataclass metadata，`to_dict` / `from_dict` 据此推导映射，
+    新增字段只需在此声明一行，两个方向自动生效。
+
+    Args:
+        section: TOML section 名（conversation / sandbox / ssh / agent）。
+        key: 该 section 下的键名（可与字段名不同，如 ssh_host -> [ssh] host）。
+        default: 字段默认值，须为不可变类型。
+    """
+    return field(default=default, metadata={"section": section, "key": key})
+
+
 @dataclass
 class ThreadSpec:
-    """一个 thread 的长期配置；首次冻结、写进 thread.toml。"""
+    """一个 thread 的长期配置；首次冻结、写进 thread.toml。
 
-    conversation_backend: str = "jsonl"
-    conversation_root: str = "."
-    conversation_db_path: str = "conversations.sqlite"
-    conversation_messages_id: str = MESSAGES_CONVERSATION_ID
+    字段扁平铺开（`spec.backend` / `spec.image` 等），消费方直接按属性读取；
+    到 TOML 的分组由每个字段的 `toml_field(section, key)` metadata 决定。
+    """
 
-    backend: str = "local"
-    image: str | None = None
-    container_ttl_seconds: int | None = None
-    ssh_host: str | None = None
-    ssh_config: str = "~/.ssh/config"
-    ssh_workdir: str = "~/agent"
-    command_policy: str = "workdir"
-    model: str = "deepseek-v4-flash"
-    system: str = ""
+    conversation_backend: str = toml_field("conversation", "backend", "jsonl")
+    conversation_root: str = toml_field("conversation", "root", ".")
+    conversation_db_path: str = toml_field(
+        "conversation", "db_path", "conversations.sqlite"
+    )
+    conversation_messages_id: str = toml_field(
+        "conversation", "messages_id", MESSAGES_CONVERSATION_ID
+    )
+
+    backend: str = toml_field("sandbox", "backend", "local")
+    image: str | None = toml_field("sandbox", "image", None)
+    container_ttl_seconds: int | None = toml_field(
+        "sandbox", "container_ttl_seconds", None
+    )
+    command_policy: str = toml_field("sandbox", "command_policy", "workdir")
+
+    ssh_host: str | None = toml_field("ssh", "host", None)
+    ssh_config: str = toml_field("ssh", "config", "~/.ssh/config")
+    ssh_workdir: str = toml_field("ssh", "workdir", "~/agent")
+
+    model: str = toml_field("agent", "model", "deepseek-v4-flash")
+    system: str = toml_field("agent", "system", "")
+
     extra: dict = field(default_factory=dict)
 
+    @classmethod
+    def section_bindings(cls) -> list[tuple[str, str, str]]:
+        """返回 (field_name, section, key) 列表；仅含绑定到 TOML section 的字段。"""
+        return [
+            (f.name, f.metadata["section"], f.metadata["key"])
+            for f in fields(cls)
+            if "section" in f.metadata
+        ]
+
     def to_dict(self) -> dict:
-        return {
-            "conversation": {
-                "backend": self.conversation_backend,
-                "root": self.conversation_root,
-                "db_path": self.conversation_db_path,
-                "messages_id": self.conversation_messages_id,
-            },
-            "sandbox": {
-                "backend": self.backend,
-                "image": self.image,
-                "container_ttl_seconds": self.container_ttl_seconds,
-                "command_policy": self.command_policy,
-            },
-            "ssh": {
-                "host": self.ssh_host,
-                "config": self.ssh_config,
-                "workdir": self.ssh_workdir,
-            },
-            "agent": {
-                "model": self.model,
-                "system": self.system,
-            },
-            "extra": dict(self.extra),
-        }
+        sections: dict[str, dict] = {}
+        for name, section, key in self.section_bindings():
+            sections.setdefault(section, {})[key] = getattr(self, name)
+        sections["extra"] = dict(self.extra)
+        return sections
 
     @classmethod
     def from_dict(cls, payload: dict) -> ThreadSpec:
-        conversation = payload.get("conversation", {})
-        sandbox = payload.get("sandbox", {})
-        ssh = payload.get("ssh", {})
-        agent = payload.get("agent", {})
+        known: dict = {}
+        for name, section, key in cls.section_bindings():
+            block = payload.get(section, {})
+            if key in block:
+                known[name] = block[key]
+            elif name in payload:  # 兼容顶层扁平写法（旧格式）
+                known[name] = payload[name]
 
-        known = {
-            "conversation_backend": conversation.get(
-                "backend", payload.get("conversation_backend", "jsonl")
-            ),
-            "conversation_root": conversation.get(
-                "root", payload.get("conversation_root", ".")
-            ),
-            "conversation_db_path": conversation.get(
-                "db_path", payload.get("conversation_db_path", "conversations.sqlite")
-            ),
-            "conversation_messages_id": conversation.get(
-                "messages_id",
-                payload.get("conversation_messages_id", MESSAGES_CONVERSATION_ID),
-            ),
-            "backend": sandbox.get("backend", payload.get("backend", "local")),
-            "image": sandbox.get("image", payload.get("image")),
-            "container_ttl_seconds": sandbox.get(
-                "container_ttl_seconds", payload.get("container_ttl_seconds")
-            ),
-            "command_policy": sandbox.get(
-                "command_policy", payload.get("command_policy", "workdir")
-            ),
-            "ssh_host": ssh.get("host", payload.get("ssh_host")),
-            "ssh_config": ssh.get("config", payload.get("ssh_config", "~/.ssh/config")),
-            "ssh_workdir": ssh.get("workdir", payload.get("ssh_workdir", "~/agent")),
-            "model": agent.get("model", payload.get("model", "deepseek-v4-flash")),
-            "system": agent.get("system", payload.get("system", "")),
-        }
+        section_keys: dict[str, set[str]] = {}
+        for _, section, key in cls.section_bindings():
+            section_keys.setdefault(section, set()).add(key)
 
         extra = dict(payload.get("extra", {}))
-        known_sections = {"conversation", "sandbox", "ssh", "agent", "extra"}
+        top_level_skip = set(section_keys) | {"extra"} | cls.field_names()
         for name, value in payload.items():
-            if name in known_sections or name in cls.field_names():
+            if name not in top_level_skip:
+                extra[name] = value
+        for section, keys in section_keys.items():
+            block = payload.get(section, {})
+            if not isinstance(block, dict):
                 continue
-            extra[name] = value
-        for name, value in conversation.items():
-            if name not in {"backend", "root", "db_path", "messages_id"}:
-                extra[f"conversation.{name}"] = value
-        for name, value in sandbox.items():
-            if name not in {
-                "backend",
-                "image",
-                "container_ttl_seconds",
-                "command_policy",
-            }:
-                extra[f"sandbox.{name}"] = value
-        for name, value in ssh.items():
-            if name not in {"host", "config", "workdir"}:
-                extra[f"ssh.{name}"] = value
-        for name, value in agent.items():
-            if name not in {"model", "system"}:
-                extra[f"agent.{name}"] = value
+            for name, value in block.items():
+                if name not in keys:
+                    extra[f"{section}.{name}"] = value
         if extra:
             known["extra"] = extra
         return cls(**known)

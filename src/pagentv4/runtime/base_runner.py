@@ -19,6 +19,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import asdict
 from pathlib import Path
+from typing import NamedTuple
 
 from ..conversation import ConversationStore
 from ..core.agent import Agent
@@ -35,6 +36,76 @@ from ..skills import (
 from .loop_adapter import LoopAdapter
 from .run_state import RunState
 from .thread import Thread
+
+
+class RunResources(NamedTuple):
+    """assemble_run_resources 的产物：一次运行所需的资源与提示词。"""
+
+    sandbox: Sandbox | None
+    skills: SkillRegistry
+    system_prompt: str
+    tools: list[FunctionTool]
+
+
+async def assemble_run_resources(
+    thread: IThread,
+    *,
+    skill_roots: Sequence[str | Path] = (),
+    tools: Sequence[FunctionTool] = (),
+    extra_system: str = "",
+    agent_system: str | None = None,
+    run_state: RunState | None = None,
+) -> RunResources:
+    """打开 thread 声明的 sandbox 与 skills，装配运行所需的工具集与 system prompt。
+
+    三处初始化路径（CodeRunner 懒初始化、BaseRunner.from_spec、Runner.create）共用
+    此函数，避免各自拼接 system prompt 时发生漂移。
+
+    ``thread.spec.backend == "none"`` 时不开 sandbox（纯对话），此时 skills 不挂载到
+    沙箱、``computer_desc`` 为空。system prompt 由 computer 描述、skills 说明、system
+    收尾三段按序拼接；system 收尾取值优先级：``thread.spec.system`` > ``extra_system``
+    > ``agent_system``。
+
+    Args:
+        thread: 已打开的 thread，提供 spec 与 open_sandbox。
+        skill_roots: 追加的 skill 搜索根目录。
+        tools: 需要合并进 agent 的外部工具，排在 sandbox tools 之后。
+        extra_system: 调用方传入的 system 收尾候选。
+        agent_system: 已有 agent 的 system，作为最后兜底（重建已有 agent 时使用）。
+        run_state: 若提供，开 sandbox 期间标记为 waking_sandbox，装配完成后回到 idle。
+
+    Returns:
+        RunResources：sandbox（backend 为 none 时为 None）、skills、system_prompt、
+        合并后的 tools。
+    """
+    if run_state is not None:
+        run_state.phase = "waking_sandbox"
+
+    sandbox: Sandbox | None = None
+    combined_tools: list[FunctionTool] = []
+    computer_desc = ""
+    if thread.spec.backend != "none":
+        sandbox = await thread.open_sandbox()
+        combined_tools.extend(sandbox.tools())
+        computer_desc = await sandbox.describe()
+    combined_tools.extend(tools)
+
+    skills = SkillRegistry.from_defaults(*skill_roots)
+    mount: dict = {}
+    if skills.names():
+        if sandbox is not None:
+            mount = await sandbox.install_skills(skills)
+        combined_tools.append(make_use_skill_tool(skills, mount))
+
+    system_tail = thread.spec.system or extra_system or agent_system
+    skills_prompt = build_skills_system_prompt(skills, mount)
+    system_prompt = "\n".join(
+        part for part in (computer_desc, skills_prompt, system_tail) if part
+    )
+
+    if run_state is not None:
+        run_state.phase = "idle"
+    return RunResources(sandbox, skills, system_prompt, combined_tools)
 
 
 class BaseRunner(LoopAdapter):
@@ -118,40 +189,24 @@ class BaseRunner(LoopAdapter):
         thread = Thread.open(thread_id, root=root, overrides=asdict(spec))
 
         run_state = RunState(phase="waking_sandbox")
-        sandbox = None
-        combined_tools = list(tools)
-        computer_desc = ""
-        if thread.spec.backend != "none":
-            sandbox = await thread.open_sandbox()
-            combined_tools.extend(sandbox.tools())
-            computer_desc = await sandbox.describe()
-        run_state.phase = "idle"
-
-        # skills
-        skills = SkillRegistry.from_defaults(*skill_roots)
-        mount = {}
-        if skills.names():
-            if sandbox is not None:
-                mount = await sandbox.install_skills(skills)
-            combined_tools.append(make_use_skill_tool(skills, mount))
-
-        # system prompt
-        system_tail = thread.spec.system or extra_system
-        skills_prompt = build_skills_system_prompt(skills, mount)
-        system_prompt = "\n".join(
-            part for part in (computer_desc, skills_prompt, system_tail) if part
+        resources = await assemble_run_resources(
+            thread,
+            skill_roots=skill_roots,
+            tools=tools,
+            extra_system=extra_system,
+            run_state=run_state,
         )
 
         runner = cls(
             Agent(
                 provider,
-                system=system_prompt,
-                tools=combined_tools,
+                system=resources.system_prompt,
+                tools=resources.tools,
                 max_turns=max_turns,
             ),
             thread,
-            sandbox=sandbox,
-            skills=skills,
+            sandbox=resources.sandbox,
+            skills=resources.skills,
         )
         runner.run_state = run_state
         return runner

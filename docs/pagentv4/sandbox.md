@@ -121,3 +121,32 @@ computer and conversation to survive across process restarts — see
 
 `sandbox.commands.run(..., timeout=...)` and `SandboxLimits` cap stdout,
 stderr, memory, and CPU time. Defaults are conservative; tune per workload.
+
+## Error handling
+
+All backends follow the same boundary between "the command failed" and "the
+sandbox is unusable":
+
+| Situation | How it surfaces |
+|-----------|-----------------|
+| Command ran but exited nonzero, or timed out | `CommandResult(ok=False, exit_code=..., timed_out=...)` — no exception |
+| Backend used before `start()` | `SandboxNotStartedError` |
+| `start()` failed (CLI missing, `docker run` failed, remote `$HOME` unresolved) | `SandboxError` |
+| Backend died and the guard could not restart it | `SandboxDeadError` |
+| Invalid config (missing `image` / `ssh_host`) | `ValueError` |
+| File semantics (missing path, dir without `recursive`) | `FileNotFoundError` / `IsADirectoryError` |
+
+`SandboxNotStartedError` and `SandboxDeadError` both subclass `SandboxError`,
+so a caller can catch the whole "sandbox unusable" class with a single
+`except SandboxError`:
+
+```python
+from pagentv4 import SandboxError
+
+try:
+    result = await sandbox.commands.run("build.sh")
+    if not result.ok:
+        ...  # command-level failure: inspect result.exit_code / result.stderr
+except SandboxError:
+    ...  # lifecycle-level failure: the sandbox itself is gone
+```

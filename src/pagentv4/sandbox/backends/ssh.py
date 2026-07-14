@@ -26,7 +26,15 @@ from pathlib import Path
 
 import asyncssh
 
-from ..base import BackendIdentity, CommandResult, DirEntry, SandboxLimits, SandboxSpec
+from ..base import (
+    BackendIdentity,
+    CommandResult,
+    DirEntry,
+    SandboxError,
+    SandboxLimits,
+    SandboxNotStartedError,
+    SandboxSpec,
+)
 
 
 class SshBackend:
@@ -96,7 +104,7 @@ class SshBackend:
         limits: SandboxLimits | None = None,
     ) -> CommandResult:
         if self.conn is None:
-            raise RuntimeError("SshBackend not started")
+            raise SandboxNotStartedError("SshBackend not started")
         applied = limits or (self.spec.default_limits if self.spec else SandboxLimits())
         run_cwd = cwd or self.remote_workdir
 
@@ -143,14 +151,14 @@ class SshBackend:
 
     async def read_file(self, path: str) -> bytes:
         if self.sftp is None:
-            raise RuntimeError("SshBackend not started")
+            raise SandboxNotStartedError("SshBackend not started")
         async with self.sftp.open(path, "rb") as fp:
             data = await fp.read()
         return data if isinstance(data, bytes) else data.encode("utf-8")
 
     async def write_file(self, path: str, data: bytes) -> None:
         if self.sftp is None:
-            raise RuntimeError("SshBackend not started")
+            raise SandboxNotStartedError("SshBackend not started")
         parent = os.path.dirname(path) or "."
         await self.sftp_mkdirs(parent)
         async with self.sftp.open(path, "wb") as fp:
@@ -158,7 +166,7 @@ class SshBackend:
 
     async def list_dir(self, path: str) -> list[DirEntry]:
         if self.sftp is None:
-            raise RuntimeError("SshBackend not started")
+            raise SandboxNotStartedError("SshBackend not started")
         entries: list[DirEntry] = []
         names = await self.sftp.listdir(path)
         for name in sorted(names):
@@ -173,7 +181,7 @@ class SshBackend:
 
     async def exists(self, path: str) -> bool:
         if self.sftp is None:
-            raise RuntimeError("SshBackend not started")
+            raise SandboxNotStartedError("SshBackend not started")
         try:
             await self.sftp.stat(path)
         except (FileNotFoundError, OSError):
@@ -182,7 +190,7 @@ class SshBackend:
 
     async def remove(self, path: str, *, recursive: bool = False) -> None:
         if self.sftp is None:
-            raise RuntimeError("SshBackend not started")
+            raise SandboxNotStartedError("SshBackend not started")
         if not await self.exists(path):
             return
         attrs = await self.sftp.stat(path)
@@ -212,11 +220,11 @@ class SshBackend:
         if not path.startswith("~"):
             return path
         if self.conn is None:
-            raise RuntimeError("SshBackend not started")
+            raise SandboxNotStartedError("SshBackend not started")
         result = await self.conn.run("echo $HOME", check=True, timeout=5)
         home = result.stdout.strip() if isinstance(result.stdout, str) else ""
         if not home:
-            raise RuntimeError("failed to resolve remote $HOME")
+            raise SandboxError("failed to resolve remote $HOME")
         return home + path[1:]
 
     async def sftp_mkdirs(self, path: str) -> None:

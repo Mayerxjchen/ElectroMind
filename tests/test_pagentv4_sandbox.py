@@ -766,6 +766,68 @@ def test_ssh_backend_describe_formats_connection():
 
 
 @pytest.mark.asyncio
+async def test_container_backend_exec_before_start_raises_sandbox_error():
+    """未 start 就 exec 属生命周期错误，走 SandboxNotStartedError（SandboxError 子类）。"""
+    from pagentv4.sandbox import SandboxError, SandboxNotStartedError
+
+    backend = DockerBackend()
+    with pytest.raises(SandboxNotStartedError) as excinfo:
+        await backend.exec(["echo", "hi"])
+    assert isinstance(excinfo.value, SandboxError)
+
+
+@pytest.mark.asyncio
+async def test_ssh_backend_exec_before_start_raises_sandbox_error():
+    from pagentv4.sandbox import SandboxError, SandboxNotStartedError
+
+    backend = SshBackend()
+    with pytest.raises(SandboxNotStartedError) as excinfo:
+        await backend.exec(["echo", "hi"])
+    assert isinstance(excinfo.value, SandboxError)
+
+
+@pytest.mark.asyncio
+async def test_container_backend_missing_image_raises_value_error():
+    """缺 image 属配置错误，走 ValueError，与生命周期错误区分。"""
+    backend = DockerBackend()
+    with pytest.raises(ValueError):
+        await backend.start(make_spec(), "/tmp/x")
+
+
+@pytest.mark.asyncio
+async def test_ssh_backend_read_file_before_start_raises_sandbox_error():
+    """文件操作也遵守同一边界：未 start 就 read_file 抛 SandboxNotStartedError。"""
+    from pagentv4.sandbox import SandboxError, SandboxNotStartedError
+
+    backend = SshBackend()
+    with pytest.raises(SandboxNotStartedError) as excinfo:
+        await backend.read_file("/remote/some/file")
+    assert isinstance(excinfo.value, SandboxError)
+
+
+@pytest.mark.asyncio
+async def test_open_sandbox_for_spec_docker_missing_image_raises_value_error():
+    """工厂层校验：backend=docker 但缺 image，在 open_sandbox_for_spec 阶段抛 ValueError。"""
+    from pagentv4 import ThreadSpec
+    from pagentv4.sandbox import open_sandbox_for_spec
+
+    profile = ThreadSpec(backend="docker", image=None)
+    with pytest.raises(ValueError, match="image"):
+        await open_sandbox_for_spec(profile, "/tmp/x", label="thread 'demo'")
+
+
+@pytest.mark.asyncio
+async def test_open_sandbox_for_spec_ssh_missing_host_raises_value_error():
+    """工厂层校验：backend=ssh 但缺 ssh_host，抛 ValueError。"""
+    from pagentv4 import ThreadSpec
+    from pagentv4.sandbox import open_sandbox_for_spec
+
+    profile = ThreadSpec(backend="ssh", ssh_host=None)
+    with pytest.raises(ValueError, match="ssh_host"):
+        await open_sandbox_for_spec(profile, "/tmp/x")
+
+
+@pytest.mark.asyncio
 async def test_build_computer_description_appends_uv_when_available():
     async def probe(command: str) -> dict:
         if "uv" in command:

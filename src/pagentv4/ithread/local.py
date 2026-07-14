@@ -18,7 +18,7 @@ from pathlib import Path
 
 from ..conversation import JsonlConversationStore, SqliteConversationStore
 from ..core.message import Messages
-from ..sandbox import Sandbox, SshConnection
+from ..sandbox import Sandbox, open_sandbox_for_spec
 from . import SPEC_FILENAME, WORKSPACE_DIRNAME, ThreadSpec, validate_thread_id
 
 
@@ -127,43 +127,10 @@ class Thread:
         return messages
 
     async def open_sandbox(self) -> Sandbox:
-        spec = self.spec
-        workdir = str(self.workspace_path)
-
-        if spec.backend == "local":
-            return await Sandbox.create(
-                backend="local",
-                workdir=workdir,
-                command_policy=spec.command_policy,
-            )
-
-        if spec.backend in ("docker", "podman"):
-            if not spec.image:
-                raise ValueError(
-                    f"thread {self.id!r}: backend {spec.backend!r} requires image"
-                )
-            return await Sandbox.create(
-                backend=spec.backend,
-                workdir=workdir,
-                image=spec.image,
-                container_ttl_seconds=spec.container_ttl_seconds,
-                command_policy=spec.command_policy,
-            )
-
-        if not spec.ssh_host:
-            raise ValueError(
-                f"thread {self.id!r}: backend 'ssh' requires ssh_host in thread spec"
-            )
-        conn = SshConnection.from_ssh_config(
-            spec.ssh_host,
-            config_path=spec.ssh_config,
-            workdir=spec.ssh_workdir,
-        )
-        return await Sandbox.create(
-            backend="ssh",
-            workdir=workdir,
-            connection=conn.to_dict(),
-            command_policy=spec.command_policy,
+        return await open_sandbox_for_spec(
+            self.spec,
+            str(self.workspace_path),
+            label=f"thread {self.id!r}",
         )
 
     @classmethod

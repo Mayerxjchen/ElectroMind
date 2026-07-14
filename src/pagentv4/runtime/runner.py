@@ -23,12 +23,8 @@ from ..core.message import Message, Messages, ToolCall
 from ..core.provider import ProviderProtocol
 from ..core.tool import FunctionTool, ToolOutput
 from ..sandbox import Sandbox
-from ..skills import (
-    SkillRegistry,
-    build_skills_system_prompt,
-    make_use_skill_tool,
-)
-from .base_runner import BaseRunner
+from ..skills import SkillRegistry
+from .base_runner import BaseRunner, assemble_run_resources
 from .helper import append_message
 from .hooks import PostToolHookContext, ToolHookContext, ToolHooks
 from .inbound import (
@@ -244,38 +240,29 @@ class Runner(BaseRunner):
         """创建完整 Runner：打开 thread、sandbox、conversation 和 skills。"""
         thread = Thread.open(thread_id, overrides=overrides)
         run_state = RunState(phase="waking_sandbox")
-        sandbox = await thread.open_sandbox()
-        run_state.phase = "idle"
-        store = thread.open_store()
-
-        skills = SkillRegistry.from_defaults(*skill_roots)
-        mount = await sandbox.install_skills(skills) if skills.names() else {}
-        combined_tools = [*sandbox.tools(), *tools]
-        if skills.names():
-            combined_tools.append(make_use_skill_tool(skills, mount))
-
-        system_tail = thread.spec.system or extra_system
-        computer_desc = await sandbox.describe()
-        skills_prompt = build_skills_system_prompt(skills, mount)
-        system_prompt = "\n".join(
-            part for part in (computer_desc, skills_prompt, system_tail) if part
+        resources = await assemble_run_resources(
+            thread,
+            skill_roots=skill_roots,
+            tools=tools,
+            extra_system=extra_system,
+            run_state=run_state,
         )
-
+        store = thread.open_store()
         conversation_id = thread.messages_conversation_id
         messages = thread.load_messages()
 
         runner = cls(
             thread=thread,
-            sandbox=sandbox,
+            sandbox=resources.sandbox,
             store=store,
             messages=messages,
             agent=Agent(
                 provider,
-                system=system_prompt,
-                tools=combined_tools,
+                system=resources.system_prompt,
+                tools=resources.tools,
                 max_turns=max_turns,
             ),
-            skills=skills,
+            skills=resources.skills,
             conversation_id=conversation_id,
             tool_hooks=tool_hooks,
         )

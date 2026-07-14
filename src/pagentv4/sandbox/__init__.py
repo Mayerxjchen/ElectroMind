@@ -5,7 +5,9 @@ from .base import (
     BackendIdentity,
     CommandResult,
     DirEntry,
+    SandboxError,
     SandboxLimits,
+    SandboxNotStartedError,
     SandboxSpec,
 )
 from .description import (
@@ -20,7 +22,13 @@ from .description import (
     uv_environment_extra,
 )
 from .guard import BackendGuard, SandboxDeadError
-from .sandbox import Commands, Files, Sandbox, build_backend
+from .sandbox import (
+    Commands,
+    Files,
+    Sandbox,
+    build_backend,
+    open_sandbox_for_spec,
+)
 from .tools import build_sandbox_tools
 from .workspace import default_workspaces_root, resolve_workdir
 
@@ -39,7 +47,9 @@ __all__ = [
     "LocalBackend",
     "Sandbox",
     "SandboxDeadError",
+    "SandboxError",
     "SandboxLimits",
+    "SandboxNotStartedError",
     "SandboxSpec",
     "SshConnection",
     "build_backend",
@@ -49,6 +59,7 @@ __all__ = [
     "default_workspaces_root",
     "environment_extra",
     "node_environment_extra",
+    "open_sandbox_for_spec",
     "resolve_workdir",
     "uv_environment_extra",
 ]

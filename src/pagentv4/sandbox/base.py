@@ -15,6 +15,20 @@ from dataclasses import dataclass, field
 from typing import Protocol, runtime_checkable
 
 
+class SandboxError(RuntimeError):
+    """Sandbox 生命周期级错误的基类。
+
+    与「命令级失败」区分:命令跑完但结果不成功(非零退出、超时)走
+    ``CommandResult(ok=False)``,不抛异常;只有 sandbox 本身不可用(未启动、
+    启动失败、后端死亡)才抛本类或其子类。上层可用 ``except SandboxError`` 兜住
+    这一整类不可用状态。
+    """
+
+
+class SandboxNotStartedError(SandboxError):
+    """在 ``start()`` 成功之前就调用了 exec / 文件操作。"""
+
+
 @dataclass(frozen=True, slots=True)
 class SandboxLimits:
     """命令级别的软/硬约束。
@@ -103,6 +117,16 @@ class Backend(Protocol):
     每个后端实现 exec + files.* 两组方法。上层 Sandbox 只组合、不解析。
     workdir 是宿主视角的绝对路径，由 Sandbox 门面解析后传入；
     Backend 内部若需要挂载/切换，可以自己再映射（比如 Docker 挂到 /work）。
+
+    错误处理口径（所有 backend 遵守同一约定）:
+    - 命令级失败(命令跑起来了但退出码非零、或超时)由 ``exec`` 返回
+      ``CommandResult(ok=False, ...)``,不抛异常。
+    - 生命周期级错误(未 ``start`` 就调用、``start`` 自身失败、后端死亡)抛
+      ``SandboxError`` 及其子类;未启动统一抛 ``SandboxNotStartedError``。
+    - 配置/入参不合法(缺 image、缺 connection 等)在 ``start`` 阶段抛
+      ``ValueError``。
+    - 文件操作的语义级失败沿用标准异常(``FileNotFoundError`` /
+      ``IsADirectoryError``),与生命周期错误区分。
     """
 
     async def start(self, spec: SandboxSpec, workdir: str) -> None: ...

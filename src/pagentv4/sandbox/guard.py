@@ -16,10 +16,17 @@ exists / remove）之前，先调 `inner.alive()` 探活；死了就重跑
 
 from __future__ import annotations
 
-from .base import BackendIdentity, CommandResult, DirEntry, SandboxLimits, SandboxSpec
+from .base import (
+    BackendIdentity,
+    CommandResult,
+    DirEntry,
+    SandboxError,
+    SandboxLimits,
+    SandboxSpec,
+)
 
 
-class SandboxDeadError(RuntimeError):
+class SandboxDeadError(SandboxError):
     """backend 死了并且 Guard 也救不回来时抛出。"""
 
 

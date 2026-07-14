@@ -14,7 +14,15 @@ import os
 import shutil
 import time
 
-from ..base import BackendIdentity, CommandResult, DirEntry, SandboxLimits, SandboxSpec
+from ..base import (
+    BackendIdentity,
+    CommandResult,
+    DirEntry,
+    SandboxError,
+    SandboxLimits,
+    SandboxNotStartedError,
+    SandboxSpec,
+)
 from .local import decode_truncated, kill_and_drain
 
 
@@ -33,7 +41,7 @@ class ContainerBackend:
                 f"pass Sandbox.create(image=..., backend={self.cli!r})"
             )
         if shutil.which(self.cli) is None:
-            raise RuntimeError(f"{self.cli} CLI not found in PATH")
+            raise SandboxError(f"{self.cli} CLI not found in PATH")
 
         os.makedirs(workdir, exist_ok=True)
         self.spec = spec
@@ -66,7 +74,7 @@ class ContainerBackend:
         )
         stdout, stderr = await process.communicate()
         if process.returncode != 0:
-            raise RuntimeError(
+            raise SandboxError(
                 f"{self.cli} run failed: "
                 f"{stderr.decode('utf-8', errors='replace').strip()}"
             )
@@ -113,7 +121,7 @@ class ContainerBackend:
         limits: SandboxLimits | None = None,
     ) -> CommandResult:
         if not self.container_id:
-            raise RuntimeError(f"{self.cli} backend not started")
+            raise SandboxNotStartedError(f"{self.cli} backend not started")
         applied = limits or (self.spec.default_limits if self.spec else SandboxLimits())
         run_cwd = cwd or self.workdir
 

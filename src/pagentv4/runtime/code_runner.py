@@ -5,6 +5,14 @@
 
 配置来源优先级：代码参数 > 配置文件 > 默认值。
 
+sandbox 初始化有两种时序，配置入口统一在 ``__init__``：
+
+- 懒初始化：``CodeRunner(agent, backend="local")``，sandbox 在首次 ``run`` 前打开。
+- 立即初始化：``await CodeRunner.create(agent, backend="local")``，返回时 sandbox 已就绪。
+
+``create`` 只是「构造 + ensure_initialized」，参数与 ``__init__`` 一致；``from_toml``
+把 TOML 解析成 spec 后复用 ``create``，两条立即初始化路径共用同一实现。
+
 用法::
 
     # 本地沙箱；第一次 run 前会自动打开 sandbox
@@ -34,12 +42,9 @@ from pathlib import Path
 from ..core.agent import Agent
 from ..core.message import Messages
 from ..core.tool import FunctionTool
-from ..ithread import IThread, ThreadSpec
-from ..sandbox import Sandbox
-from ..skills import SkillRegistry, build_skills_system_prompt, make_use_skill_tool
-from .base_runner import BaseRunner
+from ..ithread import ThreadSpec
+from .base_runner import BaseRunner, assemble_run_resources
 from .helper import ArunReturnType, EventHandler
-from .run_state import RunState
 from .thread import Thread
 
 
@@ -56,36 +61,6 @@ def build_code_agent(
         tools=[*agent.tools, *tools],
         max_turns=agent.max_turns,
     )
-
-
-async def open_code_resources(
-    thread: IThread,
-    *,
-    skill_roots: list[str | Path],
-    tools: list[FunctionTool],
-    agent_system: str | None,
-    extra_system: str,
-    run_state: RunState | None = None,
-) -> tuple[Sandbox, SkillRegistry, str, list[FunctionTool]]:
-    if run_state is not None:
-        run_state.phase = "waking_sandbox"
-    sandbox = await thread.open_sandbox()
-    combined_tools = [*sandbox.tools(), *tools]
-
-    skills = SkillRegistry.from_defaults(*skill_roots)
-    mount = await sandbox.install_skills(skills) if skills.names() else {}
-    if skills.names():
-        combined_tools.append(make_use_skill_tool(skills, mount))
-
-    computer_desc = await sandbox.describe()
-    skills_prompt = build_skills_system_prompt(skills, mount)
-    system_tail = thread.spec.system or extra_system or agent_system
-    system_prompt = "\n".join(
-        part for part in (computer_desc, skills_prompt, system_tail) if part
-    )
-    if run_state is not None:
-        run_state.phase = "idle"
-    return sandbox, skills, system_prompt, combined_tools
 
 
 class CodeRunner(BaseRunner):
@@ -168,21 +143,21 @@ class CodeRunner(BaseRunner):
             if self.code_initialized:
                 return
 
-            sandbox, skills, system_prompt, combined_tools = await open_code_resources(
+            resources = await assemble_run_resources(
                 self.thread,
                 skill_roots=self.pending_skill_roots,
                 tools=self.pending_tools,
-                agent_system=self.base_agent.system,
                 extra_system=self.pending_extra_system,
+                agent_system=self.base_agent.system,
                 run_state=self.run_state,
             )
             self.agent = build_code_agent(
                 self.base_agent,
-                system_prompt=system_prompt,
-                tools=combined_tools,
+                system_prompt=resources.system_prompt,
+                tools=resources.tools,
             )
-            self.sandbox = sandbox
-            self.skills = skills
+            self.sandbox = resources.sandbox
+            self.skills = resources.skills
             self.code_initialized = True
 
     async def run(
@@ -211,30 +186,19 @@ class CodeRunner(BaseRunner):
         await super().close()
 
     @classmethod
-    async def create(
-        cls,
-        agent: Agent,
-        *,
-        # sandbox 配置
-        backend: str = "local",
-        image: str | None = None,
-        container_ttl_seconds: int | None = None,
-        ssh_host: str | None = None,
-        ssh_config: str = "~/.ssh/config",
-        ssh_workdir: str = "~/agent",
-        command_policy: str = "workdir",
-        # thread / conversation 配置
-        thread_id: str | None = None,
-        conversation_id: str | None = None,
-        root: str | Path | None = None,
-        conversation_root: str = ".",
-        conv_backend: str = "jsonl",
-        # skills + tools
-        skill_roots: list[str | Path] = (),
-        tools: list[FunctionTool] = (),
-        extra_system: str = "",
-    ) -> CodeRunner:
-        """创建 CodeRunner 并立即打开 sandbox、加载 skills。
+    async def create(cls, agent: Agent, **kwargs) -> CodeRunner:
+        """构造 CodeRunner 并立即打开 sandbox、加载 skills（立即初始化路径）。
+
+        参数与 ``__init__`` 完全一致（backend / image / thread_id / tools 等），此处
+        只透传，不重复声明，保证配置入口唯一。与直接构造的区别仅在时序：``create``
+        返回时 sandbox 已就绪，构造器则等到首次 ``run``。
+
+        Args:
+            agent: 基础 Agent；sandbox tools 与 skills 会在初始化时合并进来。
+            **kwargs: 透传给 ``__init__`` 的配置项。
+
+        Returns:
+            已完成 sandbox / skills 初始化的 CodeRunner。
 
         用法::
 
@@ -243,24 +207,7 @@ class CodeRunner(BaseRunner):
                 print(text)
             await r.close()
         """
-        runner = cls(
-            agent,
-            backend=backend,
-            image=image,
-            container_ttl_seconds=container_ttl_seconds,
-            ssh_host=ssh_host,
-            ssh_config=ssh_config,
-            ssh_workdir=ssh_workdir,
-            command_policy=command_policy,
-            thread_id=thread_id,
-            conversation_id=conversation_id,
-            root=root,
-            conversation_root=conversation_root,
-            conv_backend=conv_backend,
-            skill_roots=skill_roots,
-            tools=tools,
-            extra_system=extra_system,
-        )
+        runner = cls(agent, **kwargs)
         await runner.ensure_initialized()
         return runner
 
@@ -277,7 +224,10 @@ class CodeRunner(BaseRunner):
         tools: list[FunctionTool] = (),
         extra_system: str = "",
     ) -> CodeRunner:
-        """从 TOML 配置文件创建并打开 CodeRunner。
+        """从 TOML 配置文件创建并打开 CodeRunner（立即初始化路径）。
+
+        解析出 ThreadSpec 后交给 ``create``，thread_id 兜底与 sandbox 初始化都复用
+        构造器与 ``create``，不在此重复。
 
         配置文件格式同 ThreadSpec：
 
@@ -296,19 +246,13 @@ class CodeRunner(BaseRunner):
         with Path(path).open("rb") as fp:
             payload = tomllib.load(fp)
         spec = ThreadSpec.from_dict(payload)
-        resolved_thread_id = (
-            thread_id
-            or conversation_id
-            or datetime.now().strftime("thread-%Y%m%d-%H%M%S")
-        )
-        runner = cls(
+        return await cls.create(
             agent,
-            thread_id=resolved_thread_id,
+            thread_id=thread_id,
+            conversation_id=conversation_id,
             root=root,
             skill_roots=skill_roots,
             tools=tools,
             extra_system=extra_system,
             spec=spec,
         )
-        await runner.ensure_initialized()
-        return runner

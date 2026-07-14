@@ -20,7 +20,7 @@ import os
 import posixpath
 import tarfile
 import tempfile
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from .base import Backend, CommandResult, DirEntry, SandboxLimits, SandboxSpec
 from .description import build_computer_description
@@ -526,4 +526,85 @@ def build_backend(name: str) -> Backend:
         return SshBackend()
     raise ValueError(
         f"unknown backend: {name!r}; expected one of local/docker/podman/ssh"
+    )
+
+
+class SandboxProfile(Protocol):
+    """open_sandbox_for_spec 需要的字段；ThreadSpec 结构上即满足此协议。
+
+    放在 sandbox 层，让「哪个 backend 要哪些字段」的知识收敛于此，Thread 只提供
+    profile 与 workdir，不感知 backend 种类。
+    """
+
+    backend: str
+    image: str | None
+    container_ttl_seconds: int | None
+    ssh_host: str | None
+    ssh_config: str
+    ssh_workdir: str
+    command_policy: str
+
+
+async def open_sandbox_for_spec(
+    profile: SandboxProfile,
+    workdir: str,
+    *,
+    label: str = "",
+) -> Sandbox:
+    """按 profile 声明的 backend 打开 sandbox，负责字段映射与前置校验。
+
+    各 backend 对字段的要求（docker/podman 必须有 image、ssh 必须有 ssh_host 并解析
+    ~/.ssh/config）都在此处理，新增 backend 只改这里，不改 Thread。
+
+    Args:
+        profile: 满足 SandboxProfile 的配置对象（如 ThreadSpec）。
+        workdir: sandbox 工作目录（宿主路径）。
+        label: 出错信息里的调用方标识（如 thread id），仅用于报错可读性。
+
+    Returns:
+        已 start 的 Sandbox。
+
+    Raises:
+        ValueError: backend 不认识，或必需字段缺失。
+    """
+    prefix = f"{label}: " if label else ""
+    backend = profile.backend
+
+    if backend == "local":
+        return await Sandbox.create(
+            backend="local",
+            workdir=workdir,
+            command_policy=profile.command_policy,
+        )
+
+    if backend in ("docker", "podman"):
+        if not profile.image:
+            raise ValueError(f"{prefix}backend {backend!r} requires image")
+        return await Sandbox.create(
+            backend=backend,
+            workdir=workdir,
+            image=profile.image,
+            container_ttl_seconds=profile.container_ttl_seconds,
+            command_policy=profile.command_policy,
+        )
+
+    if backend == "ssh":
+        if not profile.ssh_host:
+            raise ValueError(f"{prefix}backend 'ssh' requires ssh_host")
+        from .backends.ssh import SshConnection
+
+        conn = SshConnection.from_ssh_config(
+            profile.ssh_host,
+            config_path=profile.ssh_config,
+            workdir=profile.ssh_workdir,
+        )
+        return await Sandbox.create(
+            backend="ssh",
+            workdir=workdir,
+            connection=conn.to_dict(),
+            command_policy=profile.command_policy,
+        )
+
+    raise ValueError(
+        f"{prefix}unknown backend: {backend!r}; expected one of local/docker/podman/ssh"
     )
