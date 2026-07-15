@@ -11,8 +11,10 @@ user_label = "you" # 输出区 / 输入行用户前缀：{label}>
 # mode = "auto"  # prompt（默认，终端审批）| auto（自动批准 run_command / copy_from_host）
 
 [provider]
-api_key = "" # 留空则用 DEEPSEEK_API_KEY 环境变量
-model = "deepseek-v4-flash" 
+# api_key 请写到 ~/.pagent/pagent.toml（用户级），勿提交进仓库。
+# 也可 export DEEPSEEK_API_KEY；项目 ./pagent.toml 可再覆盖。
+api_key = ""
+model = "deepseek-v4-flash"
 # base_url = ""  # 可选，覆盖 DeepSeek 默认 endpoint
 
 # backend = "container" 时运行时自动探测 docker / podman（按此顺序取 PATH 里第一个可用的）。

@@ -38,6 +38,10 @@
         "command": "pagent.chat.openInEditor",
         "title": "pagent: 在编辑器区打开",
         "icon": "$(link-external)"
+      },
+      {
+        "command": "pagent.setup",
+        "title": "pagent: Setup API Key"
       }
     ],
     "//menus": "view/title 把命令按钮放进视图的原生标题栏（与 PAGENT: CHAT 同一行）。when 限定只在本视图显示；group navigation 让按钮显示为标题栏右侧图标。",
@@ -80,14 +84,14 @@
         }
       ]
     },
-    "//configuration": "用户可在设置里改子进程启动方式；默认用 uv 跑 pagent --wire。",
+    "//configuration": "用户可在设置里改子进程启动方式；默认全局 pagent --wire（uv tool install）。",
     "configuration": {
       "title": "pagent",
       "properties": {
         "pagent.command": {
           "type": "string",
-          "default": "uv",
-          "description": "启动 pagent 后端的可执行文件（例如 uv 或 pagent）。"
+          "default": "pagent",
+          "description": "启动后端的可执行文件。默认全局 pagent（uv tool install pagent）。"
         },
         "pagent.args": {
           "type": "array",
@@ -95,11 +99,9 @@
             "type": "string"
           },
           "default": [
-            "run",
-            "pagent",
             "--wire"
           ],
-          "description": "传给可执行文件的参数，需以 --wire 收尾进入 stdio 后端模式。"
+          "description": "传给可执行文件的参数，需含 --wire 进入 stdio 后端模式。"
         },
         "pagent.sandboxMode": {
           "type": "string",

@@ -170,11 +170,25 @@ export class ChatRenderer {
       this.replayHistory(params.messages);
       return;
     }
+    if (method === "Error") {
+      this.showError(readString(params, "message") || "未知错误");
+      return;
+    }
     if (method === "RunEnd") {
       this.removePlaceholder();
       this.finishAssistant();
       return;
     }
+  }
+
+  /** 展示一轮失败：撤掉 loading / 打字机，插入错误气泡。 */
+  showError(message: string): void {
+    this.hideEmptyState();
+    this.removePlaceholder();
+    this.finishAssistant();
+    const body = this.appendErrorBubble();
+    body.textContent = message;
+    this.forceScrollToBottom();
   }
 
   /** 回放一个会话的历史：先清屏，再按 Python 侧规整的扁平数组逐条重建 DOM。
@@ -673,6 +687,27 @@ export class ChatRenderer {
     msg.appendChild(makeRoleLabel(role));
     const bubble = document.createElement("div");
     bubble.className = `bubble ${role}`;
+    const body = document.createElement("div");
+    body.className = "bubble-body";
+    bubble.appendChild(body);
+    msg.appendChild(bubble);
+    row.appendChild(msg);
+    this.root.appendChild(row);
+    return body;
+  }
+
+  /** 错误气泡：左侧 assistant 位，但用 error 样式与角色标签 error。 */
+  private appendErrorBubble(): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "chat-row assistant error";
+    const msg = document.createElement("div");
+    msg.className = "msg assistant error";
+    const label = document.createElement("div");
+    label.className = "role-label";
+    label.textContent = "error";
+    msg.appendChild(label);
+    const bubble = document.createElement("div");
+    bubble.className = "bubble assistant error";
     const body = document.createElement("div");
     body.className = "bubble-body";
     bubble.appendChild(body);

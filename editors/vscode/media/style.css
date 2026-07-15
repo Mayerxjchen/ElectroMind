@@ -223,6 +223,17 @@ body {
   color: var(--vscode-editor-foreground);
 }
 
+.bubble.assistant.error,
+.bubble.error {
+  border: 1px solid var(--vscode-errorForeground, var(--vscode-testing-iconFailed, var(--vscode-panel-border)));
+  color: var(--vscode-errorForeground, var(--vscode-foreground));
+  background: color-mix(in srgb, var(--vscode-errorForeground, #f44) 12%, var(--vscode-editor-background));
+}
+
+.chat-row.error .role-label {
+  color: var(--vscode-errorForeground, var(--vscode-descriptionForeground));
+}
+
 /* Markdown 定稿正文（marked + DOMPurify 注入）：关掉 pre-wrap，块级元素自然排版。 */
 .markdown-body {
   white-space: normal;

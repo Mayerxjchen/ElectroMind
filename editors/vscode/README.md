@@ -8,7 +8,20 @@
 
 ## 开发
 
-需要 Node 18+（本机用 nvm 管理，node v22）。
+需要 Node 18+（本机用 nvm 管理，node v22），以及用 **uv tool** 装好的全局 `pagent`：
+
+```bash
+uv tool install pagent
+```
+
+开发本仓库、想跟源码联动时：
+
+```bash
+uv tool install --editable --force .
+```
+
+插件默认启动 `pagent --wire`，**不再**在打开的工作区里 `uv run`。
+工作区目录只用来落会话（`<workspace>/.pagent/threads/`）。
 
 ```bash
 cd editors/vscode
@@ -18,6 +31,7 @@ npm run check    # 只做类型检查
 ```
 
 在 VS Code 里打开本目录，按 **F5** 启动“扩展开发宿主”窗口，插件在其中加载。
+若尚未安装 CLI，首次打开 Chat 会提示一键 `uv tool install --editable`。
 
 ## 当前进度
 

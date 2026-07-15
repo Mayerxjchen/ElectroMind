@@ -51,6 +51,9 @@ export function activate(context: vscode.ExtensionContext): void {
       chatProvider.openInEditor();
     },
   );
+  const setup = vscode.commands.registerCommand("pagent.setup", () => {
+    void chatProvider.runSetup();
+  });
 
   context.subscriptions.push(
     output,
@@ -59,6 +62,7 @@ export function activate(context: vscode.ExtensionContext): void {
     reset,
     resume,
     openInEditor,
+    setup,
     // chatProvider.dispose() 确保子进程和定时器在插件停用时被回收；
     // 不放入 subscriptions 则依赖 webview onDidDispose 触发，关窗口时可能不执行。
     new vscode.Disposable(() => chatProvider.dispose()),

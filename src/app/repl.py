@@ -38,7 +38,8 @@ async def open_runner(config: ReplConfig) -> Runner:
     api_key = config.resolved_api_key()
     if not api_key:
         raise SystemExit(
-            "需要 API Key：在 pagent.toml [provider] 设置 api_key，或 export DEEPSEEK_API_KEY"
+            "需要 API Key：运行交互式 pagent 完成 setup，"
+            "或写入 ~/.pagent/pagent.toml，或 export DEEPSEEK_API_KEY"
         )
 
     thread_id = config.thread_id or f"thread-{datetime.now():%Y%m%d-%H%M%S}"
@@ -254,6 +255,12 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     config = config_from_args(args)
+    if not config.resolved_api_key() and not args.wire:
+        # 交互 REPL：缺 Key 时引导写入 ~/.pagent；--wire 由宿主（插件）先做 setup。
+        from .setup import interactive_setup
+
+        interactive_setup()
+        config = config_from_args(args)
     if args.wire:
         from .wire import run_wire
 

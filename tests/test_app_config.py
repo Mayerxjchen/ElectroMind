@@ -3,6 +3,7 @@ from app.config import (
     ReplConfig,
     build_parser,
     config_from_args,
+    find_user_config,
     load_config,
     load_config_file,
     merge_config,
@@ -59,6 +60,8 @@ def test_resolved_max_turns_default():
 
 
 def test_config_from_file(tmp_path, monkeypatch):
+    # 隔离真实 ~/.pagent，避免本机用户配置污染默认值断言。
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
     parser = build_parser()
     config = config_from_args(parser.parse_args([]))
@@ -75,6 +78,7 @@ def test_config_from_file(tmp_path, monkeypatch):
 
 
 def test_thread_id_from_cli_only(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
     parser = build_parser()
     config = config_from_args(parser.parse_args(["--thread-id", "demo"]))
@@ -83,6 +87,7 @@ def test_thread_id_from_cli_only(tmp_path, monkeypatch):
 
 
 def test_backend_from_cli_overrides_project_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
     (tmp_path / "pagent.toml").write_text(
         '[sandbox]\nbackend = "local"\n',
@@ -94,6 +99,7 @@ def test_backend_from_cli_overrides_project_config(tmp_path, monkeypatch):
 
 
 def test_runtime_modes_from_cli_override_project_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
     (tmp_path / "pagent.toml").write_text(
         '[permission]\nmode = "prompt"\n\n[ssh]\nhost = "old"\n',
@@ -168,6 +174,7 @@ def test_parse_repl_config_permission_auto():
 
 
 def test_config_from_args_auto_flag(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
     parser = build_parser()
     config = config_from_args(parser.parse_args(["--auto"]))
@@ -191,7 +198,8 @@ def test_merge_config():
     assert merged.max_turns == 20
 
 
-def test_load_project_config(tmp_path):
+def test_load_project_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     (tmp_path / "pagent.toml").write_text(
         'max_turns = 8\n\n[provider]\nmodel = "custom-model"\n',
         encoding="utf-8",
@@ -199,3 +207,55 @@ def test_load_project_config(tmp_path):
     config = load_config(workdir=str(tmp_path))
     assert config.model == "custom-model"
     assert config.max_turns == 8
+
+
+def test_find_user_config(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    assert find_user_config() is None
+    user_dir = tmp_path / ".pagent"
+    user_dir.mkdir()
+    user_toml = user_dir / "pagent.toml"
+    user_toml.write_text('[provider]\napi_key = "sk-user"\n', encoding="utf-8")
+    assert find_user_config() == user_toml
+
+
+def test_load_user_config_under_project(tmp_path, monkeypatch):
+    """合并顺序：bundled < ~/.pagent < ./pagent.toml。"""
+    home = tmp_path / "home"
+    project = tmp_path / "project"
+    home.mkdir()
+    project.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    user_dir = home / ".pagent"
+    user_dir.mkdir()
+    (user_dir / "pagent.toml").write_text(
+        '[provider]\napi_key = "sk-user"\nmodel = "user-model"\n',
+        encoding="utf-8",
+    )
+    (project / "pagent.toml").write_text(
+        '[provider]\nmodel = "project-model"\n',
+        encoding="utf-8",
+    )
+
+    config = load_config(workdir=str(project))
+    assert config.api_key == "sk-user"
+    assert config.model == "project-model"
+
+
+def test_explicit_config_still_merges_user(tmp_path, monkeypatch):
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    user_dir = home / ".pagent"
+    user_dir.mkdir()
+    (user_dir / "pagent.toml").write_text(
+        '[provider]\napi_key = "sk-user"\n',
+        encoding="utf-8",
+    )
+    explicit = tmp_path / "custom.toml"
+    explicit.write_text('[provider]\nmodel = "explicit-model"\n', encoding="utf-8")
+
+    config = load_config(config_path=explicit, workdir=str(tmp_path))
+    assert config.api_key == "sk-user"
+    assert config.model == "explicit-model"

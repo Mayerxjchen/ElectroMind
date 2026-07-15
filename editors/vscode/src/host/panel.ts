@@ -21,6 +21,8 @@ import type {
   ViewToHost,
 } from "../protocol";
 import { AgentBridge } from "./agent";
+import { ensurePagentCli, resolveCliCommand } from "./cli";
+import { ensureApiKeySetup, promptAndSaveProvider } from "./setup";
 import { parseWireLine } from "./wire";
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
@@ -40,6 +42,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private editorPanel: vscode.WebviewPanel | undefined;
 
   private historyLoadTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // 首次缺 Key / CLI 时的 setup；失败/取消后清空以便重试。
+  private setupPromise: Promise<boolean> | undefined;
+
+  // 解析后的全局 pagent 可执行路径（uv tool install）。
+  private pagentCommand: string | undefined;
+
+  // 最近一段 stderr，进程异常退出时带进 Error 提示，避免只有 code。
+  private recentStderr = "";
+
+  // 用户发消息后若长时间没有任何 Wire 事件，主动报超时（避免一直三点转圈）。
+  private turnWatchTimer: ReturnType<typeof setTimeout> | undefined;
 
   // extensionUri 用来把打包产物（dist/webview.js）转成 webview 能加载的受限 URI。
   // output 是“输出”面板里的一个通道，宿主侧日志打到这里，方便开发期观察。
@@ -118,6 +132,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     } satisfies HostToView);
     void this.postRuntimeOptions(webview);
     this.ensureThemeSub();
+    // 展开聊天时若无 Key，立刻弹出 setup（不必等用户发第一条消息）。
+    void this.ensureSetup();
     this.bridge?.send({ cmd: "commands" });
   }
 
@@ -150,11 +166,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   /** 处理视图发来的消息。第 6 课把用户输入转发给子进程；视图自己已上屏 user 气泡。 */
   private handleMessage(message: ViewToHost): void {
     if (message.type === "userInput") {
-      this.ensureBridge().send({ cmd: "user", text: message.text });
+      void this.withBridge((bridge) => {
+        this.armTurnWatch();
+        bridge.send({ cmd: "user", text: message.text });
+      });
       return;
     }
     if (message.type === "requestSlashCommands") {
-      this.ensureBridge().send({ cmd: "commands" });
+      void this.withBridge((bridge) => {
+        bridge.send({ cmd: "commands" });
+      });
       return;
     }
     if (message.type === "setSandboxTarget") {
@@ -185,11 +206,80 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
+  private workspaceRoot(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  /** 缺 CLI / Key 时引导 setup；齐了返回 true。 */
+  private ensureSetup(): Promise<boolean> {
+    if (!this.setupPromise) {
+      this.setupPromise = this.runBootstrap().then((ok) => {
+        if (!ok) {
+          this.setupPromise = undefined;
+        }
+        return ok;
+      });
+    }
+    return this.setupPromise;
+  }
+
+  /** 先确保全局 pagent（uv tool），再确保 API Key。 */
+  private async runBootstrap(): Promise<boolean> {
+    const configured = vscode.workspace
+      .getConfiguration("pagent")
+      .get<string>("command", "pagent");
+    const cli = await ensurePagentCli(
+      this.extensionUri,
+      this.output,
+      configured,
+    );
+    if (!cli) {
+      return false;
+    }
+    this.pagentCommand = cli;
+    return ensureApiKeySetup(this.output, this.workspaceRoot());
+  }
+
+  /** setup 通过后再拿 bridge 执行；用户取消 setup 则跳过。 */
+  private async withBridge(
+    fn: (bridge: AgentBridge) => void,
+  ): Promise<void> {
+    if (!(await this.ensureSetup())) {
+      return;
+    }
+    fn(this.ensureBridge());
+  }
+
+  /** 命令面板「Setup API Key」：确保 CLI，并重跑 api_key / model / base_url 引导。 */
+  async runSetup(): Promise<void> {
+    this.setupPromise = undefined;
+    const configured = vscode.workspace
+      .getConfiguration("pagent")
+      .get<string>("command", "pagent");
+    const cli = await ensurePagentCli(
+      this.extensionUri,
+      this.output,
+      configured,
+    );
+    if (!cli) {
+      return;
+    }
+    this.pagentCommand = cli;
+    const ok = await promptAndSaveProvider(this.output);
+    if (!ok) {
+      return;
+    }
+    this.setupPromise = Promise.resolve(true);
+    // 配置变更后重启后端，避免旧进程仍用旧环境。
+    this.disposeBridge();
+    this.ensureBridge();
+  }
+
   /** 标题栏「新会话」：让后端结束当前会话、开干净 thread。
    *  后端回发 HistoryReplay（空数组）驱动视图清屏，视图 DOM 统一由该事件重建。 */
   resetSession(): void {
-    // 未起子进程时无需 reset；起了才发命令。
-    this.bridge?.send({ cmd: "reset" });
+    // 切换模式后 bridge 可能已停；ensure 后再 reset，避免点了没反应。
+    this.ensureBridge().send({ cmd: "reset" });
   }
 
   /** 标题栏「恢复会话」：列出工作区已有 thread 供选择，选中后让后端切换并回放历史。
@@ -217,6 +307,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     // 未起子进程时先起（resume 也需要一个后端进程来加载 thread）。
+    if (!(await this.ensureSetup())) {
+      return;
+    }
     this.startHistoryLoading();
     this.ensureBridge().send({ cmd: "resume", thread_id: picked.description });
   }
@@ -265,34 +358,83 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     // getConfiguration 读用户设置（package.json 的 contributes.configuration）。
     const config = vscode.workspace.getConfiguration("pagent");
-    const command = config.get<string>("command", "uv");
-    const configuredArgs = config.get<string[]>("args", ["run", "pagent", "--wire"]);
+    const configuredCommand = config.get<string>("command", "pagent");
+    const command =
+      this.pagentCommand ?? resolveCliCommand(configuredCommand);
+    const configuredArgs = config.get<string[]>("args", ["--wire"]);
     const args = withRuntimeArgs(configuredArgs, {
       mode: this.sandboxMode(),
       sshHost: this.sshHost(),
       sshConfig: this.sshConfigPath(),
       yolo: this.yoloMode(),
     });
-    // workspaceFolders[0] 是当前打开的第一个工作区根目录，作为子进程 cwd。
+    // cwd = 当前工作区：只影响会话落盘 <workspace>/.pagent/，不用于找 Python 包。
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
-    this.bridge = new AgentBridge({
+    this.recentStderr = "";
+    const bridge = new AgentBridge({
       command,
       args,
       cwd,
       onLine: (line) => this.onEventLine(line),
-      onStderr: (text) => this.output.append(text),
+      onStderr: (text) => {
+        this.output.append(text);
+        this.recentStderr = (this.recentStderr + text).slice(-4000);
+      },
       onExit: (code) => {
+        // 只处理“当前” bridge 的意外退出；切换模式 kill 旧进程时绝不能清掉新 bridge。
+        if (this.bridge !== bridge) {
+          return;
+        }
         this.output.appendLine(`[wire] 子进程退出 code=${code}`);
         this.bridge = undefined;
+        this.clearTurnWatch();
         this.finishHistoryLoading(true);
+        const detail = lastStderrHint(this.recentStderr);
+        const message = detail
+          ? detail
+          : `后端进程意外退出（code=${code ?? "null"}）`;
+        this.postToView({
+          type: "event",
+          method: "Error",
+          params: { message, where: "process" },
+        });
+        void vscode.window.showErrorMessage(`pagent：${message}`);
         // 子进程退出后同步前端状态，确保 modeSwitching/yolo 被重置。
         void this.postRuntimeOptions();
       },
     });
-    this.bridge.start();
+    this.bridge = bridge;
+    bridge.start();
     this.output.appendLine(`[wire] 启动 ${command} ${args.join(" ")}`);
-    return this.bridge;
+    this.output.appendLine(`[wire] cwd=${cwd ?? "(none)"} (sessions only)`);
+    return bridge;
+  }
+
+  /** 发消息后启动超时表；收到任意事件或进程退出时清掉。 */
+  private armTurnWatch(): void {
+    this.clearTurnWatch();
+    this.turnWatchTimer = setTimeout(() => {
+      this.turnWatchTimer = undefined;
+      this.postToView({
+        type: "event",
+        method: "Error",
+        params: {
+          message:
+            "等待后端响应超时。请打开“输出 → pagent”查看日志；" +
+            "确认已 `uv tool install` 全局 pagent，且网络/API Key 可用。",
+          where: "timeout",
+        },
+      });
+    }, 60_000);
+  }
+
+  private clearTurnWatch(): void {
+    if (!this.turnWatchTimer) {
+      return;
+    }
+    clearTimeout(this.turnWatchTimer);
+    this.turnWatchTimer = undefined;
   }
 
   private sandboxMode(): SandboxMode {
@@ -330,7 +472,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (mode === "ssh" && sshHost) {
         await config.update("sshHost", sshHost, vscode.ConfigurationTarget.Workspace);
       }
+      // 取消进行中的「恢复会话」超时，避免稍后 failed 把新对话清掉。
+      this.cancelHistoryLoading();
       this.disposeBridge();
+      // Wire 已惰性 open runner：这里 ensure 只会先 ready，不会卡在空沙箱上。
       this.ensureBridge();
       this.postToView({
         type: "event",
@@ -352,6 +497,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     await vscode.workspace
       .getConfiguration("pagent")
       .update("yoloMode", enabled, vscode.ConfigurationTarget.Workspace);
+    this.cancelHistoryLoading();
     this.disposeBridge();
     this.ensureBridge();
     await this.postRuntimeOptions();
@@ -363,9 +509,20 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.bridge = undefined;
   }
 
+  /** 停下会话加载骨架/超时，但不带 failed（避免误清当前对话）。 */
+  private cancelHistoryLoading(): void {
+    if (!this.historyLoadTimer) {
+      return;
+    }
+    clearTimeout(this.historyLoadTimer);
+    this.historyLoadTimer = undefined;
+    this.postToView({ type: "historyLoading", loading: false });
+  }
+
   /** 插件停用时由 extension.ts 调用，确保子进程和定时器被回收。 */
   dispose(): void {
     this.disposeBridge();
+    this.clearTurnWatch();
     if (this.historyLoadTimer) {
       clearTimeout(this.historyLoadTimer);
       this.historyLoadTimer = undefined;
@@ -383,6 +540,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.output.appendLine(`[event?] ${line}`);
       return;
     }
+    this.clearTurnWatch();
     this.output.appendLine(
       `[event] ${event.method} ${JSON.stringify(event.params)}`,
     );
@@ -579,6 +737,26 @@ function detectAvailableBackends(): SandboxMode[] {
   // 但这里统一加入，前端菜单在 SSH 组内按 sshHosts 是否为空来决定展示。
   backends.push("ssh");
   return backends;
+}
+
+/** 从最近 stderr 里抽最后一条有用的非空行，供进程退出时展示。 */
+function lastStderrHint(stderr: string): string {
+  const lines = stderr
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+  if (lines.length === 0) {
+    return "";
+  }
+  // 跳过纯进度噪声，优先带 wire/需要/Error 字样的行。
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i];
+    if (/\[wire\]|需要 |Error|Traceback|Error:|exit/i.test(line)) {
+      return line.length > 300 ? `${line.slice(0, 300)}…` : line;
+    }
+  }
+  const last = lines[lines.length - 1];
+  return last.length > 300 ? `${last.slice(0, 300)}…` : last;
 }
 
 /** 从 ~/.ssh/config 解析出显式 Host 别名（过滤掉通配 * 和 ? 的模式块）。 */

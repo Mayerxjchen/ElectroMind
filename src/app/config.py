@@ -8,6 +8,9 @@ from pathlib import Path
 
 BUNDLED_CONFIG = Path(__file__).with_name("pagent.toml")
 CONFIG_FILENAMES = ("pagent.toml",)
+# 用户级配置：与 skills 共用 ~/.pagent/（见 pagentv4.skills）。
+# 放 api_key / 默认 model 等跨项目偏好；项目 ./pagent.toml 可再覆盖。
+USER_CONFIG_PATH = "~/.pagent/pagent.toml"
 
 
 @dataclass(slots=True)
@@ -191,6 +194,12 @@ def find_project_config(workdir: str | None = None) -> Path | None:
     return None
 
 
+def find_user_config() -> Path | None:
+    """`~/.pagent/pagent.toml`；不存在则返回 None（不自动创建）。"""
+    path = Path(USER_CONFIG_PATH).expanduser()
+    return path if path.is_file() else None
+
+
 def load_config_file(path: Path) -> ReplConfig:
     return parse_repl_config(load_toml(path))
 
@@ -210,10 +219,20 @@ def load_config(
     config_path: Path | str | None = None,
     workdir: str | None = None,
 ) -> ReplConfig:
+    """合并配置层，后层覆盖前层：
+
+    1. 包内默认 ``src/app/pagent.toml``
+    2. 用户级 ``~/.pagent/pagent.toml``（跨项目，适合放 api_key）
+    3. 项目 ``./pagent.toml``；若传了 ``--config`` 则用该文件代替项目层
+    """
     layers: list[ReplConfig] = []
 
     if BUNDLED_CONFIG.is_file():
         layers.append(load_config_file(BUNDLED_CONFIG))
+
+    user_path = find_user_config()
+    if user_path:
+        layers.append(load_config_file(user_path))
 
     explicit = Path(config_path).expanduser() if config_path else None
     if explicit:
@@ -236,7 +255,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         default=None,
-        help="config file (default: ./pagent.toml over bundled defaults)",
+        help="config file (default: ~/.pagent/pagent.toml then ./pagent.toml over bundled defaults)",
     )
     parser.add_argument(
         "--thread-id",

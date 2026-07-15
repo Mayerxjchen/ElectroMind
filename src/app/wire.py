@@ -4,7 +4,8 @@
 
 - **stdout**：每行一个事件（Wire 协议）。透传 ``runner.run(return_type="event")``
   产出的事件，用 ``pagentv4/adapters/acp.py`` 的 ``encode_event_line`` 序列化；
-  需审批的工具再补一条 ``PermitRequest`` 控制事件。
+  需审批的工具再补一条 ``PermitRequest`` 控制事件；失败时发 ``Error`` 控制事件
+  （前端撤 loading 并展示错误气泡）。
 - **stdin**：每行一个 JSON 命令，驱动 Agent。
 - **stderr**：诊断日志，与事件流分开，前端可单独展示。
 
@@ -273,6 +274,31 @@ async def run_slash_command(name: str, runner) -> None:
     emit_slash_result(name, f"未知命令：/{name}", ok=False)
 
 
+def emit_error(message: str, *, where: str = "") -> None:
+    """把错误回给前端：撤掉 loading，展示错误气泡。
+
+    这是 wire 层控制事件（与 PermitRequest / HistoryReplay 同类），不是 core Event。
+    """
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "Error",
+        "params": {"message": message, "where": where},
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def format_exc(exc: BaseException) -> str:
+    """把异常收成一行可读信息；SystemExit 的 code 可能是字符串。"""
+    if isinstance(exc, SystemExit):
+        code = exc.code
+        if isinstance(code, str) and code.strip():
+            return code.strip()
+        if code not in (None, 0):
+            return f"进程退出 code={code}"
+        return "进程退出"
+    return str(exc) or exc.__class__.__name__
+
+
 async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> None:
     """跑一轮 Agent，事件逐行透传 stdout；需审批工具补发 PermitRequest。"""
     ask_permit = not config.permission_auto()
@@ -285,6 +311,11 @@ async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> N
                 and needs_tool_permit(event.name)
             ):
                 emit_permit_request(event)
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        log(f"[wire] turn failed: {exc}")
+        emit_error(format_exc(exc), where="turn")
     finally:
         state["turn"] = None
 
@@ -305,9 +336,82 @@ async def open_thread_runner(config: ReplConfig, thread_id: str):
     return await open_runner(replace(config, thread_id=thread_id))
 
 
+async def ensure_runner(runner, config: ReplConfig):
+    """惰性打开 runner：进程先 ready 收命令，真正要用会话时再唤醒沙箱。"""
+    if runner is not None:
+        return runner
+    return await open_fresh_runner(config)
+
+
+def emit_empty_history_replay() -> None:
+    """前端加载失败/无会话时用空 HistoryReplay 解除骨架屏。"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "HistoryReplay",
+        "params": {"thread_id": "", "title": "", "messages": []},
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
 async def handle_command(command: dict, runner, config: ReplConfig, state: dict):
-    """按命令类型分派；返回当前 runner（reset 时换成新 runner）。"""
+    """按命令类型分派；返回当前 runner（reset/resume 时可能换成新 runner）。
+
+    ``runner`` 可为 None：进程启动时尚未 open，避免切换 backend 后先卡在空会话的
+    沙箱唤醒上，导致 stdin 里的 resume 迟迟得不到处理。
+    """
     cmd = command.get("cmd")
+
+    if cmd == "commands":
+        emit_slash_commands()
+        return runner
+
+    if cmd == "resume":
+        thread_id = command.get("thread_id")
+        if not (isinstance(thread_id, str) and thread_id):
+            log("[wire] resume missing thread_id")
+            return runner
+        if turn_active(state):
+            log("[wire] 运行中，暂不能切换会话（取消见后续课程）")
+            return runner
+        old = runner
+        try:
+            runner = await open_thread_runner(config, thread_id)
+        except (Exception, SystemExit) as exc:
+            log(f"[wire] resume failed: {exc}")
+            if old is None:
+                emit_empty_history_replay()
+            else:
+                emit_history_replay(old)
+            emit_error(format_exc(exc), where="resume")
+            return old
+        if old is not None:
+            await old.close()
+        emit_history_replay(runner)
+        log(f"[wire] resume：已切到 thread {thread_id!r}")
+        return runner
+
+    if cmd == "reset":
+        if turn_active(state):
+            log("[wire] 运行中，暂不能新建会话（取消见后续课程）")
+            return runner
+        if runner is not None:
+            await runner.close()
+        runner = await open_fresh_runner(config)
+        emit_history_replay(runner)
+        log("[wire] reset：已开新会话")
+        return runner
+
+    if cmd == "cancel":
+        log("[wire] cancel received (并发取消见后续课程)")
+        return runner
+
+    # 以下命令需要已打开的 runner。
+    try:
+        runner = await ensure_runner(runner, config)
+    except (Exception, SystemExit) as exc:
+        log(f"[wire] open runner failed: {exc}")
+        emit_error(format_exc(exc), where="open")
+        return runner
 
     if cmd == "user":
         text = command.get("text", "")
@@ -316,7 +420,11 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             return runner
         # 以 / 开头的走 slash 命令：本地只读能力，不跑 Agent、不进对话历史。
         if text.lstrip().startswith("/"):
-            await run_slash_command(text.strip().lstrip("/").split()[0], runner)
+            try:
+                await run_slash_command(text.strip().lstrip("/").split()[0], runner)
+            except Exception as exc:
+                log(f"[wire] slash failed: {exc}")
+                emit_error(format_exc(exc), where="slash")
             return runner
         if turn_active(state):
             log("[wire] 上一轮还在跑，忽略新 user（一次一轮）")
@@ -324,10 +432,6 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         # 落一次 metainfo：首条用户消息定标题，供前端会话列表展示面向用户的名字。
         touch_thread_metainfo(runner, text)
         state["turn"] = asyncio.create_task(run_user_turn(runner, text, config, state))
-        return runner
-
-    if cmd == "commands":
-        emit_slash_commands()
         return runner
 
     if cmd == "permit":
@@ -349,45 +453,24 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         )
         return runner
 
-    if cmd == "reset":
-        if turn_active(state):
-            log("[wire] 运行中，暂不能新建会话（取消见后续课程）")
-            return runner
-        await runner.close()
-        runner = await open_fresh_runner(config)
-        emit_history_replay(runner)
-        log("[wire] reset：已开新会话")
-        return runner
-
-    if cmd == "resume":
-        thread_id = command.get("thread_id")
-        if not (isinstance(thread_id, str) and thread_id):
-            log("[wire] resume missing thread_id")
-            return runner
-        if turn_active(state):
-            log("[wire] 运行中，暂不能切换会话（取消见后续课程）")
-            return runner
-        await runner.close()
-        runner = await open_thread_runner(config, thread_id)
-        emit_history_replay(runner)
-        log(f"[wire] resume：已切到 thread {thread_id!r}")
-        return runner
-
-    if cmd == "cancel":
-        log("[wire] cancel received (并发取消见后续课程)")
-        return runner
-
     log(f"[wire] unknown command: {cmd!r}")
     return runner
 
 
 async def run_wire(config: ReplConfig) -> int:
-    """打开 runner，进入 stdin 命令循环，直到 EOF。"""
-    runner = await open_runner(config)
+    """进入 stdin 命令循环。
+
+    默认惰性打开 runner：先 ``ready`` 再收命令。若 CLI 带了 ``--thread-id``，
+    启动时直接打开该 thread 并回放历史（给非插件调用方用）。
+    """
+    runner = None
     state: dict = {"turn": None}
     had_user_turn = False
     # 启动即下发 slash 命令清单，前端无需显式请求就能填充斜杠菜单。
     emit_slash_commands()
+    if config.thread_id:
+        runner = await open_thread_runner(config, config.thread_id)
+        emit_history_replay(runner)
     log("[wire] ready")
     try:
         while True:
@@ -401,9 +484,9 @@ async def run_wire(config: ReplConfig) -> int:
             command = parse_command(line)
             if command is None:
                 continue
-            prev_count = len(runner.messages.data)
+            prev_count = len(runner.messages.data) if runner is not None else 0
             runner = await handle_command(command, runner, config, state)
-            if len(runner.messages.data) > prev_count:
+            if runner is not None and len(runner.messages.data) > prev_count:
                 had_user_turn = True
     finally:
         task = state.get("turn")
@@ -413,10 +496,12 @@ async def run_wire(config: ReplConfig) -> int:
                 await task
             except asyncio.CancelledError:
                 pass
-        await runner.close()
-        keep = {runner.thread.id} if had_user_turn else set()
-        report = clean_pagent(keep_thread_ids=keep)
-        clean_message = format_clean_report(report)
-        if clean_message:
-            log(f"[wire] {clean_message}")
+        if runner is not None:
+            thread_id = runner.thread.id
+            await runner.close()
+            keep = {thread_id} if had_user_turn else set()
+            report = clean_pagent(keep_thread_ids=keep)
+            clean_message = format_clean_report(report)
+            if clean_message:
+                log(f"[wire] {clean_message}")
     return 0
