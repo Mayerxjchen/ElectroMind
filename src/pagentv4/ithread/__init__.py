@@ -22,6 +22,7 @@ from ..sandbox import Sandbox
 
 THREAD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$")
 SPEC_FILENAME = "thread.toml"
+METAINFO_FILENAME = "metainfo.json"
 WORKSPACE_DIRNAME = "workspace"
 MESSAGES_CONVERSATION_ID = "messages"
 
@@ -146,6 +147,13 @@ class IThread(Protocol):
 
     @property
     def workspace_path(self) -> Path: ...
+
+    @property
+    def metainfo_path(self) -> Path: ...
+
+    def load_metainfo(self) -> dict: ...
+
+    def save_metainfo(self, metainfo: dict) -> None: ...
 
     @property
     def messages_conversation_id(self) -> str: ...

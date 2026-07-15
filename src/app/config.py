@@ -253,6 +253,25 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="危险工具自动审批（等同 [permission] mode=auto）",
     )
+    parser.add_argument(
+        "--permission-mode",
+        choices=("prompt", "auto"),
+        default=None,
+        help="工具审批模式",
+    )
+    parser.add_argument(
+        "--wire",
+        action="store_true",
+        help="stdio NDJSON 后端模式：stdin 收 JSON 命令，stdout 出事件流（供插件/前端驱动）",
+    )
+    parser.add_argument(
+        "--backend",
+        choices=("local", "container", "docker", "podman", "ssh"),
+        default=None,
+        help="覆盖 sandbox backend",
+    )
+    parser.add_argument("--ssh-host", default=None, help="覆盖 SSH Host 别名")
+    parser.add_argument("--ssh-config", default=None, help="覆盖 SSH config 路径")
     return parser
 
 
@@ -263,8 +282,16 @@ def config_from_args(args: argparse.Namespace) -> ReplConfig:
         fields["thread_id"] = args.thread_id
     if args.blocking:
         fields["blocking"] = True
+    if args.permission_mode:
+        fields["permission_mode"] = args.permission_mode
     if args.auto:
         fields["permission_mode"] = "auto"
+    if args.backend:
+        fields["backend"] = args.backend
+    if args.ssh_host:
+        fields["ssh_host"] = args.ssh_host
+    if args.ssh_config:
+        fields["ssh_config"] = args.ssh_config
     if fields:
         config = replace(config, **fields)
     return config

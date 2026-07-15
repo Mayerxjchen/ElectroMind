@@ -39,6 +39,8 @@ htmlcov/
 .env
 .env.*
 !.env.example
+# 项目根 pagent.toml 常含 api_key，勿提交（bundled 默认在 src/app/pagent.toml）
+/pagent.toml
 
 # OS / editor
 .DS_Store

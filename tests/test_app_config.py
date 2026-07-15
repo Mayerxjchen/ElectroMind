@@ -82,6 +82,41 @@ def test_thread_id_from_cli_only(tmp_path, monkeypatch):
     assert config.resolved_model() == "deepseek-v4-flash"
 
 
+def test_backend_from_cli_overrides_project_config(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pagent.toml").write_text(
+        '[sandbox]\nbackend = "local"\n',
+        encoding="utf-8",
+    )
+    parser = build_parser()
+    config = config_from_args(parser.parse_args(["--backend", "ssh"]))
+    assert config.backend == "ssh"
+
+
+def test_runtime_modes_from_cli_override_project_config(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "pagent.toml").write_text(
+        '[permission]\nmode = "prompt"\n\n[ssh]\nhost = "old"\n',
+        encoding="utf-8",
+    )
+    parser = build_parser()
+    config = config_from_args(
+        parser.parse_args(
+            [
+                "--permission-mode",
+                "auto",
+                "--ssh-host",
+                "gpu-dev",
+                "--ssh-config",
+                "/tmp/ssh_config",
+            ]
+        )
+    )
+    assert config.permission_auto()
+    assert config.ssh_host == "gpu-dev"
+    assert config.ssh_config == "/tmp/ssh_config"
+
+
 def test_parse_repl_config():
     data = {
         "max_turns": 16,

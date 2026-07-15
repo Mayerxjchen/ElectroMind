@@ -4,13 +4,18 @@
 
     <cwd>/.pagent/threads/<thread_id>/
         thread.toml        # thread 配置（首次冻结）
+        metainfo.json      # 面向用户的元信息（标题、时间戳、对话摘要）
         workspace/         # 沙箱工作目录
+
+thread_id 是内部管理编号（thread-<时间戳>），metainfo.json 里的 title 才是面向
+用户展示的名字，前端列会话时优先显示它。
 
 抽象定义（IThread、ThreadSpec）在同包的 __init__ 里。
 """
 
 from __future__ import annotations
 
+import json
 import os
 import tomllib
 from dataclasses import dataclass
@@ -19,7 +24,13 @@ from pathlib import Path
 from ..conversation import JsonlConversationStore, SqliteConversationStore
 from ..core.message import Messages
 from ..sandbox import Sandbox, open_sandbox_for_spec
-from . import SPEC_FILENAME, WORKSPACE_DIRNAME, ThreadSpec, validate_thread_id
+from . import (
+    METAINFO_FILENAME,
+    SPEC_FILENAME,
+    WORKSPACE_DIRNAME,
+    ThreadSpec,
+    validate_thread_id,
+)
 
 
 def load_thread_toml(path: Path) -> dict:
@@ -74,6 +85,24 @@ class Thread:
     @property
     def workspace_path(self) -> Path:
         return self.root / WORKSPACE_DIRNAME
+
+    @property
+    def metainfo_path(self) -> Path:
+        return self.root / METAINFO_FILENAME
+
+    def load_metainfo(self) -> dict:
+        """读面向用户的元信息（标题、时间戳、摘要）；文件不存在返回空 dict。"""
+        if not self.metainfo_path.exists():
+            return {}
+        with self.metainfo_path.open("r", encoding="utf-8") as fp:
+            return json.load(fp)
+
+    def save_metainfo(self, metainfo: dict) -> None:
+        """写面向用户的元信息到 metainfo.json（覆盖式，缩进便于人读）。"""
+        self.metainfo_path.write_text(
+            json.dumps(metainfo, ensure_ascii=False, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
     @property
     def messages_conversation_id(self) -> str:

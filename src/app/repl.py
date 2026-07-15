@@ -252,7 +252,12 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
 
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
-    config = config_from_args(parser.parse_args(argv))
+    args = parser.parse_args(argv)
+    config = config_from_args(args)
+    if args.wire:
+        from .wire import run_wire
+
+        raise SystemExit(asyncio.run(run_wire(config)))
     try:
         code = asyncio.run(run_repl(config))
     except KeyboardInterrupt:
