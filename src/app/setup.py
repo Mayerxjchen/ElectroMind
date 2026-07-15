@@ -99,7 +99,9 @@ def write_user_provider(setup: ProviderSetup) -> Path:
     return USER_CONFIG
 
 
-def write_user_api_key(api_key: str, *, model: str = DEFAULT_MODEL, base_url: str | None = None) -> Path:
+def write_user_api_key(
+    api_key: str, *, model: str = DEFAULT_MODEL, base_url: str | None = None
+) -> Path:
     """写入 api_key（及可选 model / base_url）。"""
     return write_user_provider(
         ProviderSetup(api_key=api_key, model=model, base_url=base_url)

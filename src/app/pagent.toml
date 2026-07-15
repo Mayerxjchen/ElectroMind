@@ -28,12 +28,12 @@ model = "deepseek-v4-flash"
 backend = "container" # local | container（自动探测 docker/podman）| docker | podman | ssh
 command_policy = "workdir" # open | workdir — workdir 拦截 run_command 里的越界路径
 container_ttl = 300 # 秒；容器主进程 sleep <ttl>，到期 --rm 自清理；0 或不设则用 sleep infinity
-image = "pagent:latest" 
+image = "pagent:latest"
 
 [ssh]
-config_path = "~/.ssh/config" 
+config_path = "~/.ssh/config"
 host = "machine_root" # ~/.ssh/config 里的 Host 别名
-workdir = "~/" 
+workdir = "~/"
 
 [skills]
 # 额外扫描路径；还会自动加载 ./.pagent/skills/、~/.pagent/skills/

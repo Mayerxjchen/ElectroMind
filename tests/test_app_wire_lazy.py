@@ -52,7 +52,9 @@ async def test_resume_with_no_runner_opens_target(monkeypatch):
 @pytest.mark.asyncio
 async def test_commands_without_runner_does_not_open(monkeypatch):
     monkeypatch.setattr(
-        wire, "open_fresh_runner", AsyncMock(side_effect=AssertionError("should not open"))
+        wire,
+        "open_fresh_runner",
+        AsyncMock(side_effect=AssertionError("should not open")),
     )
     monkeypatch.setattr(wire, "emit_slash_commands", lambda: None)
 
