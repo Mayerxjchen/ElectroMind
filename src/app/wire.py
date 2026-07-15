@@ -18,6 +18,7 @@
     {"cmd": "deny", "tool_call_id": "...", "reason": "..."}  拒绝某次工具调用
     {"cmd": "reset"}                              结束当前会话、开一个干净 thread
     {"cmd": "resume", "thread_id": "..."}         切到已有 thread，回放其历史
+    {"cmd": "list_threads"}                       列出当前 pagent home 下可恢复会话
     {"cmd": "cancel"}                             取消当前运行（并发取消属后续课程）
 
 reset 与 resume 换 runner 后都补发一条 ``HistoryReplay`` 控制事件：空数组表示新会话
@@ -44,8 +45,10 @@ from datetime import datetime
 from pagentv4 import ToolCallBegin
 from pagentv4.adapters.acp import encode_event_line
 from pagentv4.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
+from pagentv4.paths import resolve_pagent_home
+from pagentv4.runtime.thread import default_threads_root
 
-from .clean import clean_pagent, format_clean_report
+from .clean import clean_pagent, format_clean_report, iter_thread_dirs
 from .config import ReplConfig
 from .repl import open_runner
 from .tool_permit import needs_tool_permit, summarize_tool_args
@@ -151,6 +154,43 @@ def emit_history_replay(runner) -> None:
             "thread_id": runner.thread.id,
             "title": runner.thread.load_metainfo().get("title", ""),
             "messages": history_messages(runner),
+        },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def list_thread_entries() -> list[dict[str, str]]:
+    """按当前 cwd 解析的 pagent home 列出可恢复 thread（与落盘同一判定）。"""
+    entries: list[dict[str, str]] = []
+    for thread_dir in sorted(
+        iter_thread_dirs(default_threads_root()),
+        key=lambda path: path.name,
+        reverse=True,
+    ):
+        title = ""
+        meta_path = thread_dir / "metainfo.json"
+        if meta_path.is_file():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                meta = {}
+            raw = meta.get("title", "")
+            title = raw if isinstance(raw, str) else ""
+        entries.append({"id": thread_dir.name, "title": title})
+    return entries
+
+
+def emit_thread_list() -> None:
+    """下发 ThreadList：home / threads_root 与 threads，供前端「恢复会话」。"""
+    home = resolve_pagent_home()
+    threads_root = default_threads_root()
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "ThreadList",
+        "params": {
+            "home": str(home),
+            "threads_root": str(threads_root),
+            "threads": list_thread_entries(),
         },
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -363,6 +403,10 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
 
     if cmd == "commands":
         emit_slash_commands()
+        return runner
+
+    if cmd == "list_threads":
+        emit_thread_list()
         return runner
 
     if cmd == "resume":

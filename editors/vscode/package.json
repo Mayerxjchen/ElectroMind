@@ -2,7 +2,7 @@
   "name": "pagent-vscode",
   "displayName": "pagent",
   "description": "pagent Agent in VS Code —— 20 课渐进式实现，最终对齐 Cursor Agent 模式。",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "publisher": "synclionpaw",
   "private": true,
   "license": "MIT",

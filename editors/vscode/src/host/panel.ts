@@ -22,9 +22,15 @@ import type {
 } from "../protocol";
 import { AgentBridge } from "./agent";
 import { ensurePagentCli, resolveCliCommand } from "./cli";
-import { homeThreadsRoot } from "./home";
 import { ensureApiKeySetup, promptAndSaveProvider } from "./setup";
 import { parseWireLine } from "./wire";
+
+type ThreadListEntry = { id: string; title: string };
+type ThreadListPayload = {
+  home: string;
+  threads_root: string;
+  threads: ThreadListEntry[];
+};
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   // 与 package.json 里 contributes.views 的视图 id 保持一致。
@@ -55,6 +61,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   // 用户发消息后若长时间没有任何 Wire 事件，主动报超时（避免一直三点转圈）。
   private turnWatchTimer: ReturnType<typeof setTimeout> | undefined;
+
+  // 等待后端 ThreadList（list_threads）；路径由 Python resolve_pagent_home 判定。
+  private threadListWaiters: Array<(payload: ThreadListPayload) => void> = [];
 
   // extensionUri 用来把打包产物（dist/webview.js）转成 webview 能加载的受限 URI。
   // output 是“输出”面板里的一个通道，宿主侧日志打到这里，方便开发期观察。
@@ -283,17 +292,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.ensureBridge().send({ cmd: "reset" });
   }
 
-  /** 标题栏「恢复会话」：列出当前 pagent home 下 threads 供选择，选中后让后端切换并回放历史。
+  /** 标题栏「恢复会话」：向后端 list_threads（与落盘同一 home 判定），选中后 resume。
    *  列表用 metainfo.json 里的 title 面向用户展示，thread id（内部编号）降级为副标题。 */
   async resumeSession(): Promise<void> {
-    const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    const threads = await this.listThreads(cwd);
-    if (threads.length === 0) {
-      void vscode.window.showInformationMessage("pagent：还没有可恢复的会话。");
+    if (!(await this.ensureSetup())) {
+      return;
+    }
+    let payload: ThreadListPayload;
+    try {
+      payload = await this.requestThreadList();
+    } catch (error) {
+      const detail = error instanceof Error ? error.message : String(error);
+      void vscode.window.showWarningMessage(`pagent：列会话失败：${detail}`);
+      return;
+    }
+    if (payload.threads.length === 0) {
+      void vscode.window.showInformationMessage(
+        `pagent：还没有可恢复的会话（home=${payload.home}）。`,
+      );
       return;
     }
     // QuickPickItem：label 显示面向用户的标题，description 显示内部 thread id 供区分。
-    const items = threads.map((thread) => ({
+    const items = payload.threads.map((thread) => ({
       label: thread.title || thread.id,
       description: thread.id,
     }));
@@ -303,50 +323,27 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!picked) {
       return;
     }
-    // 未起子进程时先起（resume 也需要一个后端进程来加载 thread）。
-    if (!(await this.ensureSetup())) {
-      return;
-    }
     this.startHistoryLoading();
     this.ensureBridge().send({ cmd: "resume", thread_id: picked.description });
   }
 
-  /** 读当前 home 的 threads/：目录名当 id，metainfo.json 的 title 当展示名。
-   *  缺目录返回空；缺 metainfo 或读失败则 title 留空，由调用方降级用 id。
-   *  thread id 已含时间戳，倒序让更近的排前面。 */
-  private async listThreads(
-    workspaceRoot?: string,
-  ): Promise<{ id: string; title: string }[]> {
-    const root = vscode.Uri.file(homeThreadsRoot(workspaceRoot));
-    let entries: [string, vscode.FileType][];
-    try {
-      entries = await vscode.workspace.fs.readDirectory(root);
-    } catch {
-      return []; // 目录不存在（还没建过 thread）。
-    }
-    const ids = entries
-      .filter(([, kind]) => kind === vscode.FileType.Directory)
-      .map(([name]) => name)
-      .sort()
-      .reverse();
-    const threads: { id: string; title: string }[] = [];
-    for (const id of ids) {
-      const title = await this.readThreadTitle(root, id);
-      threads.push({ id, title });
-    }
-    return threads;
-  }
-
-  /** 读单个 thread 的 metainfo.json 取 title；文件缺失/解析失败则返回空串。 */
-  private async readThreadTitle(root: vscode.Uri, id: string): Promise<string> {
-    const metaUri = vscode.Uri.joinPath(root, id, "metainfo.json");
-    try {
-      const bytes = await vscode.workspace.fs.readFile(metaUri);
-      const meta = JSON.parse(new TextDecoder().decode(bytes)) as { title?: string };
-      return typeof meta.title === "string" ? meta.title : "";
-    } catch {
-      return "";
-    }
+  /** 向 wire 要 ThreadList；路径由子进程 cwd 上的 resolve_pagent_home 决定。 */
+  private requestThreadList(): Promise<ThreadListPayload> {
+    return new Promise((resolvePromise, reject) => {
+      const timer = setTimeout(() => {
+        const index = this.threadListWaiters.indexOf(onList);
+        if (index >= 0) {
+          this.threadListWaiters.splice(index, 1);
+        }
+        reject(new Error("list_threads 超时"));
+      }, 10_000);
+      const onList = (payload: ThreadListPayload) => {
+        clearTimeout(timer);
+        resolvePromise(payload);
+      };
+      this.threadListWaiters.push(onList);
+      this.ensureBridge().send({ cmd: "list_threads" });
+    });
   }
 
   /** 惰性创建子进程桥；把事件行与 stderr 打进输出通道。 */
@@ -551,6 +548,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.postToView({ type: "slashCommands", commands });
       return;
     }
+    if (event.method === "ThreadList") {
+      const payload = normalizeThreadList(event.params);
+      const waiters = this.threadListWaiters.splice(0);
+      for (const waiter of waiters) {
+        waiter(payload);
+      }
+      return;
+    }
     this.postToView({
       type: "event",
       method: event.method,
@@ -735,6 +740,30 @@ function detectAvailableBackends(): SandboxMode[] {
   // 但这里统一加入，前端菜单在 SSH 组内按 sshHosts 是否为空来决定展示。
   backends.push("ssh");
   return backends;
+}
+
+function normalizeThreadList(params: Record<string, unknown>): ThreadListPayload {
+  const threadsRaw = Array.isArray(params.threads) ? params.threads : [];
+  const threads: ThreadListEntry[] = [];
+  for (const item of threadsRaw) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
+    const row = item as Record<string, unknown>;
+    if (typeof row.id !== "string" || !row.id) {
+      continue;
+    }
+    threads.push({
+      id: row.id,
+      title: typeof row.title === "string" ? row.title : "",
+    });
+  }
+  return {
+    home: typeof params.home === "string" ? params.home : "",
+    threads_root:
+      typeof params.threads_root === "string" ? params.threads_root : "",
+    threads,
+  };
 }
 
 /** 从最近 stderr 里抽最后一条有用的非空行，供进程退出时展示。 */

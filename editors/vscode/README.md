@@ -62,10 +62,10 @@ Python 侧新增 `pagent --wire`（[src/app/wire.py](../../src/app/wire.py)）�
   高对比度主题下给气泡补明显描边。
 - 第 10 课：多轮对话与会话恢复。多轮天然保持（同一子进程/thread 累积历史）。会话级操作
   收进视图原生标题栏（与「PAGENT: CHAT」同一行）：「新会话」发 `{"cmd":"reset"}`，Python 侧
-  关旧 runner、开一个干净 `thread-<时间戳>`；「恢复会话」由宿主读当前 home 的 `threads/`
-  目录名列出已有 thread，`showQuickPick` 选中后发 `{"cmd":"resume","thread_id":...}`，Python 侧
-  切到该 thread。reset/resume 后端都回发一条 `HistoryReplay` 控制事件（`params.messages` 是规整
-  后的历史数组，空数组表示新会话），前端据此清屏并逐条重建气泡/思考面板/工具卡。
+  关旧 runner、开一个干净 `thread-<时间戳>`；「恢复会话」发 `{"cmd":"list_threads"}`，由
+  Python 按 cwd 解析 pagent home（`./.pagent` 或 `~/.pagent`）回 `ThreadList`，宿主
+  `showQuickPick` 后再 `{"cmd":"resume","thread_id":...}`。reset/resume 后端都回发
+  `HistoryReplay`（空数组=新会话），前端据此清屏并逐条重建气泡/思考面板/工具卡。
 
 阶段 C —— 工具与上下文：
 

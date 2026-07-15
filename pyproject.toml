@@ -1,6 +1,6 @@
 [project]
 name = "pagent"
-version = "0.6.0"
+version = "0.6.1"
 description = "Async Python agent library and terminal REPL (OpenAI-compatible Chat Completions + sandbox)."
 readme = "README.md"
 authors = [
