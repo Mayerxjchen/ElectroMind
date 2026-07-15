@@ -31,14 +31,14 @@ def test_thread_overrides_from_config():
         backend="ssh",
         ssh_host="pagent",
         ssh_config="~/.ssh/config",
-        ssh_workdir="~/agent",
+        ssh_workdir="~/pagent",
         model="deepseek-v4-flash",
     )
     assert config.thread_overrides() == {
         "backend": "ssh",
         "ssh_host": "pagent",
         "ssh_config": "~/.ssh/config",
-        "ssh_workdir": "~/agent",
+        "ssh_workdir": "~/pagent",
         "model": "deepseek-v4-flash",
     }
 
@@ -74,7 +74,7 @@ def test_config_from_file(tmp_path, monkeypatch):
     assert config.command_policy == "workdir"
     assert config.resolved_max_turns() == 12
     assert config.ssh_config == "~/.ssh/config"
-    assert config.ssh_workdir == "~/"
+    assert config.ssh_workdir == "~/pagent"
 
 
 def test_thread_id_from_cli_only(tmp_path, monkeypatch):
@@ -211,16 +211,17 @@ def test_load_project_config(tmp_path, monkeypatch):
 
 def test_find_user_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    assert find_user_config() is None
+    monkeypatch.chdir(tmp_path)
+    assert find_user_config(str(tmp_path)) is None
     user_dir = tmp_path / ".pagent"
     user_dir.mkdir()
     user_toml = user_dir / "pagent.toml"
     user_toml.write_text('[provider]\napi_key = "sk-user"\n', encoding="utf-8")
-    assert find_user_config() == user_toml
+    assert find_user_config(str(tmp_path)) == user_toml
 
 
-def test_load_user_config_under_project(tmp_path, monkeypatch):
-    """合并顺序：bundled < ~/.pagent < ./pagent.toml。"""
+def test_project_home_does_not_read_user_home(tmp_path, monkeypatch):
+    """有 ./.pagent 时只用项目 home，不混读 ~/.pagent。"""
     home = tmp_path / "home"
     project = tmp_path / "project"
     home.mkdir()
@@ -233,20 +234,23 @@ def test_load_user_config_under_project(tmp_path, monkeypatch):
         '[provider]\napi_key = "sk-user"\nmodel = "user-model"\n',
         encoding="utf-8",
     )
-    (project / "pagent.toml").write_text(
+    project_home = project / ".pagent"
+    project_home.mkdir()
+    (project_home / "pagent.toml").write_text(
         '[provider]\nmodel = "project-model"\n',
         encoding="utf-8",
     )
 
     config = load_config(workdir=str(project))
-    assert config.api_key == "sk-user"
+    assert config.api_key is None or config.api_key == ""
     assert config.model == "project-model"
 
 
-def test_explicit_config_still_merges_user(tmp_path, monkeypatch):
+def test_explicit_config_merges_active_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(tmp_path)
     user_dir = home / ".pagent"
     user_dir.mkdir()
     (user_dir / "pagent.toml").write_text(

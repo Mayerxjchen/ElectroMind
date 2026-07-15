@@ -125,7 +125,7 @@ finally:
 
 Messages are flushed at each `TurnEnd` into the conversation store configured by
 the thread. With the default JSONL backend, the path is
-`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
+`~/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ## loop_core
 
@@ -155,7 +155,7 @@ It handles the common steps in a run:
 A **thread** binds conversation history, thread config, and workspace on disk:
 
 ```text
-<cwd>/.pagent/threads/<thread_id>/
+~/.pagent/threads/<thread_id>/
   thread.toml
   workspace/
 ```

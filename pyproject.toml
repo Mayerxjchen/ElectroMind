@@ -9,6 +9,7 @@ authors = [
 requires-python = ">=3.11"
 dependencies = [
     "asyncssh>=2.24.0",
+    "ddgs>=7",
     "docstring-parser>=0.18.0",
     "openai>=2.31.0",
     "prompt-toolkit>=3.0.52",
@@ -21,7 +22,6 @@ Homepage = "https://github.com/SyncLionPaw/pagent"
 Documentation = "https://synclionpaw.github.io/pagent/"
 
 [project.optional-dependencies]
-search = ["ddgs>=7"]
 tokens = ["transformers>=4.40"]
 ssh = ["asyncssh>=2.14"]
 
@@ -41,7 +41,6 @@ module-name = ["pagent", "pagentv4", "app"]
 dev = [
     "asyncssh>=2.14",
     "coverage[toml]>=7.15.0",
-    "ddgs>=7",
     "pre-commit>=4",
     "pytest>=8",
     "pytest-asyncio>=0.24",

@@ -9,8 +9,8 @@
 
 路径来源：
 - `from_dirs(*roots)` 完全显式，上层想在哪就在哪；这是给做上层配置的用户最直接的入口。
-- `from_defaults(*extra_roots)` 会加载项目本地 `./.pagent/skills/` + 用户级
-  `~/.pagent/skills/`；`extra_roots` 会拼接在后面。
+- `from_defaults(*extra_roots)` 只加载当前 pagent home 下的 `skills/`
+  （`./.pagent` 或 `~/.pagent`，与配置/thread 同一根）；`extra_roots` 拼在后面。
 - `default_skill_roots()` 单独暴露给需要检查/组合默认路径的上层。
 """
 
@@ -25,7 +25,9 @@ from typing import Any
 import yaml
 
 from ..core.tool import FunctionTool
+from ..paths import default_pagent_home
 
+# 兼容旧引用；实际加载走 default_pagent_home()/skills。
 PROJECT_LOCAL_SKILLS_DIR = ".pagent/skills"
 USER_SKILLS_DIR = "~/.pagent/skills"
 
@@ -111,19 +113,8 @@ class SkillRegistry:
 
 
 def default_skill_roots() -> list[Path]:
-    """默认 skill 搜索路径，按加载顺序返回。
-
-    顺序：
-    1. 项目本地 `./.pagent/skills/`；
-    2. 用户级 `~/.pagent/skills/`。
-
-    只返回路径本身，不校验是否存在；`load_skills_from_root` 会静默忽略缺失目录。
-    上层需要感知有哪些路径生效时可以直接调用它。
-    """
-    return [
-        Path.cwd() / PROJECT_LOCAL_SKILLS_DIR,
-        Path(USER_SKILLS_DIR).expanduser(),
-    ]
+    """默认 skill 搜索路径：当前 pagent home 下的 ``skills/``。"""
+    return [default_pagent_home() / "skills"]
 
 
 def load_skills_from_root(root: str | Path) -> list[Skill]:

@@ -7,8 +7,8 @@ cd "$ROOT"
 
 step() { printf '\n==> %s\n' "$*"; }
 
-step "uv sync --group dev --extra search --frozen"
-uv sync --group dev --extra search --frozen
+step "uv sync --group dev --frozen"
+uv sync --group dev --frozen
 
 step "ruff check"
 uv run ruff check .

@@ -18,7 +18,7 @@ repos:
     hooks:
       - id: pytest
         name: pytest
-        entry: uv run --extra search pytest
+        entry: uv run pytest
         language: system
         pass_filenames: false
         always_run: true

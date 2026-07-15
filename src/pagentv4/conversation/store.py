@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import re
 import sqlite3
 import time
@@ -11,12 +10,13 @@ from typing import Protocol
 from urllib.parse import quote, unquote
 
 from ..core.message import Message, Messages
+from ..paths import default_pagent_home
 
 CONVERSATION_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$")
 
 
 def default_conversations_root() -> str:
-    return os.path.join(os.getcwd(), ".pagent", "conversations")
+    return str(default_pagent_home() / "conversations")
 
 
 def validate_conversation_id(conversation_id: str) -> None:

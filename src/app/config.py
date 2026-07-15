@@ -6,10 +6,11 @@ import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from pagentv4.paths import find_home_config
+
 BUNDLED_CONFIG = Path(__file__).with_name("pagent.toml")
 CONFIG_FILENAMES = ("pagent.toml",)
-# 用户级配置：与 skills 共用 ~/.pagent/（见 pagentv4.skills）。
-# 放 api_key / 默认 model 等跨项目偏好；项目 ./pagent.toml 可再覆盖。
+# 兼容旧名：用户级 home 下的配置路径（未解析项目模式时）。
 USER_CONFIG_PATH = "~/.pagent/pagent.toml"
 
 
@@ -186,18 +187,13 @@ def parse_repl_config(data: dict) -> ReplConfig:
 
 
 def find_project_config(workdir: str | None = None) -> Path | None:
-    root = Path(workdir or os.getcwd())
-    for name in CONFIG_FILENAMES:
-        path = root / name
-        if path.is_file():
-            return path
-    return None
+    """当前 cwd 若为项目模式，返回其配置文件（含遗留 ``./pagent.toml``）。"""
+    return find_home_config(workdir)
 
 
-def find_user_config() -> Path | None:
-    """`~/.pagent/pagent.toml`；不存在则返回 None（不自动创建）。"""
-    path = Path(USER_CONFIG_PATH).expanduser()
-    return path if path.is_file() else None
+def find_user_config(workdir: str | None = None) -> Path | None:
+    """当前生效 home 下的 ``pagent.toml``；不存在则返回 None。"""
+    return find_home_config(workdir)
 
 
 def load_config_file(path: Path) -> ReplConfig:
@@ -222,27 +218,23 @@ def load_config(
     """合并配置层，后层覆盖前层：
 
     1. 包内默认 ``src/app/pagent.toml``
-    2. 用户级 ``~/.pagent/pagent.toml``（跨项目，适合放 api_key）
-    3. 项目 ``./pagent.toml``；若传了 ``--config`` 则用该文件代替项目层
+    2. 当前 pagent home 的 ``pagent.toml``（``./.pagent`` 或 ``~/.pagent``，与 thread 同根）
+    3. 若传了 ``--config``，再覆盖一层
     """
     layers: list[ReplConfig] = []
 
     if BUNDLED_CONFIG.is_file():
         layers.append(load_config_file(BUNDLED_CONFIG))
 
-    user_path = find_user_config()
-    if user_path:
-        layers.append(load_config_file(user_path))
+    home_path = find_home_config(workdir)
+    if home_path:
+        layers.append(load_config_file(home_path))
 
-    explicit = Path(config_path).expanduser() if config_path else None
-    if explicit:
+    if config_path is not None:
+        explicit = Path(config_path).expanduser()
         if not explicit.is_file():
             raise FileNotFoundError(f"config not found: {explicit}")
         layers.append(load_config_file(explicit))
-    else:
-        project_path = find_project_config(workdir)
-        if project_path:
-            layers.append(load_config_file(project_path))
 
     merged = ReplConfig()
     for layer in layers:
@@ -255,7 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--config",
         default=None,
-        help="config file (default: ~/.pagent/pagent.toml then ./pagent.toml over bundled defaults)",
+        help="extra config file over bundled + active home ({./.pagent|~/.pagent}/pagent.toml)",
     )
     parser.add_argument(
         "--thread-id",

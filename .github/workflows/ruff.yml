@@ -21,7 +21,7 @@ jobs:
 
       - name: Sync dev deps, Ruff & pytest
         run: |
-          uv sync --group dev --extra search --frozen
+          uv sync --group dev --frozen
           uv run ruff check .
           uv run ruff format --check .
           uv run pytest tests/ -q

@@ -5,7 +5,7 @@ agent 可以直接操作本地文件系统。
 
 CodeRunner 可以直接构造；第一次 run 前会自动打开 sandbox。
 `backend` 可选 local / docker / podman / ssh；这里用 local，workspace 在
-`.pagent/threads/code-demo/workspace/`。
+`~/.pagent/threads/code-demo/workspace/`。
 
 Usage:
     export DEEPSEEK_API_KEY="your-key-here"

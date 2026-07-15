@@ -1202,7 +1202,7 @@ asyncio.run(main())
 
 Call `runner.run()` again — messages accumulate and persist in the conversation
 store configured by the thread. With the default JSONL backend, the path is
-`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
+`~/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ```python
 runner = await Runner.create("demo", provider, overrides={"backend": "local"})
@@ -1403,7 +1403,7 @@ finally:
 
 Messages are flushed at each `TurnEnd` into the conversation store configured by
 the thread. With the default JSONL backend, the path is
-`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
+`~/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ## loop_core
 
@@ -1433,7 +1433,7 @@ It handles the common steps in a run:
 A **thread** binds conversation history, thread config, and workspace on disk:
 
 ```text
-<cwd>/.pagent/threads/<thread_id>/
+~/.pagent/threads/<thread_id>/
   thread.toml
   workspace/
 ```
@@ -1924,7 +1924,7 @@ Flow:
 
 | `backend=` | Notes |
 |------------|-------|
-| `"local"` | Default. Thread workspace on host under `.pagent/threads/<thread_id>/workspace/` |
+| `"local"` | Default. Thread workspace on host under `~/.pagent/threads/<thread_id>/workspace/` |
 | `"docker"` | Container with bind mount |
 | `"podman"` | Same as docker, Podman CLI |
 | `"ssh"` | Remote host via asyncssh |
@@ -1961,7 +1961,7 @@ runner = await Runner.create(
 With `thread_id="demo"`:
 
 ```text
-<cwd>/.pagent/threads/demo/workspace/
+~/.pagent/threads/demo/workspace/
 ```
 
 Persistent runners get their workspace from the thread. The sandbox maps agent
@@ -1999,7 +1999,7 @@ Wording shown to the model avoids internal terms like "sandbox".
 ## Thread integration
 
 A [Thread](./core-types#thread) stores sandbox spec, messages, and workspace
-together under `.pagent/threads/<id>/`. Use this when you need the same
+together under `~/.pagent/threads/<id>/`. Use this when you need the same
 computer and conversation to survive across process restarts — see
 `examples/pagentv4/runner/sandbox.py`.
 
@@ -2007,3 +2007,32 @@ computer and conversation to survive across process restarts — see
 
 `sandbox.commands.run(..., timeout=...)` and `SandboxLimits` cap stdout,
 stderr, memory, and CPU time. Defaults are conservative; tune per workload.
+
+## Error handling
+
+All backends follow the same boundary between "the command failed" and "the
+sandbox is unusable":
+
+| Situation | How it surfaces |
+|-----------|-----------------|
+| Command ran but exited nonzero, or timed out | `CommandResult(ok=False, exit_code=..., timed_out=...)` — no exception |
+| Backend used before `start()` | `SandboxNotStartedError` |
+| `start()` failed (CLI missing, `docker run` failed, remote `$HOME` unresolved) | `SandboxError` |
+| Backend died and the guard could not restart it | `SandboxDeadError` |
+| Invalid config (missing `image` / `ssh_host`) | `ValueError` |
+| File semantics (missing path, dir without `recursive`) | `FileNotFoundError` / `IsADirectoryError` |
+
+`SandboxNotStartedError` and `SandboxDeadError` both subclass `SandboxError`,
+so a caller can catch the whole "sandbox unusable" class with a single
+`except SandboxError`:
+
+```python
+from pagentv4 import SandboxError
+
+try:
+    result = await sandbox.commands.run("build.sh")
+    if not result.ok:
+        ...  # command-level failure: inspect result.exit_code / result.stderr
+except SandboxError:
+    ...  # lifecycle-level failure: the sandbox itself is gone
+```

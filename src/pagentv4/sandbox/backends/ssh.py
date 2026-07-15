@@ -3,7 +3,7 @@
 设计要点：
 - 依赖 `asyncssh`；作为 optional extra `pagent[ssh]` 提供
 - 一次 `start()` 建立一条长连接；`close()` 关掉；所有 exec / files 走同一个 conn
-- 远端 workdir：`connection["workdir"]` 显式指定，或回退到 `~/agent`（会 mkdir -p）
+- 远端 workdir：`connection["workdir"]` 显式指定，或回退到 `~/pagent`（会 mkdir -p）
 - alive 走 `conn.is_closed()` + 一次极短 `true` 命令兜底，判断是否可用
 - Guard 层会在自愈时重跑 start()，此时会重建连接 + 重新 mkdir workdir
 
@@ -14,7 +14,7 @@ connection 支持字段（也可以用 SshConnection 类构造再 .to_dict()）�
     password    可选（若没配 key）
     client_keys 可选，list[str]，本地私钥路径
     known_hosts str | None，默认 None（跳过 host key 校验）
-    workdir     远端工作目录；缺省 "~/agent"（agent 视角）
+    workdir     远端工作目录；缺省 "~/pagent"（agent 只操作此目录）
 """
 
 from __future__ import annotations
@@ -71,7 +71,7 @@ class SshBackend:
         self.conn = await asyncssh.connect(**connect_kwargs)
         self.sftp = await self.conn.start_sftp_client()
 
-        remote = connection.get("workdir") or "~/agent"
+        remote = connection.get("workdir") or DEFAULT_REMOTE_WORKDIR
         expanded = await self.expand_remote_path(remote)
         await self.sftp_mkdirs(expanded)
         self.remote_workdir = expanded
@@ -245,7 +245,7 @@ class SshBackend:
 
 
 DEFAULT_SSH_CONFIG = "~/.ssh/config"
-DEFAULT_REMOTE_WORKDIR = "~/agent"
+DEFAULT_REMOTE_WORKDIR = "~/pagent"
 
 
 @dataclass

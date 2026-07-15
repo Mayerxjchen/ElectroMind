@@ -49,7 +49,7 @@ It mirrors the GitHub Actions that run on every push:
 
 | Local step | Workflow |
 |------------|----------|
-| `uv sync --group dev --extra search --frozen` | ruff.yml, coverage.yml |
+| `uv sync --group dev --frozen` | ruff.yml, coverage.yml |
 | `uv run ruff check .` | ruff.yml |
 | `uv run ruff format --check .` | ruff.yml |
 | `uv run pytest tests/ --cov=src …` | ruff.yml + coverage.yml |

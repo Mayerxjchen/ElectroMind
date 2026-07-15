@@ -44,7 +44,7 @@ asyncio.run(main())
 
 再次调用 `runner.run()` 会复用同一份 messages，并持久化到 thread 配置指定的
 conversation store。默认 JSONL 后端时，路径是
-`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`。
+`~/.pagent/threads/<thread_id>/messages.jsonl`。
 
 ```python
 runner = await Runner.create("demo", provider, overrides={"backend": "local"})

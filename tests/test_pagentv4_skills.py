@@ -14,8 +14,6 @@ from pagentv4 import (
     make_use_skill_tool,
 )
 from pagentv4.skills.skill import (
-    PROJECT_LOCAL_SKILLS_DIR,
-    USER_SKILLS_DIR,
     collect_resources,
     parse_skill_md,
 )
@@ -258,15 +256,18 @@ def test_use_skill_tool_description_when_empty():
     assert "暂无可用 skill" in tool.description
 
 
-def test_default_skill_roots_project_and_user(monkeypatch, tmp_path):
+def test_default_skill_roots_follow_pagent_home(monkeypatch, tmp_path):
+    home = tmp_path / "home"
+    home.mkdir()
     monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("HOME", str(home))
 
     roots = default_skill_roots()
-    assert roots == [
-        tmp_path / PROJECT_LOCAL_SKILLS_DIR,
-        Path(USER_SKILLS_DIR).expanduser(),
-    ]
+    assert roots == [home / ".pagent" / "skills"]
+
+    (tmp_path / ".pagent").mkdir()
+    roots = default_skill_roots()
+    assert roots == [tmp_path / ".pagent" / "skills"]
 
 
 def test_registry_from_defaults_accepts_extra_roots(monkeypatch, tmp_path):

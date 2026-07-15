@@ -38,7 +38,7 @@ Flow:
 
 | `backend=` | Notes |
 |------------|-------|
-| `"local"` | Default. Thread workspace on host under `.pagent/threads/<thread_id>/workspace/` |
+| `"local"` | Default. Thread workspace on host under `~/.pagent/threads/<thread_id>/workspace/` |
 | `"docker"` | Container with bind mount |
 | `"podman"` | Same as docker, Podman CLI |
 | `"ssh"` | Remote host via asyncssh |
@@ -75,7 +75,7 @@ runner = await Runner.create(
 With `thread_id="demo"`:
 
 ```text
-<cwd>/.pagent/threads/demo/workspace/
+~/.pagent/threads/demo/workspace/
 ```
 
 Persistent runners get their workspace from the thread. The sandbox maps agent
@@ -113,7 +113,7 @@ Wording shown to the model avoids internal terms like "sandbox".
 ## Thread integration
 
 A [Thread](./core-types#thread) stores sandbox spec, messages, and workspace
-together under `.pagent/threads/<id>/`. Use this when you need the same
+together under `~/.pagent/threads/<id>/`. Use this when you need the same
 computer and conversation to survive across process restarts — see
 `examples/pagentv4/runner/sandbox.py`.
 

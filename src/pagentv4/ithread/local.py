@@ -2,7 +2,7 @@
 
 目录布局：
 
-    <cwd>/.pagent/threads/<thread_id>/
+    ~/.pagent/threads/<thread_id>/
         thread.toml        # thread 配置（首次冻结）
         metainfo.json      # 面向用户的元信息（标题、时间戳、对话摘要）
         workspace/         # 沙箱工作目录
@@ -23,6 +23,7 @@ from pathlib import Path
 
 from ..conversation import JsonlConversationStore, SqliteConversationStore
 from ..core.message import Messages
+from ..paths import default_pagent_home
 from ..sandbox import Sandbox, open_sandbox_for_spec
 from . import (
     METAINFO_FILENAME,
@@ -67,8 +68,8 @@ def dump_thread_toml(payload: dict) -> str:
 
 
 def default_threads_root() -> Path:
-    """`<cwd>/.pagent/threads/`；要自定义就给 `Thread.open(root=...)`。"""
-    return Path(os.getcwd()) / ".pagent" / "threads"
+    """``~/.pagent/threads/``；要自定义就给 `Thread.open(root=...)`。"""
+    return default_pagent_home() / "threads"
 
 
 @dataclass

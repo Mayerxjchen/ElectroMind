@@ -13,8 +13,8 @@ from pagentv4.ithread import validate_thread_id
 from pagentv4.runtime.thread import default_threads_root
 
 
-def test_default_threads_root_is_cwd_dotpagent(monkeypatch, tmp_path):
-    monkeypatch.chdir(tmp_path)
+def test_default_threads_root_is_user_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
     assert default_threads_root() == tmp_path / ".pagent" / "threads"
 
 

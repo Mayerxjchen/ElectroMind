@@ -47,7 +47,7 @@ def parse_args():
     parser.add_argument(
         "--thread-id",
         default="sandbox-demo",
-        help="thread id，工作目录落到 <cwd>/.pagent/threads/<id>/workspace/",
+        help="thread id，工作目录落到 ~/.pagent/threads/<id>/workspace/",
     )
     parser.add_argument(
         "--model",

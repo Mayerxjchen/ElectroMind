@@ -39,8 +39,8 @@ class FakeProvider:
         return stream()
 
 
-def test_default_conversations_root_is_project_local(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_default_conversations_root_is_user_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
     assert default_conversations_root() == str(tmp_path / ".pagent" / "conversations")
 
 

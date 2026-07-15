@@ -71,7 +71,7 @@ class SandboxSpec:
     """Sandbox 启动参数。
 
     workspace 与 workdir 二者选一：
-    - workspace_id: 逻辑名，宿主自动映射到 <cwd>/.pagent/workspaces/<id>
+    - workspace_id: 逻辑名，宿主自动映射到 ~/.pagent/workspaces/<id>
     - workdir:      直接给宿主绝对路径
 
     home 是「agent 视角的工作根目录」（虚拟路径）。

@@ -1,4 +1,9 @@
-"""首次使用：检测缺失 API Key，引导写入 ``~/.pagent/pagent.toml``。
+"""首次使用：检测缺失 API Key，引导写入当前 pagent home 的 ``pagent.toml``。
+
+Home 二选一（与 thread / skills 同根）：
+
+- A ``./.pagent``（项目目录下已有 ``.pagent/`` 或遗留 ``./pagent.toml``）
+- B ``~/.pagent``
 
 Setup 收集 provider 三项：
 
@@ -16,9 +21,10 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from .config import USER_CONFIG_PATH, ReplConfig, load_config
+from pagentv4.paths import home_config_path
 
-USER_CONFIG = Path(USER_CONFIG_PATH).expanduser()
+from .config import ReplConfig, load_config
+
 DEFAULT_MODEL = "deepseek-v4-flash"
 
 
@@ -65,21 +71,22 @@ def upsert_provider_api_key(text: str, api_key: str) -> str:
     return upsert_provider_field(text, "api_key", api_key)
 
 
-def write_user_provider(setup: ProviderSetup) -> Path:
-    """写入 ``~/.pagent/pagent.toml`` 的 provider 段；目录不存在则创建。"""
+def write_user_provider(setup: ProviderSetup, *, cwd: str | Path | None = None) -> Path:
+    """写入当前 pagent home 的 ``pagent.toml`` provider 段；目录不存在则创建。"""
     key = setup.api_key.strip()
     if not key:
         raise ValueError("api_key 不能为空")
     model = (setup.model or DEFAULT_MODEL).strip() or DEFAULT_MODEL
     base_url = setup.base_url.strip() if setup.base_url else ""
 
-    USER_CONFIG.parent.mkdir(parents=True, exist_ok=True)
-    if USER_CONFIG.is_file():
-        text = USER_CONFIG.read_text(encoding="utf-8")
+    path = home_config_path(cwd)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_file():
+        text = path.read_text(encoding="utf-8")
     else:
         text = (
-            "# 用户级 pagent 配置（跨项目）\n"
-            "# 合并顺序：bundled < ~/.pagent/pagent.toml < ./pagent.toml < CLI\n"
+            "# pagent home 配置（与 threads/skills 同目录）\n"
+            "# home = ./.pagent（项目）或 ~/.pagent（用户）\n"
             "\n"
             "[provider]\n"
         )
@@ -91,12 +98,12 @@ def write_user_provider(setup: ProviderSetup) -> Path:
     else:
         text = remove_provider_field(text, "base_url")
 
-    USER_CONFIG.write_text(text, encoding="utf-8")
+    path.write_text(text, encoding="utf-8")
     try:
-        os.chmod(USER_CONFIG, 0o600)
+        os.chmod(path, 0o600)
     except OSError:
         pass
-    return USER_CONFIG
+    return path
 
 
 def write_user_api_key(
@@ -118,16 +125,16 @@ def _read_line(prompt: str, *, default: str = "") -> str:
 
 
 def interactive_setup(*, stream=None) -> Path:
-    """终端交互：收集 api_key / model / base_url 并写入用户配置。"""
+    """终端交互：收集 api_key / model / base_url 并写入当前 home 配置。"""
     out = stream or sys.stderr
+    path = home_config_path()
     if not sys.stdin.isatty():
         raise SystemExit(
-            "需要 API Key：运行交互式 setup，或写入 ~/.pagent/pagent.toml，"
-            "或 export DEEPSEEK_API_KEY"
+            f"需要 API Key：运行交互式 setup，或写入 {path}，或 export DEEPSEEK_API_KEY"
         )
 
     out.write("未检测到 API Key。首次使用请完成 setup。\n")
-    out.write(f"将写入：{USER_CONFIG}\n")
+    out.write(f"将写入：{path}\n")
     out.write("api_key 必填；model / base_url 可回车跳过（用默认）。\n")
     try:
         key = getpass.getpass("API Key: ")

@@ -1,8 +1,8 @@
 """完整 thread 生命周期：thread 目录 + sandbox + 会话持久化。
 
 用 Runner.create() 打开一个 thread，自动创建：
-- .pagent/threads/<thread_id>/thread.toml  配置
-- .pagent/threads/<thread_id>/workspace/   沙箱工作目录
+- ~/.pagent/threads/<thread_id>/thread.toml  配置
+- ~/.pagent/threads/<thread_id>/workspace/   沙箱工作目录
 - 会话文件                                  对话历史
 
 Runner.create() 会把 sandbox 描述、skills 提示和用户 system 拼成最终 system

@@ -2,11 +2,11 @@
 
 规则：
 - 显式 workdir：直接使用（转成绝对路径），负责创建目录。
-- 显式 workspace_id：映射到 <cwd>/.pagent/workspaces/<id>，同名沙箱共享目录。
+- 显式 workspace_id：映射到 ~/.pagent/workspaces/<id>，同名沙箱共享目录。
 - 都不给：拒绝，避免一次性沙箱丢数据。
 - 两者都给：workdir 优先，workspace_id 忽略。
 
-要自定义根位置就传显式 workdir；默认根固定在 <cwd>/.pagent/workspaces。
+要自定义根位置就传显式 workdir；默认根固定在 ~/.pagent/workspaces。
 """
 
 from __future__ import annotations
@@ -14,11 +14,13 @@ from __future__ import annotations
 import os
 import re
 
+from ..paths import default_pagent_home
+
 WORKSPACE_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,63}$")
 
 
 def default_workspaces_root() -> str:
-    return os.path.join(os.getcwd(), ".pagent", "workspaces")
+    return str(default_pagent_home() / "workspaces")
 
 
 def resolve_workdir(*, workspace_id: str | None, workdir: str | None) -> str:

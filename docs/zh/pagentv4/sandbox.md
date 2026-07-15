@@ -35,7 +35,7 @@ finally:
 
 | `backend=` | 说明 |
 |------------|------|
-| `"local"` | 默认。thread workspace 在 `<cwd>/.pagent/threads/<thread_id>/workspace/` |
+| `"local"` | 默认。thread workspace 在 `~/.pagent/threads/<thread_id>/workspace/` |
 | `"docker"` | 容器 + bind mount |
 | `"podman"` | 同 docker，用 Podman CLI |
 | `"ssh"` | 经 asyncssh 连远端 |
@@ -72,7 +72,7 @@ runner = await Runner.create(
 `thread_id="demo"` 时：
 
 ```text
-<cwd>/.pagent/threads/demo/workspace/
+~/.pagent/threads/demo/workspace/
 ```
 
 持久化 runner 从 thread 获取 workspace。sandbox 把 agent 看到的 `/home/agent` 下路径映射到此目录。
@@ -107,7 +107,7 @@ async with await Sandbox.create(backend="local", workspace_id="demo") as box:
 
 ## 与 Thread 集成
 
-[Thread](./core-types#thread) 在 `.pagent/threads/<id>/` 下同时保存
+[Thread](./core-types#thread) 在 `~/.pagent/threads/<id>/` 下同时保存
 sandbox spec、消息和 workspace。进程重启后仍要同一台电脑和同一段对话时用——见
 `examples/pagentv4/runner/sandbox.py`。
 

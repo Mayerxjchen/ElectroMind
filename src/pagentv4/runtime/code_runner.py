@@ -83,7 +83,7 @@ class CodeRunner(BaseRunner):
         container_ttl_seconds: int | None = None,
         ssh_host: str | None = None,
         ssh_config: str = "~/.ssh/config",
-        ssh_workdir: str = "~/agent",
+        ssh_workdir: str = "~/pagent",
         command_policy: str = "workdir",
         # thread / conversation 配置
         thread_id: str | None = None,

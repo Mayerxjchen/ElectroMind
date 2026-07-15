@@ -42,7 +42,7 @@ async def main():
         await runner.close()
 
     print(
-        "\n对话已保存到 .pagent/threads/conversation-demo/messages.jsonl，"
+        "\n对话已保存到 ~/.pagent/threads/conversation-demo/messages.jsonl，"
         f"消息条数：{len(runner.messages.data)}"
     )
 

@@ -76,7 +76,7 @@ class ThreadSpec:
 
     ssh_host: str | None = toml_field("ssh", "host", None)
     ssh_config: str = toml_field("ssh", "config", "~/.ssh/config")
-    ssh_workdir: str = toml_field("ssh", "workdir", "~/agent")
+    ssh_workdir: str = toml_field("ssh", "workdir", "~/pagent")
 
     model: str = toml_field("agent", "model", "deepseek-v4-flash")
     system: str = toml_field("agent", "system", "")

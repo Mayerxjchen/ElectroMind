@@ -1,7 +1,7 @@
 # pagent VS Code 插件
 
 把 pagent Agent 接进 VS Code 的插件，按 20 课渐进式实现，最终对齐 Cursor Agent 模式。
-课程大纲见 [ROADMAP.md](./ROADMAP.md)。
+课程大纲见 [ROADMAP.md](https://github.com/SyncLionPaw/pagent/blob/main/editors/vscode/ROADMAP.md)。
 
 本目录是 monorepo 的一部分，走独立的 npm 工具链，不进 PyPI 发布包
 （`pyproject.toml` 的 `module-name` 只打 `src/` 下的 Python 包）。
@@ -21,7 +21,7 @@ uv tool install --editable --force .
 ```
 
 插件默认启动 `pagent --wire`，**不再**在打开的工作区里 `uv run`。
-工作区目录只用来落会话（`<workspace>/.pagent/threads/`）。
+数据根二选一（配置 / threads / skills 同根）：工作区有 `.pagent/`（或根目录遗留 `pagent.toml`）用 `./.pagent`，否则用 `~/.pagent`。
 
 ```bash
 cd editors/vscode
@@ -62,7 +62,7 @@ Python 侧新增 `pagent --wire`（[src/app/wire.py](../../src/app/wire.py)）�
   高对比度主题下给气泡补明显描边。
 - 第 10 课：多轮对话与会话恢复。多轮天然保持（同一子进程/thread 累积历史）。会话级操作
   收进视图原生标题栏（与「PAGENT: CHAT」同一行）：「新会话」发 `{"cmd":"reset"}`，Python 侧
-  关旧 runner、开一个干净 `thread-<时间戳>`；「恢复会话」由宿主读工作区 `.pagent/threads/`
+  关旧 runner、开一个干净 `thread-<时间戳>`；「恢复会话」由宿主读当前 home 的 `threads/`
   目录名列出已有 thread，`showQuickPick` 选中后发 `{"cmd":"resume","thread_id":...}`，Python 侧
   切到该 thread。reset/resume 后端都回发一条 `HistoryReplay` 控制事件（`params.messages` 是规整
   后的历史数组，空数组表示新会话），前端据此清屏并逐条重建气泡/思考面板/工具卡。

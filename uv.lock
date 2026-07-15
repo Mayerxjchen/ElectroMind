@@ -1030,6 +1030,7 @@ version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "asyncssh" },
+    { name = "ddgs" },
     { name = "docstring-parser" },
     { name = "openai" },
     { name = "prompt-toolkit" },
@@ -1038,9 +1039,6 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
-search = [
-    { name = "ddgs" },
-]
 ssh = [
     { name = "asyncssh" },
 ]
@@ -1052,7 +1050,6 @@ tokens = [
 dev = [
     { name = "asyncssh" },
     { name = "coverage", extra = ["toml"] },
-    { name = "ddgs" },
     { name = "pre-commit" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
@@ -1064,7 +1061,7 @@ dev = [
 requires-dist = [
     { name = "asyncssh", specifier = ">=2.24.0" },
     { name = "asyncssh", marker = "extra == 'ssh'", specifier = ">=2.14" },
-    { name = "ddgs", marker = "extra == 'search'", specifier = ">=7" },
+    { name = "ddgs", specifier = ">=7" },
     { name = "docstring-parser", specifier = ">=0.18.0" },
     { name = "openai", specifier = ">=2.31.0" },
     { name = "prompt-toolkit", specifier = ">=3.0.52" },
@@ -1072,13 +1069,12 @@ requires-dist = [
     { name = "tiktoken", specifier = ">=0.7.0" },
     { name = "transformers", marker = "extra == 'tokens'", specifier = ">=4.40" },
 ]
-provides-extras = ["search", "tokens", "ssh"]
+provides-extras = ["tokens", "ssh"]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "asyncssh", specifier = ">=2.14" },
     { name = "coverage", extras = ["toml"], specifier = ">=7.15.0" },
-    { name = "ddgs", specifier = ">=7" },
     { name = "pre-commit", specifier = ">=4" },
     { name = "pytest", specifier = ">=8" },
     { name = "pytest-asyncio", specifier = ">=0.24" },

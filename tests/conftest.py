@@ -14,3 +14,9 @@ PROXY_ENV_VARS = (
 def clear_proxy_env(monkeypatch):
     for name in PROXY_ENV_VARS:
         monkeypatch.delenv(name, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def isolate_pagent_home(tmp_path, monkeypatch):
+    """默认 ``~/.pagent/*`` 落到测试临时目录，避免污染真实 home。"""
+    monkeypatch.setenv("HOME", str(tmp_path))

@@ -17,7 +17,7 @@ command_policy = "workdir"  # "workdir" | "allowlist" | "denylist"
 [ssh]
 host = null                 # SSH 后端时的主机名（对应 ~/.ssh/config 里的 Host）
 config = "~/.ssh/config"    # ssh config 文件路径
-workdir = "~/agent"         # 远端工作目录
+workdir = "~/pagent"        # 远端工作目录（登录目录下的 pagent/）
 
 [agent]
 model = "deepseek-v4-flash"  # 默认模型

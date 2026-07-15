@@ -6,6 +6,10 @@
   "publisher": "synclionpaw",
   "private": true,
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SyncLionPaw/pagent.git"
+  },
   "engines": {
     "vscode": "^1.90.0"
   },
@@ -142,7 +146,9 @@
     "//watch": "开发用：改动即重打包，配合 F5 调试。",
     "watch": "node esbuild.js --watch",
     "//check": "只做类型检查，不产出文件。",
-    "check": "tsc --noEmit"
+    "check": "tsc --noEmit",
+    "//package": "打 .vsix；monorepo 子目录需 baseContentUrl，否则 README 相对链接会指到仓库根。",
+    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/SyncLionPaw/pagent/blob/main/editors/vscode --baseImagesUrl https://github.com/SyncLionPaw/pagent/raw/main/editors/vscode"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

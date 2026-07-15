@@ -42,18 +42,18 @@ def test_upsert_appends_provider_section():
 def test_write_user_provider_full(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
-    from app import setup as setup_mod
-
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setattr(setup_mod, "USER_CONFIG", home / ".pagent" / "pagent.toml")
+    monkeypatch.chdir(tmp_path)
 
     path = write_user_provider(
         ProviderSetup(
             api_key="sk-test",
             model="my-model",
             base_url="https://example.com/v1",
-        )
+        ),
+        cwd=tmp_path,
     )
+    assert path == home / ".pagent" / "pagent.toml"
     text = path.read_text(encoding="utf-8")
     assert 'api_key = "sk-test"' in text
     assert 'model = "my-model"' in text
@@ -68,12 +68,12 @@ def test_write_user_provider_clears_base_url(tmp_path, monkeypatch):
         '[provider]\napi_key = "old"\nbase_url = "https://old"\n',
         encoding="utf-8",
     )
-    from app import setup as setup_mod
-
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setattr(setup_mod, "USER_CONFIG", cfg)
+    monkeypatch.chdir(tmp_path)
 
-    write_user_provider(ProviderSetup(api_key="sk-new", model=DEFAULT_MODEL))
+    write_user_provider(
+        ProviderSetup(api_key="sk-new", model=DEFAULT_MODEL), cwd=tmp_path
+    )
     text = cfg.read_text(encoding="utf-8")
     assert 'api_key = "sk-new"' in text
     assert "base_url" not in text
@@ -82,10 +82,8 @@ def test_write_user_provider_clears_base_url(tmp_path, monkeypatch):
 def test_write_user_api_key_creates_file(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
-    from app import setup as setup_mod
-
     monkeypatch.setenv("HOME", str(home))
-    monkeypatch.setattr(setup_mod, "USER_CONFIG", home / ".pagent" / "pagent.toml")
+    monkeypatch.chdir(tmp_path)
 
     path = write_user_api_key("sk-test-key")
     text = path.read_text(encoding="utf-8")

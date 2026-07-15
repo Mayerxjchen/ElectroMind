@@ -30,7 +30,7 @@ async def test_resolve_workdir_direct(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resolve_workdir_workspace_id(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
     resolved = resolve_workdir(workspace_id="alpha", workdir=None)
     assert resolved == str((tmp_path / ".pagent" / "workspaces" / "alpha").resolve())
     assert os.path.isdir(resolved)
@@ -42,13 +42,13 @@ def test_resolve_workdir_requires_target():
 
 
 def test_resolve_workdir_rejects_bad_id(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("HOME", str(tmp_path))
     with pytest.raises(ValueError):
         resolve_workdir(workspace_id="../escape", workdir=None)
 
 
-def test_default_workspaces_root_is_project_local(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
+def test_default_workspaces_root_is_user_home(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
     resolved = resolve_workdir(workspace_id="beta", workdir=None)
     assert resolved == str((tmp_path / ".pagent" / "workspaces" / "beta").resolve())
     assert os.path.isdir(resolved)

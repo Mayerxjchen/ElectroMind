@@ -47,7 +47,7 @@ asyncio.run(main())
 
 Call `runner.run()` again — messages accumulate and persist in the conversation
 store configured by the thread. With the default JSONL backend, the path is
-`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`.
+`~/.pagent/threads/<thread_id>/messages.jsonl`.
 
 ```python
 runner = await Runner.create("demo", provider, overrides={"backend": "local"})

@@ -22,6 +22,7 @@ import type {
 } from "../protocol";
 import { AgentBridge } from "./agent";
 import { ensurePagentCli, resolveCliCommand } from "./cli";
+import { homeThreadsRoot } from "./home";
 import { ensureApiKeySetup, promptAndSaveProvider } from "./setup";
 import { parseWireLine } from "./wire";
 
@@ -265,7 +266,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.pagentCommand = cli;
-    const ok = await promptAndSaveProvider(this.output);
+    const ok = await promptAndSaveProvider(this.output, this.workspaceRoot());
     if (!ok) {
       return;
     }
@@ -282,14 +283,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.ensureBridge().send({ cmd: "reset" });
   }
 
-  /** 标题栏「恢复会话」：列出工作区已有 thread 供选择，选中后让后端切换并回放历史。
+  /** 标题栏「恢复会话」：列出当前 pagent home 下 threads 供选择，选中后让后端切换并回放历史。
    *  列表用 metainfo.json 里的 title 面向用户展示，thread id（内部编号）降级为副标题。 */
   async resumeSession(): Promise<void> {
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-    if (!cwd) {
-      void vscode.window.showWarningMessage("pagent：未打开工作区，无法列出会话。");
-      return;
-    }
     const threads = await this.listThreads(cwd);
     if (threads.length === 0) {
       void vscode.window.showInformationMessage("pagent：还没有可恢复的会话。");
@@ -314,12 +311,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.ensureBridge().send({ cmd: "resume", thread_id: picked.description });
   }
 
-  /** 读工作区 .pagent/threads/ 下的 thread：目录名当 id，metainfo.json 的 title 当展示名。
+  /** 读当前 home 的 threads/：目录名当 id，metainfo.json 的 title 当展示名。
    *  缺目录返回空；缺 metainfo 或读失败则 title 留空，由调用方降级用 id。
    *  thread id 已含时间戳，倒序让更近的排前面。 */
-  private async listThreads(cwd: string): Promise<{ id: string; title: string }[]> {
-    // vscode.workspace.fs 是跨平台的虚拟文件系统 API，比 node:fs 更适合插件里读工作区。
-    const root = vscode.Uri.joinPath(vscode.Uri.file(cwd), ".pagent", "threads");
+  private async listThreads(
+    workspaceRoot?: string,
+  ): Promise<{ id: string; title: string }[]> {
+    const root = vscode.Uri.file(homeThreadsRoot(workspaceRoot));
     let entries: [string, vscode.FileType][];
     try {
       entries = await vscode.workspace.fs.readDirectory(root);
@@ -368,7 +366,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       sshConfig: this.sshConfigPath(),
       yolo: this.yoloMode(),
     });
-    // cwd = 当前工作区：只影响会话落盘 <workspace>/.pagent/，不用于找 Python 包。
+    // cwd = 当前工作区：决定 pagent home（./.pagent 或 ~/.pagent），配置/thread 同根。
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
     this.recentStderr = "";

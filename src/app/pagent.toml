@@ -1,5 +1,6 @@
 # pagent 配置项：provider / sandbox / ssh / skills / max_turns
-# 项目根 pagent.toml 可覆盖 bundled 默认值
+# 生效 home 二选一（配置 / threads / skills 同根）：
+#   A ./.pagent/pagent.toml   B ~/.pagent/pagent.toml
 
 max_turns = 12
 
@@ -11,8 +12,8 @@ user_label = "you" # 输出区 / 输入行用户前缀：{label}>
 # mode = "auto"  # prompt（默认，终端审批）| auto（自动批准 run_command / copy_from_host）
 
 [provider]
-# api_key 请写到 ~/.pagent/pagent.toml（用户级），勿提交进仓库。
-# 也可 export DEEPSEEK_API_KEY；项目 ./pagent.toml 可再覆盖。
+# api_key 请写到当前 home 的 pagent.toml，勿提交进仓库。
+# 也可 export DEEPSEEK_API_KEY。
 api_key = ""
 model = "deepseek-v4-flash"
 # base_url = ""  # 可选，覆盖 DeepSeek 默认 endpoint
@@ -33,8 +34,9 @@ image = "pagent:latest"
 [ssh]
 config_path = "~/.ssh/config"
 host = "machine_root" # ~/.ssh/config 里的 Host 别名
-workdir = "~/"
+# 远端工作目录：在登录家目录下建 pagent/，agent 只能操作该目录（会自动 mkdir）
+workdir = "~/pagent"
 
 [skills]
-# 额外扫描路径；还会自动加载 ./.pagent/skills/、~/.pagent/skills/
+# 额外扫描路径；还会自动加载当前 home 下的 skills/
 roots = []

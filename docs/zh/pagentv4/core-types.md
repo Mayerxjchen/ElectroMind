@@ -121,7 +121,7 @@ finally:
 
 消息会在每个 `TurnEnd` 后写入 thread 配置指定的 conversation store。
 默认 JSONL 后端时，路径是：
-`<cwd>/.pagent/threads/<thread_id>/messages.jsonl`。
+`~/.pagent/threads/<thread_id>/messages.jsonl`。
 
 ## loop_core
 
@@ -153,7 +153,7 @@ finally:
 **thread** 把对话历史、thread 配置和 workspace 绑在磁盘上：
 
 ```text
-<cwd>/.pagent/threads/<thread_id>/
+~/.pagent/threads/<thread_id>/
   thread.toml
   workspace/
 ```
