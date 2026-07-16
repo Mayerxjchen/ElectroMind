@@ -74,6 +74,8 @@ class ThreadSpec:
     )
     command_policy: str = toml_field("sandbox", "command_policy", "workdir")
 
+    project_path: str | None = toml_field("project", "path", None)
+
     ssh_host: str | None = toml_field("ssh", "host", None)
     ssh_config: str = toml_field("ssh", "config", "~/.ssh/config")
     ssh_workdir: str = toml_field("ssh", "workdir", "~/pagent")

@@ -39,15 +39,18 @@ from __future__ import annotations
 
 import asyncio
 import json
+import posixpath
 import sys
+import tomllib
 from dataclasses import replace
 from datetime import datetime
 
 from pagentv4 import ToolCallBegin
 from pagentv4.adapters.acp import encode_event_line
 from pagentv4.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
+from pagentv4.ithread import SPEC_FILENAME, ThreadSpec
 from pagentv4.paths import resolve_pagent_home
-from pagentv4.runtime.thread import default_threads_root
+from pagentv4.runtime.thread import Thread, default_threads_root
 
 from .clean import clean_pagent, format_clean_report, iter_thread_dirs
 from .config import ReplConfig
@@ -67,6 +70,19 @@ def emit_line(line: str) -> None:
     """把一行事件写到 stdout。line 已自带换行（encode_event_line 的约定）。"""
     sys.stdout.write(line)
     sys.stdout.flush()
+
+
+def runner_project_path(runner) -> str:
+    """当前 thread 绑定的 project 目录。"""
+    return str(runner.thread.workspace_path)
+
+
+def command_project_path(command: dict) -> str | None:
+    """读取宿主传来的 project 目录；空值视为未指定。"""
+    value = command.get("project_path")
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
 
 
 def parse_command(line: str) -> dict | None:
@@ -100,8 +116,8 @@ def emit_permit_request(event: ToolCallBegin) -> None:
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
-def history_messages(runner) -> list[dict]:
-    """把 runner.messages 规整成前端易渲染的简单数组，供 HistoryReplay 回放。
+def history_message_items(messages) -> list[dict]:
+    """把 Messages 规整成前端易渲染的简单数组，供 HistoryReplay 回放。
 
     每个 Message 存一个 content chunk（流式 text/thinking 已在存储层合并成一行），
     这里按 chunk 类型摊平成扁平记录，字段与前端渲染一一对应：
@@ -113,7 +129,7 @@ def history_messages(runner) -> list[dict]:
     system 消息不回放（前端不展示系统提示）。
     """
     out: list[dict] = []
-    for message in runner.messages.data:
+    for message in messages.data:
         content = message.content
         if isinstance(content, TextChunk):
             if message.role == "system":
@@ -141,6 +157,31 @@ def history_messages(runner) -> list[dict]:
     return out
 
 
+def history_messages(runner) -> list[dict]:
+    """把 runner.messages 规整成前端易渲染的简单数组。"""
+    return history_message_items(runner.messages)
+
+
+def emit_history_replay_payload(
+    *,
+    thread_id: str,
+    title: str,
+    project_path: str,
+    messages: list[dict],
+) -> None:
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "HistoryReplay",
+        "params": {
+            "thread_id": thread_id,
+            "title": title,
+            "project_path": project_path,
+            "messages": messages,
+        },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
 def emit_history_replay(runner) -> None:
     """补发一条 HistoryReplay 控制事件，让前端重建会话视图。
 
@@ -148,16 +189,22 @@ def emit_history_replay(runner) -> None:
     与 PermitRequest 一样是 wire 层控制事件，套 JSON-RPC notification 形状。
     metainfo 里的 title 一并带上，前端据此在标题栏/列表展示面向用户的名字。
     """
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "HistoryReplay",
-        "params": {
-            "thread_id": runner.thread.id,
-            "title": runner.thread.load_metainfo().get("title", ""),
-            "messages": history_messages(runner),
-        },
-    }
-    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+    emit_history_replay_payload(
+        thread_id=runner.thread.id,
+        title=runner.thread.load_metainfo().get("title", ""),
+        project_path=runner_project_path(runner),
+        messages=history_messages(runner),
+    )
+
+
+def emit_thread_history_replay(thread, project_path: str | None = None) -> None:
+    """只读取 thread 配置与消息，不打开 sandbox，用于轻量切换会话。"""
+    emit_history_replay_payload(
+        thread_id=thread.id,
+        title=thread.load_metainfo().get("title", ""),
+        project_path=project_path or str(thread.workspace_path),
+        messages=history_message_items(thread.load_messages()),
+    )
 
 
 def emit_current_thread(runner) -> None:
@@ -168,12 +215,31 @@ def emit_current_thread(runner) -> None:
         "params": {
             "thread_id": runner.thread.id,
             "title": runner.thread.load_metainfo().get("title", ""),
+            "project_path": runner_project_path(runner),
         },
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
-def list_thread_entries() -> list[dict[str, str]]:
+def thread_project_path(thread_dir) -> str | None:
+    """读取 thread.toml 中绑定的 project 目录；旧 thread 没绑定时返回 None。"""
+    spec_path = thread_dir / SPEC_FILENAME
+    if spec_path.is_file():
+        try:
+            spec = ThreadSpec.from_dict(load_toml_file(spec_path))
+            if spec.project_path:
+                return spec.project_path
+        except (OSError, ValueError):
+            pass
+    return None
+
+
+def load_toml_file(path) -> dict:
+    with path.open("rb") as fp:
+        return tomllib.load(fp)
+
+
+def list_thread_entries(project_path: str | None = None) -> list[dict[str, str]]:
     """按当前 cwd 解析的 pagent home 列出可恢复 thread（与落盘同一判定）。"""
     entries: list[dict[str, str]] = []
     for thread_dir in sorted(
@@ -190,11 +256,17 @@ def list_thread_entries() -> list[dict[str, str]]:
                 meta = {}
             raw = meta.get("title", "")
             title = raw if isinstance(raw, str) else ""
-        entries.append({"id": thread_dir.name, "title": title})
+        entries.append(
+            {
+                "id": thread_dir.name,
+                "title": title,
+                "project_path": thread_project_path(thread_dir) or project_path or "",
+            }
+        )
     return entries
 
 
-def emit_thread_list() -> None:
+def emit_thread_list(project_path: str | None = None) -> None:
     """下发 ThreadList：home / threads_root 与 threads，供前端「恢复会话」。"""
     home = resolve_pagent_home()
     threads_root = default_threads_root()
@@ -204,7 +276,134 @@ def emit_thread_list() -> None:
         "params": {
             "home": str(home),
             "threads_root": str(threads_root),
-            "threads": list_thread_entries(),
+            "threads": list_thread_entries(project_path),
+        },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def resolved_backend_name(runner) -> str:
+    """返回当前运行 sandbox 的真实 backend 名称。"""
+    backend = runner.sandbox.backend
+    inner = getattr(backend, "inner", backend)
+    class_name = inner.__class__.__name__
+    if class_name == "LocalBackend":
+        return "local"
+    if class_name == "DockerBackend":
+        return "docker"
+    if class_name == "PodmanBackend":
+        return "podman"
+    if class_name == "SshBackend":
+        return "ssh"
+    return runner.thread.spec.backend
+
+
+def emit_sandbox_status_payload(
+    *,
+    thread_id: str,
+    backend: str,
+    alive: bool,
+    workdir: str,
+) -> None:
+    """下发一条 SandboxStatus 事件。"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "SandboxStatus",
+        "params": {
+            "thread_id": thread_id,
+            "backend": backend,
+            "alive": alive,
+            "workdir": workdir,
+        },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+async def emit_sandbox_status(runner) -> None:
+    """下发当前 sandbox 的类型与存活状态，供宿主顶部状态栏展示。"""
+    if runner is None:
+        emit_sandbox_status_payload(
+            thread_id="",
+            backend="",
+            alive=False,
+            workdir="",
+        )
+        return
+
+    backend = resolved_backend_name(runner)
+    alive = False
+    try:
+        alive = await asyncio.wait_for(runner.sandbox.backend.alive(), timeout=3)
+    except Exception as exc:
+        log(f"[wire] sandbox_status probe failed: {exc}")
+
+    emit_sandbox_status_payload(
+        thread_id=runner.thread.id,
+        backend=backend,
+        alive=alive,
+        workdir=runner.sandbox.workdir,
+    )
+
+
+async def build_sandbox_tree(runner, virtual_path: str, prefix: str = "") -> list[dict]:
+    """递归列出当前 sandbox workdir 的目录树。
+
+    统一走运行中的 sandbox 接口，而不是猜本地磁盘路径，这样 local/container/ssh
+    都能返回同一语义的树。
+    """
+    try:
+        entries = await runner.sandbox.files.list(virtual_path)
+    except Exception as exc:
+        log(f"[wire] sandbox_tree skip {virtual_path!r}: {exc}")
+        return []
+    nodes: list[dict] = []
+    for entry in entries:
+        node_id = f"{prefix}/{entry.name}" if prefix else entry.name
+        if entry.is_dir:
+            child_path = posixpath.join(virtual_path, entry.name)
+            children = await build_sandbox_tree(runner, child_path, node_id)
+            nodes.append(
+                {
+                    "id": node_id,
+                    "label": entry.name,
+                    "kind": "dir",
+                    "count": len(children),
+                    "children": children,
+                }
+            )
+            continue
+        nodes.append(
+            {
+                "id": node_id,
+                "label": entry.name,
+                "kind": "file",
+            }
+        )
+    return nodes
+
+
+async def emit_sandbox_tree(runner) -> None:
+    """下发当前 sandbox workdir 的目录树，供宿主渲染右侧文件树。"""
+    if runner is None:
+        payload = {
+            "jsonrpc": "2.0",
+            "method": "SandboxTree",
+            "params": {
+                "thread_id": "",
+                "workdir": "",
+                "nodes": [],
+            },
+        }
+        emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+        return
+
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "SandboxTree",
+        "params": {
+            "thread_id": runner.thread.id,
+            "workdir": runner.sandbox.workdir,
+            "nodes": await build_sandbox_tree(runner, runner.sandbox.home),
         },
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -380,20 +579,40 @@ def turn_active(state: dict) -> bool:
     return task is not None and not task.done()
 
 
-async def open_fresh_runner(config: ReplConfig):
+async def open_fresh_runner(config: ReplConfig, project_path: str | None = None):
     """开一个干净会话：thread_id 置空，让 open_runner 生成新的 thread-<时间戳>。"""
+    if project_path is not None:
+        config = replace(config, project_path=project_path)
     return await open_runner(replace(config, thread_id=None))
 
 
-async def open_thread_runner(config: ReplConfig, thread_id: str):
+async def open_thread_runner(
+    config: ReplConfig, thread_id: str, project_path: str | None = None
+):
     """切到指定 thread：沿用其磁盘上的 spec 与历史消息（Runner.create 会载入）。"""
+    if project_path is not None:
+        config = replace(config, project_path=project_path)
     return await open_runner(replace(config, thread_id=thread_id))
 
 
-async def ensure_runner(runner, config: ReplConfig):
+def open_thread_history(thread_id: str, project_path: str | None = None):
+    """轻量打开 thread：只读 thread.toml/metainfo/messages，不启动 sandbox。"""
+    overrides = {"project_path": project_path} if project_path else None
+    return Thread.open(thread_id, overrides=overrides)
+
+
+async def ensure_runner(runner, config: ReplConfig, state: dict):
     """惰性打开 runner：进程先 ready 收命令，真正要用会话时再唤醒沙箱。"""
     if runner is not None:
         return runner
+    thread_id = state.get("thread_id")
+    if isinstance(thread_id, str) and thread_id:
+        project_path = state.get("project_path")
+        return await open_thread_runner(
+            config,
+            thread_id,
+            project_path if isinstance(project_path, str) else None,
+        )
     return await open_fresh_runner(config)
 
 
@@ -402,7 +621,7 @@ def emit_empty_history_replay() -> None:
     payload = {
         "jsonrpc": "2.0",
         "method": "HistoryReplay",
-        "params": {"thread_id": "", "title": "", "messages": []},
+        "params": {"thread_id": "", "title": "", "project_path": "", "messages": []},
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
@@ -422,10 +641,42 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
     if cmd == "history":
         if runner is not None:
             emit_history_replay(runner)
+            return runner
+        thread_id = state.get("thread_id")
+        if isinstance(thread_id, str) and thread_id:
+            project_path = command_project_path(command)
+            emit_thread_history_replay(
+                open_thread_history(thread_id, project_path),
+                project_path,
+            )
         return runner
 
     if cmd == "list_threads":
-        emit_thread_list()
+        emit_thread_list(command_project_path(command))
+        return runner
+
+    if cmd == "sandbox_tree":
+        if runner is None and isinstance(state.get("thread_id"), str):
+            try:
+                runner = await ensure_runner(runner, config, state)
+                emit_current_thread(runner)
+            except (Exception, SystemExit) as exc:
+                log(f"[wire] open runner failed: {exc}")
+                emit_error(format_exc(exc), where="open")
+                return runner
+        await emit_sandbox_tree(runner)
+        return runner
+
+    if cmd == "sandbox_status":
+        if runner is None and isinstance(state.get("thread_id"), str):
+            try:
+                runner = await ensure_runner(runner, config, state)
+                emit_current_thread(runner)
+            except (Exception, SystemExit) as exc:
+                log(f"[wire] open runner failed: {exc}")
+                emit_error(format_exc(exc), where="open")
+                return runner
+        await emit_sandbox_status(runner)
         return runner
 
     if cmd == "resume":
@@ -436,22 +687,25 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         if turn_active(state):
             log("[wire] 运行中，暂不能切换会话（取消见后续课程）")
             return runner
-        old = runner
+        project_path = command_project_path(command)
         try:
-            runner = await open_thread_runner(config, thread_id)
+            thread = open_thread_history(thread_id, project_path)
         except (Exception, SystemExit) as exc:
             log(f"[wire] resume failed: {exc}")
-            if old is None:
+            if runner is None:
                 emit_empty_history_replay()
             else:
-                emit_history_replay(old)
+                emit_history_replay(runner)
             emit_error(format_exc(exc), where="resume")
-            return old
-        if old is not None:
-            await old.close()
-        emit_history_replay(runner)
-        log(f"[wire] resume：已切到 thread {thread_id!r}")
-        return runner
+            return runner
+        if runner is not None:
+            await runner.close()
+            runner = None
+        state["thread_id"] = thread.id
+        state["project_path"] = project_path
+        emit_thread_history_replay(thread)
+        log(f"[wire] resume：已切到 thread {thread_id!r}（未唤醒沙箱）")
+        return None
 
     if cmd == "reset":
         if turn_active(state):
@@ -459,7 +713,8 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             return runner
         if runner is not None:
             await runner.close()
-        runner = await open_fresh_runner(config)
+        runner = await open_fresh_runner(config, command_project_path(command))
+        state["thread_id"] = runner.thread.id
         emit_history_replay(runner)
         log("[wire] reset：已开新会话")
         return runner
@@ -471,12 +726,18 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
     # 以下命令需要已打开的 runner。
     opened_runner = runner is None
     try:
-        runner = await ensure_runner(runner, config)
+        project_path = command_project_path(command) if runner is None else None
+        runner = await ensure_runner(
+            runner,
+            replace(config, project_path=project_path) if project_path else config,
+            state,
+        )
     except (Exception, SystemExit) as exc:
         log(f"[wire] open runner failed: {exc}")
         emit_error(format_exc(exc), where="open")
         return runner
     if opened_runner:
+        state["thread_id"] = runner.thread.id
         emit_current_thread(runner)
 
     if cmd == "user":

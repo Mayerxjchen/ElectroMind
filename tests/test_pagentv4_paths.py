@@ -37,3 +37,11 @@ def test_legacy_root_pagent_toml_selects_project_home(tmp_path, monkeypatch):
     (cwd / "pagent.toml").write_text("[provider]\nmodel = 'x'\n", encoding="utf-8")
     assert resolve_pagent_home(cwd) == (cwd / ".pagent").resolve()
     assert find_home_config(cwd) == cwd / "pagent.toml"
+
+
+def test_pagent_home_env_overrides_project_detection(tmp_path, monkeypatch):
+    explicit_home = tmp_path / "fixed-home"
+    cwd = tmp_path / "proj"
+    (cwd / ".pagent").mkdir(parents=True)
+    monkeypatch.setenv("PAGENT_HOME", str(explicit_home))
+    assert resolve_pagent_home(cwd) == explicit_home.resolve()

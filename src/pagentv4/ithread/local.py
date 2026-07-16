@@ -85,6 +85,8 @@ class Thread:
 
     @property
     def workspace_path(self) -> Path:
+        if self.spec.project_path:
+            return Path(os.path.expanduser(self.spec.project_path)).resolve()
         return self.root / WORKSPACE_DIRNAME
 
     @property
@@ -184,6 +186,15 @@ class Thread:
         if spec_path.exists():
             payload = load_thread_toml(spec_path)
             existing = ThreadSpec.from_dict(payload)
+            if existing.project_path is None and isinstance(
+                provided.get("project_path"), str
+            ):
+                existing.project_path = provided["project_path"]
+                spec_path.write_text(
+                    dump_thread_toml(existing.to_dict()),
+                    encoding="utf-8",
+                )
+                provided.pop("project_path")
             ignored = cls.diff_overrides(existing, provided)
             thread_dir.mkdir(parents=True, exist_ok=True)
             (thread_dir / WORKSPACE_DIRNAME).mkdir(parents=True, exist_ok=True)

@@ -426,7 +426,10 @@ class Sandbox:
             return collected
         for name in sorted(os.listdir(target)):
             child = os.path.join(target, name)
-            entry = self.host_entry(child)
+            try:
+                entry = self.host_entry(child)
+            except FileNotFoundError:
+                continue
             if entry["type"] == "dir" and remaining > 1:
                 entry["children"] = self.walk_host_dir(child, remaining=remaining - 1)
             collected.append(entry)

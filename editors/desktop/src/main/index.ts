@@ -1,0 +1,733 @@
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  shell,
+  type OpenDialogOptions,
+} from "electron";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import path from "node:path";
+
+import { AgentBridge, resolvePagentWireInvocation } from "../shared/agent";
+import type {
+  AppInfo,
+  ArtifactSummary,
+  DesktopEvent,
+  RuntimeState,
+  SandboxStatus,
+  SandboxTreeNode,
+  ThreadMeta,
+  ThreadSummary,
+  WireEvent,
+} from "../shared/protocol";
+import { parseWireLine } from "../shared/wire";
+
+type ThreadListEntry = { id: string; title: string; projectPath: string };
+type ThreadListPayload = {
+  home: string;
+  threads_root: string;
+  threads: ThreadListEntry[];
+};
+type SandboxTreePayload = {
+  thread_id: string;
+  workdir: string;
+  nodes: SandboxTreeNode[];
+};
+type SandboxStatusPayload = {
+  thread_id: string;
+  backend: string;
+  alive: boolean;
+  workdir: string;
+};
+type SandboxTreeWaiter = {
+  threadId: string;
+  resolve: (payload: SandboxTreePayload) => void;
+};
+type SandboxStatusWaiter = {
+  threadId: string;
+  resolve: (payload: SandboxStatusPayload) => void;
+};
+
+let mainWindow: BrowserWindow | undefined;
+let bridge: AgentBridge | undefined;
+let projectPath: string = defaultProjectPath();
+let currentThreadId = "";
+let bridgeStatus: RuntimeState["status"] = "idle";
+let lastError = "";
+let recentStderr = "";
+let sandboxStatus: SandboxStatusPayload = {
+  thread_id: "",
+  backend: "",
+  alive: false,
+  workdir: "",
+};
+let threadListWaiters: Array<(payload: ThreadListPayload) => void> = [];
+let sandboxTreeWaiters: SandboxTreeWaiter[] = [];
+let sandboxStatusWaiters: SandboxStatusWaiter[] = [];
+
+function appIconPath(): string {
+  return path.join(__dirname, "..", "..", "vscode", "media", "logo-icon.png");
+}
+
+function userPagentHome(): string {
+  return path.join(homedir(), ".pagent");
+}
+
+function defaultProjectPath(): string {
+  return path.join(userPagentHome(), "default");
+}
+
+function ensureProjectDirectory(): void {
+  mkdirSync(projectPath, { recursive: true });
+}
+
+function activeHomePath(): string {
+  return userPagentHome();
+}
+
+function activeHomeScope(): "user" | "project" {
+  return "user";
+}
+
+function bridgeWorkingDirectory(): string {
+  return projectPath;
+}
+
+function setProjectPath(nextProjectPath: string): void {
+  projectPath = nextProjectPath;
+  ensureProjectDirectory();
+}
+
+function artifactsDirectory(): string {
+  return path.join(projectPath, "artifacts");
+}
+
+function threadsDirectory(): string {
+  return path.join(userPagentHome(), "threads");
+}
+
+function pagentProjectRoot(): string {
+  return path.join(__dirname, "..", "..", "..");
+}
+
+function configureAppRuntimePaths(): void {
+  const runtimeRoot = path.join(__dirname, "..", ".runtime");
+  app.setPath("userData", path.join(runtimeRoot, "user-data"));
+  app.setPath("sessionData", path.join(runtimeRoot, "session-data"));
+  app.disableHardwareAcceleration();
+}
+
+function appInfo(): AppInfo {
+  return {
+    name: app.getName(),
+    version: app.getVersion(),
+    platform: process.platform,
+  };
+}
+
+function runtimeState(): RuntimeState {
+  return {
+    projectPath,
+    activeHomePath: activeHomePath(),
+    activeHomeScope: activeHomeScope(),
+    currentThreadId,
+    sandboxBackend:
+      sandboxStatus.thread_id === currentThreadId
+        ? sandboxStatus.backend || undefined
+        : undefined,
+    sandboxAlive:
+      sandboxStatus.thread_id === currentThreadId ? sandboxStatus.alive : undefined,
+    bridgeActive: bridge !== undefined,
+    status: bridgeStatus,
+    lastError: lastError || undefined,
+  };
+}
+
+function readString(params: Record<string, unknown>, key: string): string {
+  const value = params[key];
+  return typeof value === "string" ? value : "";
+}
+
+function normalizeThreadList(params: Record<string, unknown>): ThreadListPayload {
+  const threadsRaw = Array.isArray(params.threads) ? params.threads : [];
+  const threads: ThreadListEntry[] = [];
+  for (const item of threadsRaw) {
+    if (typeof item !== "object" || item === null) {
+      continue;
+    }
+    const record = item as Record<string, unknown>;
+    const id = typeof record.id === "string" ? record.id : "";
+    if (!id) {
+      continue;
+    }
+    threads.push({
+      id,
+      title: typeof record.title === "string" ? record.title : "",
+      projectPath:
+        typeof record.project_path === "string" ? record.project_path : "",
+    });
+  }
+  return {
+    home: typeof params.home === "string" ? params.home : "",
+    threads_root:
+      typeof params.threads_root === "string" ? params.threads_root : "",
+    threads,
+  };
+}
+
+function normalizeSandboxTree(
+  params: Record<string, unknown>,
+): SandboxTreePayload {
+  return {
+    thread_id: typeof params.thread_id === "string" ? params.thread_id : "",
+    workdir: typeof params.workdir === "string" ? params.workdir : "",
+    nodes: Array.isArray(params.nodes) ? (params.nodes as SandboxTreeNode[]) : [],
+  };
+}
+
+function normalizeSandboxStatus(
+  params: Record<string, unknown>,
+): SandboxStatusPayload {
+  return {
+    thread_id: typeof params.thread_id === "string" ? params.thread_id : "",
+    backend: typeof params.backend === "string" ? params.backend : "",
+    alive: params.alive === true,
+    workdir: typeof params.workdir === "string" ? params.workdir : "",
+  };
+}
+
+function parseThreadTimestamp(threadId: string): Date | undefined {
+  const match =
+    /^thread-(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})$/.exec(threadId);
+  if (!match) {
+    return undefined;
+  }
+  const [, year, month, day, hour, minute, second] = match;
+  return new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hour),
+    Number(minute),
+    Number(second),
+  );
+}
+
+function formatRelativeTime(date: Date | undefined): string {
+  if (!date) {
+    return "";
+  }
+  const diffMs = Date.now() - date.getTime();
+  const diffSeconds = Math.max(0, Math.floor(diffMs / 1000));
+  if (diffSeconds < 60) {
+    return "刚刚";
+  }
+  if (diffSeconds < 3600) {
+    return `${Math.floor(diffSeconds / 60)} 分钟前`;
+  }
+  if (diffSeconds < 86_400) {
+    return `${Math.floor(diffSeconds / 3600)} 小时前`;
+  }
+  if (diffSeconds < 172_800) {
+    return "昨天";
+  }
+  if (diffSeconds < 604_800) {
+    return `${Math.floor(diffSeconds / 86_400)} 天前`;
+  }
+  const year = date.getFullYear();
+  const month = `${date.getMonth() + 1}`.padStart(2, "0");
+  const day = `${date.getDate()}`.padStart(2, "0");
+  const currentYear = new Date().getFullYear();
+  if (year === currentYear) {
+    return `${month}-${day}`;
+  }
+  return `${year}-${month}-${day}`;
+}
+
+function toThreadSummaries(payload: ThreadListPayload): ThreadSummary[] {
+  return payload.threads.map((entry) => ({
+    id: entry.id,
+    title: entry.title.trim() || "新建任务",
+    relativeTime: formatRelativeTime(parseThreadTimestamp(entry.id)),
+    projectPath: entry.projectPath,
+  }));
+}
+
+function isValidThreadId(threadId: string): boolean {
+  return /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/.test(threadId);
+}
+
+function readJsonRecord(filePath: string): Record<string, unknown> {
+  if (!existsSync(filePath)) {
+    return {};
+  }
+  try {
+    const value = JSON.parse(readFileSync(filePath, "utf8")) as unknown;
+    if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+      return value as Record<string, unknown>;
+    }
+  } catch {
+    return {};
+  }
+  return {};
+}
+
+function readOptionalString(record: Record<string, unknown>, key: string): string {
+  const value = record[key];
+  return typeof value === "string" ? value : "";
+}
+
+function readThreadMeta(threadId: string): ThreadMeta {
+  if (!isValidThreadId(threadId)) {
+    throw new Error("invalid thread id");
+  }
+  const threadPath = path.join(threadsDirectory(), threadId);
+  const meta = readJsonRecord(path.join(threadPath, "metainfo.json"));
+  const messageCount = meta.message_count;
+  return {
+    id: threadId,
+    title: readOptionalString(meta, "title"),
+    createdAt: readOptionalString(meta, "created_at"),
+    updatedAt: readOptionalString(meta, "updated_at"),
+    messageCount: typeof messageCount === "number" ? messageCount : undefined,
+    threadPath,
+    metainfo: meta,
+  };
+}
+
+function listProjectArtifacts(): ArtifactSummary[] {
+  const root = artifactsDirectory();
+  if (!existsSync(root)) {
+    return [];
+  }
+  return readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const filePath = path.join(root, entry.name);
+      const stat = statSync(filePath);
+      return {
+        id: entry.name,
+        name: entry.name,
+        path: filePath,
+        size: stat.size,
+        mtimeMs: stat.mtimeMs,
+      };
+    })
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+}
+
+function resolveArtifactPath(filePath: string): string | undefined {
+  const root = path.resolve(artifactsDirectory());
+  const target = path.resolve(filePath);
+  const relative = path.relative(root, target);
+  if (relative.startsWith("..") || path.isAbsolute(relative)) {
+    return undefined;
+  }
+  return existsSync(target) ? target : undefined;
+}
+
+function postDesktopEvent(event: DesktopEvent): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  mainWindow.webContents.send("desktop:event", event);
+}
+
+function postWireEvent(event: WireEvent): void {
+  postDesktopEvent({ type: "wireEvent", event });
+}
+
+function postSyntheticHistoryReplay(): void {
+  postWireEvent({
+    method: "HistoryReplay",
+    params: { thread_id: "", title: "", messages: [] },
+  });
+}
+
+function notifyRuntimeState(): void {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
+  }
+  mainWindow.webContents.send("desktop:runtime-state", runtimeState());
+}
+
+function reportBridgeFailure(message: string, where: string): void {
+  bridge = undefined;
+  bridgeStatus = "error";
+  lastError = message;
+  notifyRuntimeState();
+  postWireEvent({
+    method: "Error",
+    params: { message, where },
+  });
+}
+
+function handleWireLine(line: string): void {
+  const event = parseWireLine(line);
+  if (!event) {
+    postDesktopEvent({ type: "log", text: `[wire] skip invalid line: ${line}` });
+    return;
+  }
+  if (event.method === "ThreadList") {
+    const payload = normalizeThreadList(event.params);
+    const waiters = threadListWaiters.splice(0);
+    for (const waiter of waiters) {
+      waiter(payload);
+    }
+    return;
+  }
+  if (event.method === "SandboxTree") {
+    const payload = normalizeSandboxTree(event.params);
+    const matched = sandboxTreeWaiters.filter(
+      (waiter) => waiter.threadId === payload.thread_id,
+    );
+    sandboxTreeWaiters = sandboxTreeWaiters.filter(
+      (waiter) => waiter.threadId !== payload.thread_id,
+    );
+    for (const waiter of matched) {
+      waiter.resolve(payload);
+    }
+    return;
+  }
+  if (event.method === "SandboxStatus") {
+    const payload = normalizeSandboxStatus(event.params);
+    sandboxStatus = payload;
+    notifyRuntimeState();
+    const matched = sandboxStatusWaiters.filter(
+      (waiter) => waiter.threadId === payload.thread_id,
+    );
+    sandboxStatusWaiters = sandboxStatusWaiters.filter(
+      (waiter) => waiter.threadId !== payload.thread_id,
+    );
+    for (const waiter of matched) {
+      waiter.resolve(payload);
+    }
+    return;
+  }
+  if (event.method === "CurrentThread" || event.method === "HistoryReplay") {
+    currentThreadId = readString(event.params, "thread_id");
+    const nextProjectPath = readString(event.params, "project_path");
+    if (nextProjectPath) {
+      setProjectPath(nextProjectPath);
+    }
+    notifyRuntimeState();
+  }
+  if (event.method === "Error") {
+    lastError = readString(event.params, "message");
+    notifyRuntimeState();
+  }
+  postWireEvent(event);
+}
+
+function disposeBridge(): void {
+  bridge?.stop();
+  bridge = undefined;
+  bridgeStatus = "idle";
+  recentStderr = "";
+  sandboxStatus = { thread_id: "", backend: "", alive: false, workdir: "" };
+}
+
+function ensureBridge(): AgentBridge | undefined {
+  if (bridge) {
+    return bridge;
+  }
+
+  bridgeStatus = "starting";
+  lastError = "";
+  ensureProjectDirectory();
+  notifyRuntimeState();
+
+  const wireInvocation = resolvePagentWireInvocation(pagentProjectRoot());
+  const nextBridge = new AgentBridge({
+    command: wireInvocation.command,
+    args: wireInvocation.args,
+    cwd: bridgeWorkingDirectory(),
+    env: { PAGENT_HOME: userPagentHome() },
+    onLine: handleWireLine,
+    onStderr: (text) => {
+      recentStderr = (recentStderr + text).slice(-4000);
+      postDesktopEvent({ type: "log", text });
+    },
+    onExit: (code) => {
+      const detail = code === null ? "子进程已退出。" : `子进程已退出，code=${code}。`;
+      const extra = recentStderr.trim();
+      reportBridgeFailure(extra ? `${detail}\n${extra}` : detail, "bridge");
+    },
+    onError: (error) => {
+      reportBridgeFailure(error.message, "spawn");
+    },
+  });
+
+  bridge = nextBridge;
+  bridgeStatus = "ready";
+  notifyRuntimeState();
+  nextBridge.start();
+  nextBridge.send({ cmd: "commands" });
+  return nextBridge;
+}
+
+function requestThreadList(): Promise<ThreadListPayload> {
+  return new Promise((resolvePromise, reject) => {
+    const activeBridge = ensureBridge();
+    if (!activeBridge) {
+      reject(new Error("bridge unavailable"));
+      return;
+    }
+    const timer = setTimeout(() => {
+      const index = threadListWaiters.indexOf(onList);
+      if (index >= 0) {
+        threadListWaiters.splice(index, 1);
+      }
+      reject(new Error("list_threads timeout"));
+    }, 10_000);
+    const onList = (payload: ThreadListPayload) => {
+      clearTimeout(timer);
+      resolvePromise(payload);
+    };
+    threadListWaiters.push(onList);
+    activeBridge.send({ cmd: "list_threads", project_path: projectPath });
+  });
+}
+
+async function restoreHistory(): Promise<void> {
+  const activeBridge = ensureBridge();
+  if (!activeBridge) {
+    return;
+  }
+  if (currentThreadId) {
+    activeBridge.send({
+      cmd: "resume",
+      thread_id: currentThreadId,
+      project_path: projectPath,
+    });
+    return;
+  }
+  try {
+    const payload = await requestThreadList();
+    const latest = payload.threads[0];
+    if (!latest) {
+      postSyntheticHistoryReplay();
+      return;
+    }
+    activeBridge.send({
+      cmd: "resume",
+      thread_id: latest.id,
+      project_path: projectPath,
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    postDesktopEvent({ type: "log", text: `[history] ${detail}` });
+    postSyntheticHistoryReplay();
+  }
+}
+
+function requestSandboxTree(): Promise<SandboxTreePayload> {
+  return new Promise((resolvePromise, reject) => {
+    if (!bridge || !currentThreadId) {
+      resolvePromise({ thread_id: "", workdir: "", nodes: [] });
+      return;
+    }
+    const targetThreadId = currentThreadId;
+    const timer = setTimeout(() => {
+      const index = sandboxTreeWaiters.indexOf(waiter);
+      if (index >= 0) {
+        sandboxTreeWaiters.splice(index, 1);
+      }
+      reject(new Error("sandbox_tree timeout"));
+    }, 10_000);
+    const onTree = (payload: SandboxTreePayload) => {
+      clearTimeout(timer);
+      resolvePromise(payload);
+    };
+    const waiter: SandboxTreeWaiter = {
+      threadId: targetThreadId,
+      resolve: onTree,
+    };
+    sandboxTreeWaiters.push(waiter);
+    bridge.send({ cmd: "sandbox_tree" });
+  });
+}
+
+function requestSandboxStatus(): Promise<SandboxStatusPayload> {
+  return new Promise((resolvePromise) => {
+    if (!bridge || !currentThreadId) {
+      resolvePromise({ thread_id: "", backend: "", alive: false, workdir: "" });
+      return;
+    }
+    const targetThreadId = currentThreadId;
+    const fallbackStatus =
+      sandboxStatus.thread_id === targetThreadId
+        ? sandboxStatus
+        : {
+          thread_id: targetThreadId,
+          backend: "",
+          alive: false,
+          workdir: "",
+        };
+    const timer = setTimeout(() => {
+      const index = sandboxStatusWaiters.indexOf(waiter);
+      if (index >= 0) {
+        sandboxStatusWaiters.splice(index, 1);
+      }
+      postDesktopEvent({
+        type: "log",
+        text: "[sandbox] sandbox_status timeout; using cached status",
+      });
+      resolvePromise(fallbackStatus);
+    }, 10_000);
+    const onStatus = (payload: SandboxStatusPayload) => {
+      clearTimeout(timer);
+      resolvePromise(payload);
+    };
+    const waiter: SandboxStatusWaiter = {
+      threadId: targetThreadId,
+      resolve: onStatus,
+    };
+    sandboxStatusWaiters.push(waiter);
+    bridge.send({ cmd: "sandbox_status" });
+  });
+}
+
+function createWindow(): BrowserWindow {
+  const window = new BrowserWindow({
+    width: 1360,
+    height: 900,
+    minWidth: 1100,
+    minHeight: 720,
+    title: "pagent Desktop",
+    backgroundColor: "#0f1115",
+    icon: appIconPath(),
+    ...(process.platform === "darwin"
+      ? {
+        titleBarStyle: "hiddenInset" as const,
+        trafficLightPosition: { x: 16, y: 14 },
+      }
+      : {}),
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+
+  window.loadFile(path.join(__dirname, "index.html"));
+  window.webContents.once("did-finish-load", () => {
+    notifyRuntimeState();
+  });
+  return window;
+}
+
+app.whenReady().then(() => {
+  app.setName("pagent Desktop");
+  mainWindow = createWindow();
+
+  app.on("activate", () => {
+    if (BrowserWindow.getAllWindows().length > 0) {
+      return;
+    }
+    mainWindow = createWindow();
+  });
+});
+
+configureAppRuntimePaths();
+
+app.on("window-all-closed", () => {
+  disposeBridge();
+  if (process.platform === "darwin") {
+    return;
+  }
+  app.quit();
+});
+
+ipcMain.handle("desktop:get-app-info", async () => appInfo());
+ipcMain.handle("desktop:get-runtime-state", async () => runtimeState());
+ipcMain.handle("desktop:list-threads", async () => {
+  const payload = await requestThreadList();
+  return toThreadSummaries(payload);
+});
+ipcMain.handle("desktop:get-thread-meta", async (_event, threadId: string) => {
+  return readThreadMeta(threadId);
+});
+ipcMain.handle("desktop:list-artifacts", async () => listProjectArtifacts());
+ipcMain.handle("desktop:open-artifact", async (_event, filePath: string) => {
+  const target = resolveArtifactPath(filePath);
+  if (!target) {
+    return;
+  }
+  shell.showItemInFolder(target);
+});
+ipcMain.handle("desktop:get-sandbox-status", async (): Promise<SandboxStatus> => {
+  const payload = await requestSandboxStatus();
+  return {
+    threadId: payload.thread_id,
+    backend: payload.backend,
+    alive: payload.alive,
+    workdir: payload.workdir,
+  };
+});
+ipcMain.handle("desktop:list-sandbox-tree", async () => {
+  const payload = await requestSandboxTree();
+  return payload.nodes;
+});
+ipcMain.handle("desktop:resume-thread", async (_event, threadId: string) => {
+  if (!threadId) {
+    return;
+  }
+  const activeBridge = ensureBridge();
+  if (!activeBridge) {
+    return;
+  }
+  activeBridge.send({ cmd: "resume", thread_id: threadId, project_path: projectPath });
+});
+ipcMain.handle("desktop:send-user-input", async (_event, text: string) => {
+  const activeBridge = ensureBridge();
+  if (!activeBridge) {
+    return;
+  }
+  activeBridge.send({ cmd: "user", text, project_path: projectPath });
+});
+ipcMain.handle("desktop:reset-session", async () => {
+  const activeBridge = ensureBridge();
+  if (!activeBridge) {
+    return;
+  }
+  activeBridge.send({ cmd: "reset", project_path: projectPath });
+});
+ipcMain.handle("desktop:select-project", async () => {
+  const options: OpenDialogOptions = {
+    properties: ["openDirectory", "createDirectory"],
+    defaultPath: projectPath,
+    title: "选择项目目录",
+    buttonLabel: "绑定项目",
+  };
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || result.filePaths.length === 0) {
+    return runtimeState();
+  }
+  setProjectPath(result.filePaths[0]);
+  disposeBridge();
+  currentThreadId = "";
+  postSyntheticHistoryReplay();
+  notifyRuntimeState();
+  return runtimeState();
+});
+ipcMain.handle("desktop:request-history", async () => {
+  await restoreHistory();
+});
+ipcMain.handle("desktop:permit-tool-call", async (_event, toolCallId: string) => {
+  bridge?.send({ cmd: "permit", tool_call_id: toolCallId });
+});
+ipcMain.handle(
+  "desktop:deny-tool-call",
+  async (_event, toolCallId: string, reason?: string) => {
+    bridge?.send({
+      cmd: "deny",
+      tool_call_id: toolCallId,
+      reason: reason ?? "",
+    });
+  },
+);

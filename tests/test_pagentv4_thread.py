@@ -14,8 +14,14 @@ from pagentv4.runtime.thread import default_threads_root
 
 
 def test_default_threads_root_is_user_home(monkeypatch, tmp_path):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    assert default_threads_root() == tmp_path / ".pagent" / "threads"
+    monkeypatch.delenv("PAGENT_HOME", raising=False)
+    home = tmp_path / "home"
+    cwd = tmp_path / "cwd"
+    home.mkdir()
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(cwd)
+    assert default_threads_root() == home / ".pagent" / "threads"
 
 
 @pytest.mark.parametrize("bad", ["", "-leading", "a/b", "a b", "x" * 129])
@@ -58,6 +64,23 @@ def test_thread_open_resume_ignores_overrides(tmp_path):
     assert second.spec.backend == "podman"
     assert second.spec.image == "foo:latest"
     assert set(second.ignored_overrides) == {"backend", "image"}
+
+
+def test_thread_open_resume_fills_missing_project_path(tmp_path):
+    Thread.open("demo", root=tmp_path, overrides={"backend": "local"})
+    project = tmp_path / "project"
+
+    second = Thread.open(
+        "demo",
+        root=tmp_path,
+        overrides={"project_path": str(project)},
+    )
+
+    assert second.created is False
+    assert second.ignored_overrides == ()
+    assert second.spec.project_path == str(project)
+    payload = tomllib.loads((tmp_path / "demo" / "thread.toml").read_text())
+    assert payload["project"]["path"] == str(project)
 
 
 def test_thread_open_resume_matching_overrides_no_warning(tmp_path):

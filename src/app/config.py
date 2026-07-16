@@ -26,6 +26,7 @@ class ReplConfig:
     image: str | None = None
     container_ttl: int | None = None
     command_policy: str | None = None
+    project_path: str | None = None
     ssh_host: str | None = None
     ssh_config: str | None = None
     ssh_workdir: str | None = None
@@ -76,6 +77,8 @@ class ReplConfig:
             kwargs["container_ttl_seconds"] = self.container_ttl or None
         if self.command_policy is not None:
             kwargs["command_policy"] = self.command_policy
+        if self.project_path is not None and self.project_path != "":
+            kwargs["project_path"] = self.project_path
         if self.ssh_config is not None:
             kwargs["ssh_config"] = self.ssh_config
         if self.ssh_host is not None and self.ssh_host != "":
@@ -96,6 +99,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
     provider = data.get("provider", {})
     sandbox = data.get("sandbox", {})
     ssh = data.get("ssh", {})
+    project = data.get("project", {})
     skills = data.get("skills", {})
     repl = data.get("repl", {})
     permission = data.get("permission", {})
@@ -133,6 +137,12 @@ def parse_repl_config(data: dict) -> ReplConfig:
     container_ttl = sandbox.get("container_ttl")
     if container_ttl is not None and not isinstance(container_ttl, int):
         raise ValueError("sandbox.container_ttl must be an integer")
+
+    project_path = project.get("path")
+    if project_path is not None and not isinstance(project_path, str):
+        raise ValueError("project.path must be a string")
+    if project_path == "":
+        project_path = None
 
     roots = skills.get("roots")
     skill_roots: tuple[str, ...] | None
@@ -176,6 +186,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
         image=image,
         container_ttl=container_ttl,
         command_policy=command_policy,
+        project_path=project_path,
         ssh_host=ssh.get("host"),
         ssh_config=ssh.get("config_path"),
         ssh_workdir=ssh.get("workdir"),
@@ -281,6 +292,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="覆盖 sandbox backend",
     )
+    parser.add_argument("--project", default=None, help="绑定本次会话的项目目录")
     parser.add_argument("--ssh-host", default=None, help="覆盖 SSH Host 别名")
     parser.add_argument("--ssh-config", default=None, help="覆盖 SSH config 路径")
     return parser
@@ -299,6 +311,8 @@ def config_from_args(args: argparse.Namespace) -> ReplConfig:
         fields["permission_mode"] = "auto"
     if args.backend:
         fields["backend"] = args.backend
+    if args.project:
+        fields["project_path"] = args.project
     if args.ssh_host:
         fields["ssh_host"] = args.ssh_host
     if args.ssh_config:

@@ -23,6 +23,9 @@ def user_pagent_home() -> Path:
 
 def resolve_pagent_home(cwd: str | Path | None = None) -> Path:
     """解析当前生效的 pagent home（A 项目 / B 用户）。"""
+    explicit = os.getenv("PAGENT_HOME")
+    if explicit and explicit.strip():
+        return Path(explicit).expanduser().resolve()
     base = Path(cwd) if cwd is not None else Path(os.getcwd())
     project = base / PROJECT_PAGENT_DIRNAME
     if project.is_dir():

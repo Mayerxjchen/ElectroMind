@@ -270,6 +270,58 @@ def next_message_id() -> str:
     return uuid4().hex
 
 
+def repair_openai_tool_sequence(messages: list[dict]) -> list[dict]:
+    """Drop incomplete tool-call rounds before sending Chat Completions requests.
+
+    OpenAI-compatible APIs require every assistant message with tool_calls to be
+    followed immediately by tool messages for each tool_call_id. A process can be
+    interrupted after persisting the assistant tool call and before persisting the
+    tool result; replaying that history would make the next request invalid.
+    """
+    repaired: list[dict] = []
+    index = 0
+    while index < len(messages):
+        message = messages[index]
+        if message.get("role") == "tool":
+            index += 1
+            continue
+
+        tool_calls = message.get("tool_calls")
+        if message.get("role") != "assistant" or not isinstance(tool_calls, list):
+            repaired.append(message)
+            index += 1
+            continue
+
+        expected_ids = [
+            tool_call.get("id")
+            for tool_call in tool_calls
+            if isinstance(tool_call, dict) and isinstance(tool_call.get("id"), str)
+        ]
+        if not expected_ids:
+            index += 1
+            continue
+
+        tool_messages: list[dict] = []
+        seen_ids: set[str] = set()
+        cursor = index + 1
+        while cursor < len(messages) and messages[cursor].get("role") == "tool":
+            tool_message = messages[cursor]
+            tool_call_id = tool_message.get("tool_call_id")
+            if isinstance(tool_call_id, str) and tool_call_id in expected_ids:
+                if tool_call_id not in seen_ids:
+                    tool_messages.append(tool_message)
+                    seen_ids.add(tool_call_id)
+            cursor += 1
+
+        if len(seen_ids) == len(set(expected_ids)):
+            repaired.append(message)
+            repaired.extend(tool_messages)
+
+        index = cursor
+
+    return repaired
+
+
 class Messages(BaseModel):
     data: list[Message] = Field(default_factory=list)
 
@@ -424,4 +476,4 @@ class Messages(BaseModel):
 
             raise ValueError(f"unsupported message: {msg!r}")
 
-        return out
+        return repair_openai_tool_sequence(out)

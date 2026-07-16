@@ -1,0 +1,73 @@
+import { contextBridge, ipcRenderer } from "electron";
+import type {
+  DesktopApi,
+  DesktopEvent,
+  RuntimeState,
+} from "../shared/protocol";
+
+function subscribeToChannel<T>(
+  channel: string,
+  listener: (payload: T) => void,
+): () => void {
+  const wrapped = (_event: unknown, payload: T) => listener(payload);
+  ipcRenderer.on(channel, wrapped);
+  return () => {
+    ipcRenderer.off(channel, wrapped);
+  };
+}
+
+const desktopApi: DesktopApi = {
+  getAppInfo() {
+    return ipcRenderer.invoke("desktop:get-app-info");
+  },
+  getRuntimeState() {
+    return ipcRenderer.invoke("desktop:get-runtime-state");
+  },
+  listThreads() {
+    return ipcRenderer.invoke("desktop:list-threads");
+  },
+  getThreadMeta(threadId: string) {
+    return ipcRenderer.invoke("desktop:get-thread-meta", threadId);
+  },
+  listArtifacts() {
+    return ipcRenderer.invoke("desktop:list-artifacts");
+  },
+  openArtifact(path: string) {
+    return ipcRenderer.invoke("desktop:open-artifact", path);
+  },
+  getSandboxStatus() {
+    return ipcRenderer.invoke("desktop:get-sandbox-status");
+  },
+  listSandboxTree() {
+    return ipcRenderer.invoke("desktop:list-sandbox-tree");
+  },
+  selectProject() {
+    return ipcRenderer.invoke("desktop:select-project");
+  },
+  resumeThread(threadId: string) {
+    return ipcRenderer.invoke("desktop:resume-thread", threadId);
+  },
+  sendUserInput(text: string) {
+    return ipcRenderer.invoke("desktop:send-user-input", text);
+  },
+  resetSession() {
+    return ipcRenderer.invoke("desktop:reset-session");
+  },
+  requestHistoryReplay() {
+    return ipcRenderer.invoke("desktop:request-history");
+  },
+  permitToolCall(toolCallId: string) {
+    return ipcRenderer.invoke("desktop:permit-tool-call", toolCallId);
+  },
+  denyToolCall(toolCallId: string, reason?: string) {
+    return ipcRenderer.invoke("desktop:deny-tool-call", toolCallId, reason);
+  },
+  onAgentEvent(listener: (event: DesktopEvent) => void) {
+    return subscribeToChannel("desktop:event", listener);
+  },
+  onRuntimeState(listener: (state: RuntimeState) => void) {
+    return subscribeToChannel("desktop:runtime-state", listener);
+  },
+};
+
+contextBridge.exposeInMainWorld("desktop", desktopApi);

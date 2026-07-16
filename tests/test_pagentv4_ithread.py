@@ -50,15 +50,32 @@ def test_thread_spec_from_dict_unknown_fields_go_to_extra():
 
 
 def test_thread_spec_to_dict_roundtrip():
-    original = ThreadSpec(backend="docker", image="test:1", model="gpt-5")
+    original = ThreadSpec(
+        backend="docker",
+        image="test:1",
+        model="gpt-5",
+        project_path="/tmp/demo-project",
+    )
     restored = ThreadSpec.from_dict(original.to_dict())
     assert restored.backend == original.backend
     assert restored.image == original.image
     assert restored.model == original.model
+    assert restored.project_path == original.project_path
 
 
 def test_thread_spec_field_names():
     names = ThreadSpec.field_names()
     assert "backend" in names
+    assert "project_path" in names
     assert "model" in names
     assert "extra" in names
+
+
+def test_thread_workspace_path_uses_project_path(tmp_path):
+    project = tmp_path / "project"
+    thread = Thread.open(
+        "project-binding",
+        root=tmp_path / "threads",
+        overrides={"project_path": str(project)},
+    )
+    assert thread.workspace_path == project.resolve()

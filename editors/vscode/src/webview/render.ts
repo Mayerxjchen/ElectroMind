@@ -471,7 +471,7 @@ export class ChatRenderer {
 
     const summary = document.createElement("summary");
     const icon = document.createElement("i");
-    icon.className = "codicon codicon-wrench";
+    icon.className = "codicon codicon-tools";
     const label = document.createElement("code");
     label.className = "tool-name";
     label.textContent = name || "tool";

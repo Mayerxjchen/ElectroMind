@@ -29,9 +29,14 @@ async def test_resolve_workdir_direct(tmp_path):
 
 @pytest.mark.asyncio
 async def test_resolve_workdir_workspace_id(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    home = tmp_path / "home"
+    cwd = tmp_path / "cwd"
+    home.mkdir()
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(cwd)
     resolved = resolve_workdir(workspace_id="alpha", workdir=None)
-    assert resolved == str((tmp_path / ".pagent" / "workspaces" / "alpha").resolve())
+    assert resolved == str((home / ".pagent" / "workspaces" / "alpha").resolve())
     assert os.path.isdir(resolved)
 
 
@@ -47,9 +52,14 @@ def test_resolve_workdir_rejects_bad_id(tmp_path, monkeypatch):
 
 
 def test_default_workspaces_root_is_user_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
+    home = tmp_path / "home"
+    cwd = tmp_path / "cwd"
+    home.mkdir()
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(cwd)
     resolved = resolve_workdir(workspace_id="beta", workdir=None)
-    assert resolved == str((tmp_path / ".pagent" / "workspaces" / "beta").resolve())
+    assert resolved == str((home / ".pagent" / "workspaces" / "beta").resolve())
     assert os.path.isdir(resolved)
 
 
@@ -161,6 +171,17 @@ async def test_local_files_list(tmp_path):
         assert by_name["a.txt"].is_dir is False
         assert by_name["a.txt"].size == 1
         assert by_name["sub"].is_dir is True
+
+
+@pytest.mark.asyncio
+async def test_local_files_list_skips_broken_symlink(tmp_path):
+    async with await Sandbox.create(backend="local", workdir=str(tmp_path)) as box:
+        await box.files.write("a.txt", b"1")
+        os.symlink(tmp_path / "missing", tmp_path / "python")
+
+        entries = await box.files.list(".")
+
+        assert [entry.name for entry in entries] == ["a.txt"]
 
 
 @pytest.mark.asyncio

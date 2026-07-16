@@ -42,8 +42,9 @@ def test_to_openai_reasoning_only_assistant_uses_empty_content():
     ]
 
 
-def test_to_openai_tool_calls_may_keep_null_content():
+def test_to_openai_keeps_complete_tool_round():
     messages = Messages()
+    messages += Message.user("run")
     messages += Message.assistant(
         {
             "type": "function",
@@ -52,6 +53,39 @@ def test_to_openai_tool_calls_may_keep_null_content():
             "arguments": "{}",
         }
     )
+    messages += Message.tool_result("call_1", "ok")
     api = messages.to_openai()
-    assert api[0]["content"] is None
-    assert api[0]["tool_calls"][0]["id"] == "call_1"
+    assert api[1]["content"] is None
+    assert api[1]["tool_calls"][0]["id"] == "call_1"
+    assert api[2] == {"role": "tool", "tool_call_id": "call_1", "content": "ok"}
+
+
+def test_to_openai_drops_incomplete_tool_round_before_user():
+    messages = Messages()
+    messages += Message.user("run")
+    messages += Message.assistant(
+        {
+            "type": "function",
+            "id": "call_1",
+            "name": "echo",
+            "arguments": "{}",
+        }
+    )
+    messages += Message.user("next")
+
+    assert messages.to_openai() == [
+        {"role": "user", "content": "run"},
+        {"role": "user", "content": "next"},
+    ]
+
+
+def test_to_openai_drops_stray_tool_result():
+    messages = Messages()
+    messages += Message.user("run")
+    messages += Message.tool_result("missing_call", "late")
+    messages += Message.user("next")
+
+    assert messages.to_openai() == [
+        {"role": "user", "content": "run"},
+        {"role": "user", "content": "next"},
+    ]

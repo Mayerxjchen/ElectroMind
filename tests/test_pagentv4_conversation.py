@@ -40,8 +40,14 @@ class FakeProvider:
 
 
 def test_default_conversations_root_is_user_home(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    assert default_conversations_root() == str(tmp_path / ".pagent" / "conversations")
+    monkeypatch.delenv("PAGENT_HOME", raising=False)
+    home = tmp_path / "home"
+    cwd = tmp_path / "cwd"
+    home.mkdir()
+    cwd.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(cwd)
+    assert default_conversations_root() == str(home / ".pagent" / "conversations")
 
 
 def test_jsonl_store_roundtrip(tmp_path):

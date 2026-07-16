@@ -129,7 +129,10 @@ class LocalBackend:
         for name in sorted(os.listdir(path)):
             full = os.path.join(path, name)
             is_dir = os.path.isdir(full)
-            size = None if is_dir else os.path.getsize(full)
+            try:
+                size = None if is_dir else os.path.getsize(full)
+            except FileNotFoundError:
+                continue
             entries.append(DirEntry(name=name, is_dir=is_dir, size=size))
         return entries
 
