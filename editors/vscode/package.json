@@ -1,7 +1,8 @@
 {
   "name": "pagent-vscode",
   "displayName": "pagent",
-  "description": "pagent Agent in VS Code —— 20 课渐进式实现，最终对齐 Cursor Agent 模式。",
+  "description": "pagent Agent for VS Code，支持多轮对话、工具调用、会话恢复与多种运行模式。",
+  "icon": "media/logo-icon.png",
   "version": "0.1.1",
   "publisher": "synclionpaw",
   "private": true,
@@ -44,6 +45,11 @@
         "icon": "$(link-external)"
       },
       {
+        "command": "pagent.chat.open",
+        "title": "pagent: 打开聊天",
+        "icon": "$(comment-discussion)"
+      },
+      {
         "command": "pagent.setup",
         "title": "pagent: Setup API Key"
       }
@@ -68,13 +74,13 @@
         }
       ]
     },
-    "//viewsContainers": "在活动栏（最左侧竖条）加一个 pagent 图标，点开是一个视图容器。",
+    "//viewsContainers": "把 pagent 挂到右侧辅助侧边栏，位置更接近 Copilot / Claude Code。",
     "viewsContainers": {
-      "activitybar": [
+      "secondarySidebar": [
         {
           "id": "pagent",
           "title": "pagent",
-          "icon": "media/icon.svg"
+          "icon": "media/logo-icon.png"
         }
       ]
     },
@@ -147,8 +153,8 @@
     "watch": "node esbuild.js --watch",
     "//check": "只做类型检查，不产出文件。",
     "check": "tsc --noEmit",
-    "//package": "打 .vsix；monorepo 子目录需 baseContentUrl，否则 README 相对链接会指到仓库根。",
-    "package": "vsce package --no-dependencies --baseContentUrl https://github.com/SyncLionPaw/pagent/blob/main/editors/vscode --baseImagesUrl https://github.com/SyncLionPaw/pagent/raw/main/editors/vscode"
+    "//package": "打 .vsix；通过 npx 调 vsce，避免要求本机预装。monorepo 子目录需 baseContentUrl，否则 README 相对链接会指到仓库根。",
+    "package": "npx @vscode/vsce package --no-dependencies --baseContentUrl https://github.com/SyncLionPaw/pagent/blob/main/editors/vscode --baseImagesUrl https://github.com/SyncLionPaw/pagent/raw/main/editors/vscode"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

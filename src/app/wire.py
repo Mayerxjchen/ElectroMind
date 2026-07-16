@@ -14,6 +14,7 @@
     {"cmd": "user", "text": "..."}                跑一轮 Agent，事件流式写到 stdout
     {"cmd": "user", "text": "/skills"}            以 / 开头的走 slash 命令，不跑 Agent
     {"cmd": "commands"}                           请求可用 slash 命令清单（供前端菜单）
+    {"cmd": "history"}                            回放当前 thread 的历史，供 Webview 重建
     {"cmd": "permit", "tool_call_id": "..."}      批准某次工具调用
     {"cmd": "deny", "tool_call_id": "...", "reason": "..."}  拒绝某次工具调用
     {"cmd": "reset"}                              结束当前会话、开一个干净 thread
@@ -154,6 +155,19 @@ def emit_history_replay(runner) -> None:
             "thread_id": runner.thread.id,
             "title": runner.thread.load_metainfo().get("title", ""),
             "messages": history_messages(runner),
+        },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def emit_current_thread(runner) -> None:
+    """告诉宿主当前 thread id，供 Webview 被销毁后自动恢复。"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "CurrentThread",
+        "params": {
+            "thread_id": runner.thread.id,
+            "title": runner.thread.load_metainfo().get("title", ""),
         },
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -405,6 +419,11 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         emit_slash_commands()
         return runner
 
+    if cmd == "history":
+        if runner is not None:
+            emit_history_replay(runner)
+        return runner
+
     if cmd == "list_threads":
         emit_thread_list()
         return runner
@@ -450,12 +469,15 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         return runner
 
     # 以下命令需要已打开的 runner。
+    opened_runner = runner is None
     try:
         runner = await ensure_runner(runner, config)
     except (Exception, SystemExit) as exc:
         log(f"[wire] open runner failed: {exc}")
         emit_error(format_exc(exc), where="open")
         return runner
+    if opened_runner:
+        emit_current_thread(runner)
 
     if cmd == "user":
         text = command.get("text", "")

@@ -18,6 +18,7 @@ This file helps LLMs and coding agents find pagent documentation. Prefer **agent
 - [Wire protocol](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire.md): JSON-RPC 2.0 NDJSON for browsers and non-Python clients
 - [Reasoning streams](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/reasoning.md): reasoning_content, ReasoningDelta
 - [Wire demo](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire-demo.md): Local FastAPI + browser UI
+- [VS Code extension](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/vscode.md): Install the plugin, configure pagent, runtime modes, buttons, slash commands
 - [Developer guide](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/development.md): Repo layout, local dev, docs site
 - [pagentv4 overview](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv4/index.md): Typed API with Runner, sandbox, and persistence
 - [pagentv4 quick start](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv4/quick-start.md): run_agent, Runner, and session

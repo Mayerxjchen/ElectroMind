@@ -10,7 +10,7 @@ from collections.abc import Awaitable, Callable
 
 COMPUTER_DESCRIPTION_TEMPLATE = """你有一台{computer_name}可以使用。
 系统：{os_info}
-工作目录：{home}
+工作目录（文件工具路径）：{home}
 用户目录：{host_root}
 {extra}你可以用这几个工具操作它：
 - run_command：执行任意 shell 命令

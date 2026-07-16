@@ -177,6 +177,10 @@ export class ChatRenderer {
     if (method === "RunEnd") {
       this.removePlaceholder();
       this.finishAssistant();
+      const message = stopReasonNotice(readString(params, "stop_reason"));
+      if (message) {
+        this.showNotice(message);
+      }
       return;
     }
   }
@@ -187,6 +191,14 @@ export class ChatRenderer {
     this.removePlaceholder();
     this.finishAssistant();
     const body = this.appendErrorBubble();
+    body.textContent = message;
+    this.forceScrollToBottom();
+  }
+
+  /** 展示非错误状态提示，例如达到最大工具调用轮数。 */
+  showNotice(message: string): void {
+    this.hideEmptyState();
+    const body = this.appendNoticeBubble();
     body.textContent = message;
     this.forceScrollToBottom();
   }
@@ -717,6 +729,27 @@ export class ChatRenderer {
     return body;
   }
 
+  /** 状态提示气泡：左侧 assistant 位，用普通助手气泡承载解释性文案。 */
+  private appendNoticeBubble(): HTMLElement {
+    const row = document.createElement("div");
+    row.className = "chat-row assistant notice";
+    const msg = document.createElement("div");
+    msg.className = "msg assistant notice";
+    const label = document.createElement("div");
+    label.className = "role-label";
+    label.textContent = "pagent";
+    msg.appendChild(label);
+    const bubble = document.createElement("div");
+    bubble.className = "bubble assistant notice";
+    const body = document.createElement("div");
+    body.className = "bubble-body";
+    bubble.appendChild(body);
+    msg.appendChild(bubble);
+    row.appendChild(msg);
+    this.root.appendChild(row);
+    return body;
+  }
+
   private showEmptyState(): void {
     if (this.emptyState) {
       return;
@@ -795,6 +828,19 @@ function appendSkeletonMessage(
 function readString(params: Record<string, unknown>, key: string): string {
   const value = params[key];
   return typeof value === "string" ? value : "";
+}
+
+function stopReasonNotice(stopReason: string): string {
+  if (stopReason === "max_turns") {
+    return "本轮已达到最大工具调用轮数，先停止在这里。可以补充更明确的指令后继续。";
+  }
+  if (stopReason === "empty_response") {
+    return "这一轮没有收到有效回复。请重试，或换一种更具体的说法。";
+  }
+  if (stopReason === "cancelled") {
+    return "这一轮已取消。";
+  }
+  return "";
 }
 
 // marked 默认开启 GFM（含表格），关掉 async 拿同步字符串结果。

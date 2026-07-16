@@ -147,8 +147,11 @@ class LocalBackend:
         os.remove(path)
 
     def describe(self, spec: SandboxSpec, workdir: str) -> BackendIdentity:
-        del spec, workdir
+        home = spec.home if spec else "/home/agent"
         return BackendIdentity(
             computer_name="本地计算节点",
-            extra="",
+            extra=(
+                f"run_command 的 shell 工作目录：{workdir}\n"
+                f"文件工具路径 {home} 会映射到这个本机目录。\n"
+            ),
         )

@@ -7,7 +7,6 @@ import pytest
 
 from pagentv4 import Runner, Sandbox, SandboxLimits
 from pagentv4.sandbox import (
-    BackendIdentity,
     LocalBackend,
     SandboxSpec,
     build_backend,
@@ -766,25 +765,28 @@ def make_spec(**overrides) -> SandboxSpec:
 
 def test_local_backend_describe_uses_workdir():
     identity = LocalBackend().describe(make_spec(), "/tmp/host-workdir")
-    assert identity == BackendIdentity(
-        computer_name="本地计算节点",
-        extra="",
-    )
+    assert identity.computer_name == "本地计算节点"
+    assert "run_command 的 shell 工作目录：/tmp/host-workdir" in identity.extra
+    assert "文件工具路径 /home/agent" in identity.extra
 
 
 def test_docker_backend_describe_includes_image_when_set():
     with_image = DockerBackend().describe(make_spec(image="python:3.12"), "/work")
     assert with_image.computer_name == "Docker 计算节点"
     assert "python:3.12" in with_image.extra
+    assert "run_command 的容器 shell 工作目录：/work" in with_image.extra
+    assert "文件工具路径 /home/agent" in with_image.extra
+    assert "容器挂载映射：宿主 /work -> 容器 /work" in with_image.extra
 
     without_image = DockerBackend().describe(make_spec(), "/work")
-    assert without_image.extra == ""
+    assert "run_command 的容器 shell 工作目录：/work" in without_image.extra
 
 
 def test_podman_backend_describe_names_itself():
     identity = PodmanBackend().describe(make_spec(image="alpine"), "/work")
     assert identity.computer_name == "Podman 计算节点"
     assert "alpine" in identity.extra
+    assert "容器挂载映射：宿主 /work -> 容器 /work" in identity.extra
 
 
 def test_ssh_backend_describe_formats_connection():
@@ -792,6 +794,8 @@ def test_ssh_backend_describe_formats_connection():
     identity = SshBackend().describe(spec, "/remote/work")
     assert identity.computer_name == "远程 SSH 计算节点"
     assert "alice@hpc.example.com" in identity.extra
+    assert "run_command 的远端 shell 工作目录：/remote/work" in identity.extra
+    assert "文件工具路径 /home/agent" in identity.extra
 
 
 @pytest.mark.asyncio

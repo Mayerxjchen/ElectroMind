@@ -7,6 +7,8 @@
 export type ViewToHost =
   // 发送一条用户消息（以 / 开头的由后端识别为 slash 命令，不跑 Agent）。
   | { type: "userInput"; text: string }
+  // Webview 重建后请求当前会话历史，按当前 thread 重新渲染。
+  | { type: "requestHistoryReplay" }
   // 选择本机或 SSH Host；宿主持久化设置并重启后端。
   | { type: "setSandboxTarget"; mode: SandboxMode; sshHost?: string }
   // 开关 YOLO 自动审批；宿主持久化设置并重启后端。

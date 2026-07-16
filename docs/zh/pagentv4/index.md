@@ -34,7 +34,7 @@ skills/     SKILL.md 发现与按需加载
 - [核心类型](./core-types)
 - [消息](./messages)
 - [工具](./tools)
-- [事件](./events)
+- [VS Code 插件](/zh/vscode)
 - [Sandbox](./sandbox)
 
 ## 状态说明

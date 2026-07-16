@@ -194,12 +194,19 @@ class ContainerBackend:
         os.remove(path)
 
     def describe(self, spec: SandboxSpec, workdir: str) -> BackendIdentity:
-        del workdir
         lines: list[str] = []
         if spec and spec.image:
             lines.append(f"镜像：{spec.image}")
         if self.container_id:
             lines.append(f"容器 ID：{self.container_id[:12]}")
+        home = spec.home if spec else "/home/agent"
+        lines.extend(
+            [
+                f"run_command 的容器 shell 工作目录：{workdir}",
+                f"文件工具路径 {home} 会映射到这个容器目录。",
+                f"容器挂载映射：宿主 {workdir} -> 容器 {workdir}",
+            ]
+        )
         return BackendIdentity(
             computer_name=self.computer_name,
             extra=("\n".join(lines) + "\n") if lines else "",

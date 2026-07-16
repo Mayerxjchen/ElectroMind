@@ -23,6 +23,7 @@ const SOURCES = [
   "wire.md",
   "reasoning.md",
   "wire-demo.md",
+  "vscode.md",
   "development.md",
   "pagentv4/index.md",
   "pagentv4/quick-start.md",

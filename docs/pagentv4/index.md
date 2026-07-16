@@ -39,7 +39,7 @@ There are several layers inside `runtime/`:
 - [Core types](./core-types)
 - [Messages](./messages)
 - [Tools](./tools)
-- [Events](./events)
+- [VS Code extension](/vscode)
 - [Sandbox](./sandbox)
 
 ## Status

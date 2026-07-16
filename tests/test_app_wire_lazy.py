@@ -68,6 +68,30 @@ async def test_commands_without_runner_does_not_open(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_history_without_runner_does_not_open(monkeypatch):
+    monkeypatch.setattr(
+        wire,
+        "open_fresh_runner",
+        AsyncMock(side_effect=AssertionError("should not open")),
+    )
+    emitted: list[str] = []
+    monkeypatch.setattr(
+        wire,
+        "emit_history_replay",
+        lambda runner: emitted.append("history"),
+    )
+
+    result = await wire.handle_command(
+        {"cmd": "history"},
+        None,
+        ReplConfig(),
+        {"turn": None},
+    )
+    assert result is None
+    assert emitted == []
+
+
+@pytest.mark.asyncio
 async def test_list_threads_uses_pagent_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
@@ -129,6 +153,28 @@ async def test_list_threads_uses_project_home(tmp_path, monkeypatch):
     payload = json.loads(lines[0])
     assert payload["params"]["home"] == str((project / ".pagent").resolve())
     assert payload["params"]["threads"][0]["id"] == "thread-proj"
+
+
+@pytest.mark.asyncio
+async def test_history_with_runner_replays_current_thread(monkeypatch):
+    fake = MagicMock()
+    fake.thread.id = "thread-live"
+    fake.messages.data = []
+    emitted: list[object] = []
+    monkeypatch.setattr(
+        wire,
+        "emit_history_replay",
+        lambda runner: emitted.append(runner),
+    )
+
+    result = await wire.handle_command(
+        {"cmd": "history"},
+        fake,
+        ReplConfig(),
+        {"turn": None},
+    )
+    assert result is fake
+    assert emitted == [fake]
 
 
 @pytest.mark.asyncio

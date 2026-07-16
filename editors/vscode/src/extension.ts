@@ -7,6 +7,11 @@ import * as vscode from "vscode";
 
 import { ChatViewProvider } from "./host/panel";
 
+async function openChatView(): Promise<void> {
+  await vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar");
+  await vscode.commands.executeCommand("pagent.chat.focus");
+}
+
 /**
  * 插件激活入口。
  *
@@ -51,6 +56,9 @@ export function activate(context: vscode.ExtensionContext): void {
       chatProvider.openInEditor();
     },
   );
+  const open = vscode.commands.registerCommand("pagent.chat.open", () => {
+    void openChatView();
+  });
   const setup = vscode.commands.registerCommand("pagent.setup", () => {
     void chatProvider.runSetup();
   });
@@ -62,6 +70,7 @@ export function activate(context: vscode.ExtensionContext): void {
     reset,
     resume,
     openInEditor,
+    open,
     setup,
     // chatProvider.dispose() 确保子进程和定时器在插件停用时被回收；
     // 不放入 subscriptions 则依赖 webview onDidDispose 触发，关窗口时可能不执行。

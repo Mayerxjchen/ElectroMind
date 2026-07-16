@@ -58,6 +58,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   // 最近一段 stderr，进程异常退出时带进 Error 提示，避免只有 code。
   private recentStderr = "";
+  private currentThreadId = "";
 
   // 用户发消息后若长时间没有任何 Wire 事件，主动报超时（避免一直三点转圈）。
   private turnWatchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -180,6 +181,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         this.armTurnWatch();
         bridge.send({ cmd: "user", text: message.text });
       });
+      return;
+    }
+    if (message.type === "requestHistoryReplay") {
+      void this.restoreVisibleHistory();
       return;
     }
     if (message.type === "requestSlashCommands") {
@@ -344,6 +349,21 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.threadListWaiters.push(onList);
       this.ensureBridge().send({ cmd: "list_threads" });
     });
+  }
+
+  private async restoreVisibleHistory(): Promise<void> {
+    if (!(await this.ensureSetup())) {
+      return;
+    }
+    if (this.bridge) {
+      this.bridge.send({ cmd: "history" });
+      return;
+    }
+    if (!this.currentThreadId) {
+      return;
+    }
+    this.startHistoryLoading();
+    this.ensureBridge().send({ cmd: "resume", thread_id: this.currentThreadId });
   }
 
   /** 惰性创建子进程桥；把事件行与 stderr 打进输出通道。 */
@@ -556,12 +576,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
       return;
     }
+    if (event.method === "CurrentThread") {
+      const payload = normalizeCurrentThread(event.params);
+      this.currentThreadId = payload.thread_id;
+      return;
+    }
     this.postToView({
       type: "event",
       method: event.method,
       params: event.params,
     });
     if (event.method === "HistoryReplay") {
+      const payload = normalizeCurrentThread(event.params);
+      this.currentThreadId = payload.thread_id;
       this.finishHistoryLoading(false);
     }
   }
@@ -763,6 +790,15 @@ function normalizeThreadList(params: Record<string, unknown>): ThreadListPayload
     threads_root:
       typeof params.threads_root === "string" ? params.threads_root : "",
     threads,
+  };
+}
+
+function normalizeCurrentThread(
+  params: Record<string, unknown>,
+): { thread_id: string; title: string } {
+  return {
+    thread_id: typeof params.thread_id === "string" ? params.thread_id : "",
+    title: typeof params.title === "string" ? params.title : "",
   };
 }
 

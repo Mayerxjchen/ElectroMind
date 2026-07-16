@@ -202,14 +202,16 @@ class SshBackend:
         await self.sftp.remove(path)
 
     def describe(self, spec: SandboxSpec, workdir: str) -> BackendIdentity:
-        del workdir
         connection = spec.connection if spec else {}
+        home = spec.home if spec else "/home/agent"
         host = connection.get("host", "")
         user = connection.get("user", "")
         target = f"{user}@{host}" if user and host else host or "(未配置)"
         lines: list[str] = [f"远程主机：{target}"]
-        if self.remote_workdir:
-            lines.append(f"远端工作目录：{self.remote_workdir}")
+        remote_workdir = self.remote_workdir or workdir
+        if remote_workdir:
+            lines.append(f"run_command 的远端 shell 工作目录：{remote_workdir}")
+            lines.append(f"文件工具路径 {home} 会映射到这个远端目录。")
         return BackendIdentity(
             computer_name="远程 SSH 计算节点",
             extra="\n".join(lines) + "\n",

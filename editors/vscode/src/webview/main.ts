@@ -612,5 +612,6 @@ if (app) {
   });
 
   vscodeApi.postMessage({ type: "requestRuntimeOptions" });
+  vscodeApi.postMessage({ type: "requestHistoryReplay" });
   syncSendState();
 }
