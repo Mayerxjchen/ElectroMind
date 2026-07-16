@@ -169,3 +169,22 @@ async def test_thread_open_sandbox_local(tmp_path):
         assert sandbox.workdir == str(thread.workspace_path)
     finally:
         await sandbox.close()
+
+
+@pytest.mark.asyncio
+async def test_thread_project_binds_host_root_not_workdir(tmp_path):
+    project = tmp_path / "user-project"
+    project.mkdir()
+    thread = Thread.open(
+        "bound",
+        root=tmp_path / "threads",
+        overrides={"backend": "local", "project_path": str(project)},
+    )
+
+    sandbox = await thread.open_sandbox()
+    try:
+        assert sandbox.workdir == str(thread.workspace_path)
+        assert thread.workspace_path != project.resolve()
+        assert sandbox.host_root == str(project.resolve())
+    finally:
+        await sandbox.close()

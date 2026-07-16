@@ -98,6 +98,10 @@ function readStoredTheme(): ThemeMode {
   return value === "light" ? "light" : "dark";
 }
 
+function readStoredSidebarPinned(): boolean {
+  return window.localStorage.getItem("pagent-desktop-sidebar-pinned") === "1";
+}
+
 function sandboxLabel(runtime: RuntimeState): string {
   if (!runtime.currentThreadId) {
     return "sbx-local";
@@ -210,7 +214,7 @@ function renderSessionList(
     return `
       <div class="session-empty">
         <div class="session-empty-title">还没有历史会话</div>
-        <div class="session-empty-copy">点击上方的新建任务开始第一条对话。</div>
+        <div class="session-empty-copy">点击上方新建任务开始第一条对话。</div>
       </div>
     `;
   }
@@ -238,6 +242,26 @@ function renderSessionList(
       `;
     })
     .join("");
+}
+
+function renderThreadMetaSkeleton(): string {
+  return `
+    <div class="meta-skeleton">
+      <div class="meta-skeleton-row">
+        <div class="skeleton-line title"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+      <div class="meta-skeleton-row">
+        <div class="skeleton-line medium"></div>
+        <div class="skeleton-line medium"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+      <div class="meta-skeleton-row">
+        <div class="skeleton-line short"></div>
+        <div class="skeleton-line block"></div>
+      </div>
+    </div>
+  `;
 }
 
 function renderThreadMeta(meta: ThreadMeta, session: ThreadSummary | undefined): string {
@@ -379,6 +403,9 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 <span class="user-name">pagent</span>
               </div>
               <div class="left-footer-actions">
+                <button class="icon-button" type="button" data-pin-sidebar title="钉住侧栏">
+                  ${renderIcon("pin")}
+                </button>
                 <button class="icon-button" type="button" data-theme-toggle title="切换主题">
                   ${renderIcon("moon")}
                 </button>
@@ -439,7 +466,17 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
               <textarea id="prompt" placeholder="给 pagent 下达任务，支持 @ 引用文件"></textarea>
               <div class="composer-actions">
                 <div class="composer-actions-start">
-                  <span class="desktop-composer-hint" data-last-error>${runtime.lastError ?? ""}</span>
+                  <button
+                    type="button"
+                    class="history-dock-dot"
+                    data-history-dock
+                    hidden
+                    title="展开会话列表"
+                    aria-label="展开会话列表"
+                  >
+                    ${renderIcon("history")}
+                  </button>
+                  <span class="desktop-composer-hint" data-last-error></span>
                 </div>
                 <button class="composer-btn primary" data-send-message title="发送">
                   ${renderIcon("arrow-up")}
@@ -559,6 +596,14 @@ function buildToolPreview(name: string, args: string): string {
   return summarize(`${name} ${args}`.trim(), 80) || name;
 }
 
+function isRoutineWireLog(text: string): boolean {
+  return (
+    text.includes("[wire] resume：已切到 thread") ||
+    text.includes("[wire] resume: 已切到 thread") ||
+    /^\[wire\]\s*(open|reset|list_threads)\b/i.test(text)
+  );
+}
+
 async function start(): Promise<void> {
   const [appInfo, initialRuntime] = await Promise.all([
     window.desktop.getAppInfo(),
@@ -596,6 +641,8 @@ async function start(): Promise<void> {
     activeTab: "sandbox" as PanelTab,
     leftCollapsed: false,
     rightCollapsed: false,
+    sidebarDocked: false,
+    sidebarPinned: readStoredSidebarPinned(),
     leftWidth: LEFT_PANE_WIDTH_PX,
     rightWidth: RIGHT_PANE_WIDTH_PX,
     activityState: "sleeping" as ActivityState,
@@ -613,6 +660,9 @@ async function start(): Promise<void> {
     sessions: [] as ThreadSummary[],
     runtime: initialRuntime,
   };
+  const historyDockButton = findRequired<HTMLButtonElement>("[data-history-dock]");
+  const pinSidebarButton = findRequired<HTMLButtonElement>("[data-pin-sidebar]");
+  let keepSidebarOpen = false;
 
   renderArtifactList();
 
@@ -630,11 +680,15 @@ async function start(): Promise<void> {
   }
 
   function applyWorkbenchChrome(): void {
+    const leftHidden = uiState.sidebarDocked;
     workbench.dataset.leftCollapsed = String(uiState.leftCollapsed);
     workbench.dataset.rightCollapsed = String(uiState.rightCollapsed);
+    workbench.dataset.sidebarDocked = String(uiState.sidebarDocked);
     workbench.style.setProperty(
       "--left-pane-width",
-      `${uiState.leftCollapsed ? LEFT_COLLAPSED_WIDTH_PX : uiState.leftWidth}px`,
+      leftHidden
+        ? "0px"
+        : `${uiState.leftCollapsed ? LEFT_COLLAPSED_WIDTH_PX : uiState.leftWidth}px`,
     );
     workbench.style.setProperty(
       "--right-pane-width",
@@ -642,27 +696,89 @@ async function start(): Promise<void> {
     );
     workbench.style.setProperty(
       "--left-gap",
-      uiState.leftCollapsed ? "0px" : "8px",
+      leftHidden || uiState.leftCollapsed ? "0px" : "8px",
     );
     workbench.style.setProperty(
       "--right-gap",
       uiState.rightCollapsed ? "0px" : "8px",
     );
+    historyDockButton.hidden = !uiState.sidebarDocked;
   }
 
+  function applyPinState(): void {
+    pinSidebarButton.classList.toggle("active", uiState.sidebarPinned);
+    pinSidebarButton.title = uiState.sidebarPinned ? "取消钉住" : "钉住侧栏";
+    pinSidebarButton.innerHTML = renderIcon(
+      uiState.sidebarPinned ? "pin-off" : "pin",
+    );
+    window.localStorage.setItem(
+      "pagent-desktop-sidebar-pinned",
+      uiState.sidebarPinned ? "1" : "0",
+    );
+  }
+
+  function syncComposerDock(forceOpen = false): void {
+    if (uiState.sidebarPinned) {
+      keepSidebarOpen = false;
+      uiState.sidebarDocked = false;
+      applyWorkbenchChrome();
+      return;
+    }
+
+    const focused = document.activeElement === promptInput;
+    const hasText = promptInput.value.trim().length > 0;
+    const streaming = uiState.activityState === "running";
+    const composing = focused || hasText || streaming;
+
+    if (forceOpen) {
+      keepSidebarOpen = true;
+      uiState.sidebarDocked = false;
+      uiState.leftCollapsed = false;
+      applyWorkbenchChrome();
+      return;
+    }
+
+    if (keepSidebarOpen) {
+      if (!composing) {
+        keepSidebarOpen = false;
+      } else {
+        uiState.sidebarDocked = false;
+        applyWorkbenchChrome();
+        return;
+      }
+    }
+
+    uiState.sidebarDocked = composing;
+    applyWorkbenchChrome();
+  }
+
+  let metaModalCloseTimer = 0;
+
   function closeThreadMetaModal(): void {
-    threadMetaModal.hidden = true;
-    threadMetaBody.innerHTML = "";
+    if (threadMetaModal.hidden) {
+      return;
+    }
+    threadMetaModal.classList.remove("is-open");
+    window.clearTimeout(metaModalCloseTimer);
+    metaModalCloseTimer = window.setTimeout(() => {
+      threadMetaModal.hidden = true;
+      threadMetaBody.innerHTML = "";
+    }, 180);
   }
 
   async function openThreadMetaModal(threadId: string): Promise<void> {
     const session = uiState.sessions.find((item) => item.id === threadId);
+    window.clearTimeout(metaModalCloseTimer);
+    threadMetaBody.innerHTML = renderThreadMetaSkeleton();
     threadMetaModal.hidden = false;
-    threadMetaBody.innerHTML = `
-      <div class="thread-meta-loading">正在读取会话信息...</div>
-    `;
+    requestAnimationFrame(() => {
+      threadMetaModal.classList.add("is-open");
+    });
     try {
       const meta = await window.desktop.getThreadMeta(threadId);
+      if (threadMetaModal.hidden) {
+        return;
+      }
       threadMetaBody.innerHTML = renderThreadMeta(meta, session);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -934,9 +1050,17 @@ async function start(): Promise<void> {
       void refreshSandboxStatus();
     }
     applyActivityState();
+    syncComposerDock();
   }
 
-  promptInput.addEventListener("input", () => resizePrompt(promptInput));
+  promptInput.addEventListener("input", () => {
+    resizePrompt(promptInput);
+    syncComposerDock();
+  });
+  promptInput.addEventListener("focus", () => syncComposerDock());
+  promptInput.addEventListener("blur", () => {
+    window.setTimeout(() => syncComposerDock(), 0);
+  });
   promptInput.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" || event.shiftKey || event.isComposing) {
       return;
@@ -945,6 +1069,13 @@ async function start(): Promise<void> {
     void sendMessage();
   });
   resizePrompt(promptInput);
+
+  historyDockButton.addEventListener("mousedown", (event) => {
+    event.preventDefault();
+  });
+  historyDockButton.addEventListener("click", () => {
+    syncComposerDock(true);
+  });
 
   sendMessageButton.addEventListener("click", () => {
     void sendMessage();
@@ -976,12 +1107,20 @@ async function start(): Promise<void> {
     await refreshArtifacts();
   });
 
+  pinSidebarButton.addEventListener("click", () => {
+    uiState.sidebarPinned = !uiState.sidebarPinned;
+    applyPinState();
+    syncComposerDock();
+  });
+
   findRequired<HTMLElement>("[data-collapse-left]").addEventListener("click", () => {
     uiState.leftCollapsed = true;
+    uiState.sidebarDocked = false;
     applyWorkbenchChrome();
   });
   findRequired<HTMLElement>("[data-expand-left]").addEventListener("click", () => {
     uiState.leftCollapsed = false;
+    uiState.sidebarDocked = false;
     applyWorkbenchChrome();
   });
   findRequired<HTMLElement>("[data-collapse-right]").addEventListener("click", () => {
@@ -1097,10 +1236,14 @@ async function start(): Promise<void> {
       chatRenderer.handleEvent(message.event);
       return;
     }
-    if (!errorText.textContent) {
-      errorText.textContent = message.text.trim();
+    const text = message.text.trim();
+    if (!text || isRoutineWireLog(text)) {
+      return;
     }
-    appendTerminalEntry("stderr", message.text);
+    if (!errorText.textContent) {
+      errorText.textContent = text;
+    }
+    appendTerminalEntry("stderr", text);
   });
 
   const disposeRuntimeState = window.desktop.onRuntimeState((state) => {
@@ -1126,6 +1269,7 @@ async function start(): Promise<void> {
   });
 
   applyTheme();
+  applyPinState();
   applyWorkbenchChrome();
   renderTerminal();
   applyRightTab();

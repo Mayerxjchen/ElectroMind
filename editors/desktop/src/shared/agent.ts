@@ -132,16 +132,18 @@ export function resolveCliCommand(command: string): string {
 }
 
 export function resolvePagentWireInvocation(projectRoot: string): CliInvocation {
+  // 桌面端默认 local sandbox：不依赖本机 Docker daemon。
+  const wireArgs = ["--wire", "--backend", "local"];
   const uv = resolveCliCommand("uv");
   if (uv) {
     return {
       command: uv,
-      args: ["run", "--project", projectRoot, "pagent", "--wire"],
+      args: ["run", "--project", projectRoot, "pagent", ...wireArgs],
     };
   }
   return {
     command: resolveCliCommand("pagent"),
-    args: ["--wire"],
+    args: wireArgs,
   };
 }
 

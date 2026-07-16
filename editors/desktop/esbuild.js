@@ -5,6 +5,23 @@ const path = require("node:path");
 const root = __dirname;
 const dist = path.join(root, "dist");
 
+/** lucide 等包的 .map 过大/异常时，esbuild 合成 sourcemap 会炸；剥掉引用即可。 */
+const ignoreVendorSourceMaps = {
+  name: "ignore-vendor-sourcemaps",
+  setup(build) {
+    build.onLoad(
+      { filter: /[/\\]node_modules[/\\].*\.[cm]?js$/ },
+      async (args) => {
+        const source = await fs.promises.readFile(args.path, "utf8");
+        return {
+          contents: source.replace(/\n\/\/[#@] sourceMappingURL=.*$/gm, "\n"),
+          loader: "js",
+        };
+      },
+    );
+  },
+};
+
 function copyRendererAssets() {
   fs.mkdirSync(dist, { recursive: true });
   for (const file of ["index.html", "style.css"]) {
@@ -16,6 +33,11 @@ function copyRendererAssets() {
   fs.copyFileSync(
     path.join(root, "..", "vscode", "media", "style.css"),
     path.join(dist, "chat.css"),
+  );
+  // 与 docs favicon 相同的 logo，给窗口 / 标签页用。
+  fs.copyFileSync(
+    path.join(root, "assets", "logo-icon.png"),
+    path.join(dist, "logo-icon.png"),
   );
 }
 
@@ -60,6 +82,7 @@ const rendererOptions = {
   target: "chrome128",
   sourcemap: true,
   logLevel: "info",
+  plugins: [ignoreVendorSourceMaps],
 };
 
 async function build() {

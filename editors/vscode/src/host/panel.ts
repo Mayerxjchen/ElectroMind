@@ -179,7 +179,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (message.type === "userInput") {
       void this.withBridge((bridge) => {
         this.armTurnWatch();
-        bridge.send({ cmd: "user", text: message.text });
+        bridge.send(this.withProject({ cmd: "user", text: message.text }));
       });
       return;
     }
@@ -223,6 +223,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private workspaceRoot(): string | undefined {
     return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  /** 插件模式：打开的工作区即用户 project（host_root），随 wire 命令带上。 */
+  private withProject<T extends Record<string, unknown>>(command: T): T {
+    const project = this.workspaceRoot();
+    if (!project) {
+      return command;
+    }
+    return { ...command, project_path: project };
   }
 
   /** 缺 CLI / Key 时引导 setup；齐了返回 true。 */
@@ -294,7 +303,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    *  后端回发 HistoryReplay（空数组）驱动视图清屏，视图 DOM 统一由该事件重建。 */
   resetSession(): void {
     // 切换模式后 bridge 可能已停；ensure 后再 reset，避免点了没反应。
-    this.ensureBridge().send({ cmd: "reset" });
+    this.ensureBridge().send(this.withProject({ cmd: "reset" }));
   }
 
   /** 标题栏「恢复会话」：向后端 list_threads（与落盘同一 home 判定），选中后 resume。
@@ -329,7 +338,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.startHistoryLoading();
-    this.ensureBridge().send({ cmd: "resume", thread_id: picked.description });
+    this.ensureBridge().send(
+      this.withProject({ cmd: "resume", thread_id: picked.description }),
+    );
   }
 
   /** 向 wire 要 ThreadList；路径由子进程 cwd 上的 resolve_pagent_home 决定。 */
@@ -347,7 +358,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         resolvePromise(payload);
       };
       this.threadListWaiters.push(onList);
-      this.ensureBridge().send({ cmd: "list_threads" });
+      this.ensureBridge().send(this.withProject({ cmd: "list_threads" }));
     });
   }
 
@@ -356,14 +367,16 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (this.bridge) {
-      this.bridge.send({ cmd: "history" });
+      this.bridge.send(this.withProject({ cmd: "history" }));
       return;
     }
     if (!this.currentThreadId) {
       return;
     }
     this.startHistoryLoading();
-    this.ensureBridge().send({ cmd: "resume", thread_id: this.currentThreadId });
+    this.ensureBridge().send(
+      this.withProject({ cmd: "resume", thread_id: this.currentThreadId }),
+    );
   }
 
   /** 惰性创建子进程桥；把事件行与 stderr 打进输出通道。 */

@@ -3,9 +3,12 @@
 目录布局：
 
     ~/.pagent/threads/<thread_id>/
-        thread.toml        # thread 配置（首次冻结）
+        thread.toml        # thread 配置（首次冻结；可含 [project] path）
         metainfo.json      # 面向用户的元信息（标题、时间戳、对话摘要）
-        workspace/         # 沙箱工作目录
+        workspace/         # agent 沙箱地盘（与用户 project 分离）
+
+``[project].path`` 是用户侧工作目录：挂到 sandbox 的 host_root（list_host_files /
+copy_from_host / copy_to_host → ``<project>/artifacts``），不是沙箱 workdir。
 
 thread_id 是内部管理编号（thread-<时间戳>），metainfo.json 里的 title 才是面向
 用户展示的名字，前端列会话时优先显示它。
@@ -85,9 +88,15 @@ class Thread:
 
     @property
     def workspace_path(self) -> Path:
-        if self.spec.project_path:
-            return Path(os.path.expanduser(self.spec.project_path)).resolve()
+        """Agent 沙箱地盘：始终是 thread 下的 workspace/，与用户 project 分离。"""
         return self.root / WORKSPACE_DIRNAME
+
+    @property
+    def project_path(self) -> Path | None:
+        """用户侧工作目录（host_root）；未绑定则 None。"""
+        if not self.spec.project_path:
+            return None
+        return Path(os.path.expanduser(self.spec.project_path)).resolve()
 
     @property
     def metainfo_path(self) -> Path:

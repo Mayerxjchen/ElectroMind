@@ -441,3 +441,28 @@ async def test_resume_failure_emits_empty_replay(monkeypatch):
     )
     assert result is None
     assert emitted == ["empty"]
+
+
+@pytest.mark.asyncio
+async def test_reset_failure_keeps_process_alive(monkeypatch):
+    """沙箱打不开时 reset 应发 Error，不能把 wire 进程打崩。"""
+    lines: list[str] = []
+    monkeypatch.setattr(wire, "emit_line", lambda line: lines.append(line))
+    monkeypatch.setattr(
+        wire,
+        "open_fresh_runner",
+        AsyncMock(side_effect=RuntimeError("docker daemon down")),
+    )
+
+    result = await wire.handle_command(
+        {"cmd": "reset"},
+        None,
+        ReplConfig(),
+        {"turn": None},
+    )
+    assert result is None
+    methods = [json.loads(line)["method"] for line in lines]
+    assert "HistoryReplay" in methods
+    assert "Error" in methods
+    error = next(json.loads(line) for line in lines if "Error" in line)
+    assert error["params"]["where"] == "reset"

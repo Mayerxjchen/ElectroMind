@@ -572,6 +572,15 @@ class SandboxProfile(Protocol):
     ssh_config: str
     ssh_workdir: str
     command_policy: str
+    project_path: str | None
+
+
+def profile_host_root(profile: SandboxProfile) -> str | None:
+    """用户 project → sandbox host_root；未绑定则 None（回退 cwd）。"""
+    raw = getattr(profile, "project_path", None)
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    return os.path.abspath(os.path.expanduser(raw.strip()))
 
 
 async def open_sandbox_for_spec(
@@ -587,7 +596,7 @@ async def open_sandbox_for_spec(
 
     Args:
         profile: 满足 SandboxProfile 的配置对象（如 ThreadSpec）。
-        workdir: sandbox 工作目录（宿主路径）。
+        workdir: agent 沙箱工作目录（宿主路径，通常是 thread/workspace）。
         label: 出错信息里的调用方标识（如 thread id），仅用于报错可读性。
 
     Returns:
@@ -598,11 +607,13 @@ async def open_sandbox_for_spec(
     """
     prefix = f"{label}: " if label else ""
     backend = profile.backend
+    host_root = profile_host_root(profile)
 
     if backend == "local":
         return await Sandbox.create(
             backend="local",
             workdir=workdir,
+            host_root=host_root,
             command_policy=profile.command_policy,
         )
 
@@ -612,6 +623,7 @@ async def open_sandbox_for_spec(
         return await Sandbox.create(
             backend=backend,
             workdir=workdir,
+            host_root=host_root,
             image=profile.image,
             container_ttl_seconds=profile.container_ttl_seconds,
             command_policy=profile.command_policy,
@@ -630,6 +642,7 @@ async def open_sandbox_for_spec(
         return await Sandbox.create(
             backend="ssh",
             workdir=workdir,
+            host_root=host_root,
             connection=conn.to_dict(),
             command_policy=profile.command_policy,
         )

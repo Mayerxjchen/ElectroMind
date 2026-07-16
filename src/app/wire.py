@@ -73,8 +73,12 @@ def emit_line(line: str) -> None:
 
 
 def runner_project_path(runner) -> str:
-    """当前 thread 绑定的 project 目录。"""
-    return str(runner.thread.workspace_path)
+    """当前 thread 绑定的用户 project（host_root），不是沙箱 workspace。"""
+    path = getattr(runner.thread, "project_path", None)
+    if path is not None:
+        return str(path)
+    raw = getattr(runner.thread.spec, "project_path", None)
+    return str(raw) if isinstance(raw, str) and raw else ""
 
 
 def command_project_path(command: dict) -> str | None:
@@ -199,10 +203,12 @@ def emit_history_replay(runner) -> None:
 
 def emit_thread_history_replay(thread, project_path: str | None = None) -> None:
     """只读取 thread 配置与消息，不打开 sandbox，用于轻量切换会话。"""
+    bound = getattr(thread, "project_path", None)
+    resolved = project_path or (str(bound) if bound is not None else "")
     emit_history_replay_payload(
         thread_id=thread.id,
         title=thread.load_metainfo().get("title", ""),
-        project_path=project_path or str(thread.workspace_path),
+        project_path=resolved,
         messages=history_message_items(thread.load_messages()),
     )
 
@@ -704,7 +710,6 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         state["thread_id"] = thread.id
         state["project_path"] = project_path
         emit_thread_history_replay(thread)
-        log(f"[wire] resume：已切到 thread {thread_id!r}（未唤醒沙箱）")
         return None
 
     if cmd == "reset":
@@ -713,8 +718,19 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             return runner
         if runner is not None:
             await runner.close()
-        runner = await open_fresh_runner(config, command_project_path(command))
+            runner = None
+        project_path = command_project_path(command)
+        try:
+            runner = await open_fresh_runner(config, project_path)
+        except (Exception, SystemExit) as exc:
+            log(f"[wire] reset failed: {exc}")
+            state["thread_id"] = None
+            state["project_path"] = project_path
+            emit_empty_history_replay()
+            emit_error(format_exc(exc), where="reset")
+            return None
         state["thread_id"] = runner.thread.id
+        state["project_path"] = project_path
         emit_history_replay(runner)
         log("[wire] reset：已开新会话")
         return runner

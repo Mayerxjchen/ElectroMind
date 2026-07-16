@@ -3,6 +3,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  nativeImage,
   shell,
   type OpenDialogOptions,
 } from "electron";
@@ -67,14 +68,48 @@ let threadListWaiters: Array<(payload: ThreadListPayload) => void> = [];
 let sandboxTreeWaiters: SandboxTreeWaiter[] = [];
 let sandboxStatusWaiters: SandboxStatusWaiter[] = [];
 
+/** dock/about 用带透明边距的高清图标（符合 macOS 图标网格，避免视觉偏大）。 */
+function appIconPngPath(): string {
+  const padded = path.join(__dirname, "..", "assets", "app-icon.png");
+  if (existsSync(padded)) {
+    return padded;
+  }
+  return path.join(__dirname, "..", "assets", "logo-icon.png");
+}
+
 function appIconPath(): string {
-  return path.join(__dirname, "..", "..", "vscode", "media", "logo-icon.png");
+  if (process.platform === "darwin") {
+    const icns = path.join(__dirname, "..", "assets", "icon.icns");
+    if (existsSync(icns)) {
+      return icns;
+    }
+  }
+  return appIconPngPath();
+}
+
+function applyAppIcon(): void {
+  const png = appIconPngPath();
+  if (!existsSync(png)) {
+    return;
+  }
+  const image = nativeImage.createFromPath(png);
+  if (image.isEmpty()) {
+    return;
+  }
+  if (process.platform === "darwin") {
+    app.dock?.setIcon(image);
+  }
+  app.setAboutPanelOptions({
+    applicationName: "pagent Desktop",
+    iconPath: png,
+  });
 }
 
 function userPagentHome(): string {
   return path.join(homedir(), ".pagent");
 }
 
+/** 桌面默认用户 project（host_root）；agent 沙箱仍是 thread/workspace。 */
 function defaultProjectPath(): string {
   return path.join(userPagentHome(), "default");
 }
@@ -621,6 +656,7 @@ function createWindow(): BrowserWindow {
 
 app.whenReady().then(() => {
   app.setName("pagent Desktop");
+  applyAppIcon();
   mainWindow = createWindow();
 
   app.on("activate", () => {
@@ -639,6 +675,14 @@ app.on("window-all-closed", () => {
     return;
   }
   app.quit();
+});
+
+// 退出时先隐藏 dock 图标，避免 dev 模式下 dock 短暂回退到默认 Electron 图标而“闪一下”。
+app.on("before-quit", () => {
+  disposeBridge();
+  if (process.platform === "darwin") {
+    app.dock?.hide();
+  }
 });
 
 ipcMain.handle("desktop:get-app-info", async () => appInfo());

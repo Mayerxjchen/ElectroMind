@@ -71,11 +71,16 @@ def test_thread_spec_field_names():
     assert "extra" in names
 
 
-def test_thread_workspace_path_uses_project_path(tmp_path):
+def test_thread_project_path_is_separate_from_workspace(tmp_path):
     project = tmp_path / "project"
+    project.mkdir()
     thread = Thread.open(
         "project-binding",
         root=tmp_path / "threads",
         overrides={"project_path": str(project)},
     )
-    assert thread.workspace_path == project.resolve()
+    assert (
+        thread.workspace_path
+        == (tmp_path / "threads" / "project-binding" / "workspace").resolve()
+    )
+    assert thread.project_path == project.resolve()

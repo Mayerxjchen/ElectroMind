@@ -24,6 +24,8 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Pin,
+  PinOff,
   Plus,
   Server,
   X,
@@ -57,6 +59,8 @@ type DesktopIconName =
   | "panel-left-open"
   | "panel-right-close"
   | "panel-right-open"
+  | "pin"
+  | "pin-off"
   | "plus"
   | "server"
   | "x";
@@ -87,6 +91,8 @@ const iconRegistry: Record<DesktopIconName, IconNode> = {
   "panel-left-open": PanelLeftOpen,
   "panel-right-close": PanelRightClose,
   "panel-right-open": PanelRightOpen,
+  pin: Pin,
+  "pin-off": PinOff,
   plus: Plus,
   server: Server,
   x: X,
