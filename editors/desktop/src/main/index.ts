@@ -8,12 +8,15 @@ import {
   type OpenDialogOptions,
 } from "electron";
 import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import type { Dirent } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
 import { AgentBridge, resolvePagentWireInvocation } from "../shared/agent";
 import type {
   AppInfo,
+  AppSettings,
+  ArtifactPreview,
   ArtifactSummary,
   DesktopEvent,
   RuntimeState,
@@ -25,7 +28,12 @@ import type {
 } from "../shared/protocol";
 import { parseWireLine } from "../shared/wire";
 
-type ThreadListEntry = { id: string; title: string; projectPath: string };
+type ThreadListEntry = {
+  id: string;
+  title: string;
+  projectPath: string;
+  sandboxBackend: string;
+};
 type ThreadListPayload = {
   home: string;
   threads_root: string;
@@ -67,6 +75,7 @@ let sandboxStatus: SandboxStatusPayload = {
 let threadListWaiters: Array<(payload: ThreadListPayload) => void> = [];
 let sandboxTreeWaiters: SandboxTreeWaiter[] = [];
 let sandboxStatusWaiters: SandboxStatusWaiter[] = [];
+const DOCUMENTATION_URL = "https://synclionpaw.github.io/pagent/";
 
 /** dock/about 用带透明边距的高清图标（符合 macOS 图标网格，避免视觉偏大）。 */
 function appIconPngPath(): string {
@@ -139,6 +148,10 @@ function artifactsDirectory(): string {
   return path.join(projectPath, "artifacts");
 }
 
+function settingsFilePath(): string {
+  return path.join(userPagentHome(), "pagent.toml");
+}
+
 function threadsDirectory(): string {
   return path.join(userPagentHome(), "threads");
 }
@@ -155,10 +168,29 @@ function configureAppRuntimePaths(): void {
 }
 
 function appInfo(): AppInfo {
+  const homeDir = app.getPath("home");
+  const userName = path.basename(homeDir);
   return {
     name: app.getName(),
     version: app.getVersion(),
     platform: process.platform,
+    userName,
+  };
+}
+
+function readAppSettings(): AppSettings {
+  const filePath = settingsFilePath();
+  if (!existsSync(filePath)) {
+    return {
+      path: filePath,
+      exists: false,
+      content: "",
+    };
+  }
+  return {
+    path: filePath,
+    exists: true,
+    content: readFileSync(filePath, "utf8"),
   };
 }
 
@@ -202,6 +234,8 @@ function normalizeThreadList(params: Record<string, unknown>): ThreadListPayload
       title: typeof record.title === "string" ? record.title : "",
       projectPath:
         typeof record.project_path === "string" ? record.project_path : "",
+      sandboxBackend:
+        typeof record.backend === "string" ? record.backend : "local",
     });
   }
   return {
@@ -287,6 +321,7 @@ function toThreadSummaries(payload: ThreadListPayload): ThreadSummary[] {
     title: entry.title.trim() || "新建任务",
     relativeTime: formatRelativeTime(parseThreadTimestamp(entry.id)),
     projectPath: entry.projectPath,
+    sandboxBackend: entry.sandboxBackend,
   }));
 }
 
@@ -361,6 +396,171 @@ function resolveArtifactPath(filePath: string): string | undefined {
     return undefined;
   }
   return existsSync(target) ? target : undefined;
+}
+
+const ARTIFACT_TEXT_LIMIT = 512 * 1024;
+const ARTIFACT_IMAGE_LIMIT = 8 * 1024 * 1024;
+const ARTIFACT_HTML_LIMIT = 4 * 1024 * 1024;
+const ARTIFACT_PDF_LIMIT = 32 * 1024 * 1024;
+
+const ARTIFACT_LANGUAGES: Record<string, string> = {
+  ".ts": "typescript",
+  ".tsx": "tsx",
+  ".js": "javascript",
+  ".jsx": "jsx",
+  ".mjs": "javascript",
+  ".cjs": "javascript",
+  ".py": "python",
+  ".sh": "bash",
+  ".rb": "ruby",
+  ".go": "go",
+  ".rs": "rust",
+  ".java": "java",
+  ".c": "c",
+  ".h": "c",
+  ".cpp": "cpp",
+  ".css": "css",
+  ".scss": "scss",
+  ".html": "html",
+  ".htm": "html",
+  ".xml": "xml",
+  ".json": "json",
+  ".yaml": "yaml",
+  ".yml": "yaml",
+  ".toml": "toml",
+  ".md": "markdown",
+  ".sql": "sql",
+};
+
+const ARTIFACT_IMAGE_MIME: Record<string, string> = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".svg": "image/svg+xml",
+  ".bmp": "image/bmp",
+};
+
+const ARTIFACT_TEXT_EXT = new Set([
+  ".txt",
+  ".log",
+  ".csv",
+  ".tsv",
+  ".env",
+  ".ini",
+  ".cfg",
+  ".conf",
+]);
+
+/** 读取 artifact 内容供右侧面板内联预览：markdown/html/pdf 富渲染，代码/文本高亮，图片转 data URL，其余标记为二进制。 */
+function readArtifactPreview(filePath: string): ArtifactPreview {
+  const target = resolveArtifactPath(filePath);
+  const name = path.basename(filePath);
+  if (!target) {
+    return { name, path: filePath, size: 0, kind: "binary", reason: "文件不存在" };
+  }
+  const stat = statSync(target);
+  const ext = path.extname(target).toLowerCase();
+  const base = { name: path.basename(target), path: target, size: stat.size };
+
+  const imageMime = ARTIFACT_IMAGE_MIME[ext];
+  if (imageMime) {
+    if (stat.size > ARTIFACT_IMAGE_LIMIT) {
+      return { ...base, kind: "binary", reason: "图片过大，无法内联预览" };
+    }
+    const buffer = readFileSync(target);
+    return { ...base, kind: "image", dataUrl: `data:${imageMime};base64,${buffer.toString("base64")}` };
+  }
+
+  if (ext === ".pdf") {
+    if (stat.size > ARTIFACT_PDF_LIMIT) {
+      return { ...base, kind: "binary", reason: "PDF 过大，无法内联预览" };
+    }
+    const buffer = readFileSync(target);
+    return { ...base, kind: "pdf", dataUrl: `data:application/pdf;base64,${buffer.toString("base64")}` };
+  }
+
+  if (ext === ".html" || ext === ".htm") {
+    if (stat.size > ARTIFACT_HTML_LIMIT) {
+      return { ...base, kind: "binary", reason: "HTML 过大，无法内联预览" };
+    }
+    const buffer = readFileSync(target);
+    return { ...base, kind: "html", dataUrl: `data:text/html;base64,${buffer.toString("base64")}` };
+  }
+
+  const known = ext in ARTIFACT_LANGUAGES || ARTIFACT_TEXT_EXT.has(ext);
+  const buffer = readFileSync(target, { flag: "r" });
+  const slice = buffer.subarray(0, ARTIFACT_TEXT_LIMIT);
+  if (!known && slice.includes(0)) {
+    return { ...base, kind: "binary", reason: "二进制文件，无法内联预览" };
+  }
+  const text = slice.toString("utf8");
+  const truncated = stat.size > ARTIFACT_TEXT_LIMIT;
+  if (ext === ".md" || ext === ".markdown") {
+    return { ...base, kind: "markdown", text, truncated };
+  }
+  return {
+    ...base,
+    kind: "text",
+    language: ARTIFACT_LANGUAGES[ext],
+    text,
+    truncated,
+  };
+}
+
+const PROJECT_FILE_IGNORE = new Set([
+  ".git",
+  "node_modules",
+  ".venv",
+  "__pycache__",
+  ".DS_Store",
+  "dist",
+  "build",
+  ".idea",
+  ".vscode",
+]);
+const PROJECT_FILE_LIMIT = 2000;
+
+/** 扁平列出 project 目录下的相对路径，供 @ 引用补全。忽略常见的重目录。 */
+function listProjectFiles(): string[] {
+  const root = projectPath;
+  if (!existsSync(root)) {
+    return [];
+  }
+  const results: string[] = [];
+  const walk = (dir: string): void => {
+    if (results.length >= PROJECT_FILE_LIMIT) {
+      return;
+    }
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(dir, { withFileTypes: true }) as Dirent[];
+    } catch {
+      return;
+    }
+    for (const entry of entries) {
+      if (results.length >= PROJECT_FILE_LIMIT) {
+        return;
+      }
+      if (entry.name.startsWith(".") && entry.name !== ".pagent") {
+        continue;
+      }
+      if (PROJECT_FILE_IGNORE.has(entry.name)) {
+        continue;
+      }
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        walk(full);
+        continue;
+      }
+      if (entry.isFile()) {
+        results.push(path.relative(root, full));
+      }
+    }
+  };
+  walk(root);
+  return results.sort((a, b) => a.localeCompare(b));
 }
 
 function postDesktopEvent(event: DesktopEvent): void {
@@ -644,6 +844,7 @@ function createWindow(): BrowserWindow {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      plugins: true,
     },
   });
 
@@ -652,6 +853,15 @@ function createWindow(): BrowserWindow {
     notifyRuntimeState();
   });
   return window;
+}
+
+function hideAppDuringQuit(): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    window.hide();
+  }
+  if (process.platform === "darwin") {
+    app.dock?.hide();
+  }
 }
 
 app.whenReady().then(() => {
@@ -679,10 +889,12 @@ app.on("window-all-closed", () => {
 
 // 退出时先隐藏 dock 图标，避免 dev 模式下 dock 短暂回退到默认 Electron 图标而“闪一下”。
 app.on("before-quit", () => {
+  hideAppDuringQuit();
   disposeBridge();
-  if (process.platform === "darwin") {
-    app.dock?.hide();
-  }
+});
+
+app.on("will-quit", () => {
+  hideAppDuringQuit();
 });
 
 ipcMain.handle("desktop:get-app-info", async () => appInfo());
@@ -694,6 +906,10 @@ ipcMain.handle("desktop:list-threads", async () => {
 ipcMain.handle("desktop:get-thread-meta", async (_event, threadId: string) => {
   return readThreadMeta(threadId);
 });
+ipcMain.handle("desktop:get-settings", async () => readAppSettings());
+ipcMain.handle("desktop:open-documentation", async () => {
+  await shell.openExternal(DOCUMENTATION_URL);
+});
 ipcMain.handle("desktop:list-artifacts", async () => listProjectArtifacts());
 ipcMain.handle("desktop:open-artifact", async (_event, filePath: string) => {
   const target = resolveArtifactPath(filePath);
@@ -701,6 +917,9 @@ ipcMain.handle("desktop:open-artifact", async (_event, filePath: string) => {
     return;
   }
   shell.showItemInFolder(target);
+});
+ipcMain.handle("desktop:read-artifact", async (_event, filePath: string): Promise<ArtifactPreview> => {
+  return readArtifactPreview(filePath);
 });
 ipcMain.handle("desktop:get-sandbox-status", async (): Promise<SandboxStatus> => {
   const payload = await requestSandboxStatus();
@@ -715,6 +934,7 @@ ipcMain.handle("desktop:list-sandbox-tree", async () => {
   const payload = await requestSandboxTree();
   return payload.nodes;
 });
+ipcMain.handle("desktop:list-project-files", async () => listProjectFiles());
 ipcMain.handle("desktop:resume-thread", async (_event, threadId: string) => {
   if (!threadId) {
     return;
@@ -731,6 +951,13 @@ ipcMain.handle("desktop:send-user-input", async (_event, text: string) => {
     return;
   }
   activeBridge.send({ cmd: "user", text, project_path: projectPath });
+});
+ipcMain.handle("desktop:send-wire-command", async (_event, command: Record<string, unknown>) => {
+  const activeBridge = ensureBridge();
+  if (!activeBridge) {
+    return;
+  }
+  activeBridge.send(command);
 });
 ipcMain.handle("desktop:reset-session", async () => {
   const activeBridge = ensureBridge();

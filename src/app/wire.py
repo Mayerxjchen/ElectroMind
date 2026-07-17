@@ -227,17 +227,15 @@ def emit_current_thread(runner) -> None:
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
-def thread_project_path(thread_dir) -> str | None:
-    """读取 thread.toml 中绑定的 project 目录；旧 thread 没绑定时返回 None。"""
+def thread_spec(thread_dir) -> ThreadSpec | None:
+    """读取 thread.toml；配置损坏时忽略该配置。"""
     spec_path = thread_dir / SPEC_FILENAME
-    if spec_path.is_file():
-        try:
-            spec = ThreadSpec.from_dict(load_toml_file(spec_path))
-            if spec.project_path:
-                return spec.project_path
-        except (OSError, ValueError):
-            pass
-    return None
+    if not spec_path.is_file():
+        return None
+    try:
+        return ThreadSpec.from_dict(load_toml_file(spec_path))
+    except (OSError, ValueError):
+        return None
 
 
 def load_toml_file(path) -> dict:
@@ -262,11 +260,17 @@ def list_thread_entries(project_path: str | None = None) -> list[dict[str, str]]
                 meta = {}
             raw = meta.get("title", "")
             title = raw if isinstance(raw, str) else ""
+        spec = thread_spec(thread_dir)
         entries.append(
             {
                 "id": thread_dir.name,
                 "title": title,
-                "project_path": thread_project_path(thread_dir) or project_path or "",
+                "project_path": (
+                    spec.project_path
+                    if spec and spec.project_path
+                    else project_path or ""
+                ),
+                "backend": spec.backend if spec else "local",
             }
         )
     return entries
@@ -320,6 +324,26 @@ def emit_sandbox_status_payload(
             "backend": backend,
             "alive": alive,
             "workdir": workdir,
+        },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def emit_skills(runner) -> None:
+    """下发当前会话已加载的 skills 列表，供前端渲染技能面板。"""
+    skills = runner.skills.list() if runner else []
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "Skills",
+        "params": {
+            "skills": [
+                {
+                    "name": skill.name,
+                    "description": skill.description,
+                    "path": str(skill.root),
+                }
+                for skill in skills
+            ],
         },
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
@@ -592,6 +616,15 @@ async def open_fresh_runner(config: ReplConfig, project_path: str | None = None)
     return await open_runner(replace(config, thread_id=None))
 
 
+def clean_empty_threads(*, keep_thread_ids: set[str] | frozenset[str] = frozenset()):
+    """清理没有用户消息的空会话，供 reset/退出路径复用。"""
+    report = clean_pagent(keep_thread_ids=keep_thread_ids)
+    clean_message = format_clean_report(report)
+    if clean_message:
+        log(f"[wire] {clean_message}")
+    return report
+
+
 async def open_thread_runner(
     config: ReplConfig, thread_id: str, project_path: str | None = None
 ):
@@ -685,6 +718,18 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         await emit_sandbox_status(runner)
         return runner
 
+    if cmd == "skills":
+        if runner is None and isinstance(state.get("thread_id"), str):
+            try:
+                runner = await ensure_runner(runner, config, state)
+                emit_current_thread(runner)
+            except (Exception, SystemExit) as exc:
+                log(f"[wire] open runner failed: {exc}")
+                emit_error(format_exc(exc), where="open")
+                return runner
+        emit_skills(runner)
+        return runner
+
     if cmd == "resume":
         thread_id = command.get("thread_id")
         if not (isinstance(thread_id, str) and thread_id):
@@ -716,9 +761,14 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         if turn_active(state):
             log("[wire] 运行中，暂不能新建会话（取消见后续课程）")
             return runner
+        previous_thread_id = (
+            runner.thread.id if runner is not None else state.get("thread_id")
+        )
         if runner is not None:
             await runner.close()
             runner = None
+        if isinstance(previous_thread_id, str):
+            clean_empty_threads()
         project_path = command_project_path(command)
         try:
             runner = await open_fresh_runner(config, project_path)
@@ -842,9 +892,5 @@ async def run_wire(config: ReplConfig) -> int:
         if runner is not None:
             thread_id = runner.thread.id
             await runner.close()
-            keep = {thread_id} if had_user_turn else set()
-            report = clean_pagent(keep_thread_ids=keep)
-            clean_message = format_clean_report(report)
-            if clean_message:
-                log(f"[wire] {clean_message}")
+            clean_empty_threads(keep_thread_ids={thread_id} if had_user_turn else set())
     return 0

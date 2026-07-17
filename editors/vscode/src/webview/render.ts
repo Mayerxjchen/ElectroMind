@@ -471,7 +471,7 @@ export class ChatRenderer {
 
     const summary = document.createElement("summary");
     const icon = document.createElement("i");
-    icon.className = "codicon codicon-tools";
+    icon.className = "codicon codicon-wrench";
     const label = document.createElement("code");
     label.className = "tool-name";
     label.textContent = name || "tool";
@@ -578,9 +578,20 @@ export class ChatRenderer {
         setToolStatus(status, "codicon-question", "待审批");
       }
     }
+    slot.parentElement
+      ?.querySelectorAll(".tool-section")
+      .forEach((section) => {
+        const title = section.querySelector(".tool-section-title");
+        if (title?.textContent === "参数") {
+          section.remove();
+        }
+      });
 
     const bar = document.createElement("div");
     bar.className = "tool-permit";
+    const icon = document.createElement("i");
+    icon.className = "codicon codicon-warning tool-permit-icon";
+    bar.appendChild(icon);
     if (summary) {
       const hint = document.createElement("div");
       hint.className = "tool-permit-summary";
@@ -617,7 +628,7 @@ export class ChatRenderer {
     bar.classList.add(approved ? "approved" : "denied");
 
     const details = bar.closest(".tool-card");
-    if (details instanceof HTMLElement) {
+    if (details instanceof HTMLDetailsElement) {
       const status = details.querySelector(".tool-status");
       if (status) {
         if (approved) {
@@ -626,6 +637,7 @@ export class ChatRenderer {
           setToolStatus(status, "codicon-circle-slash", "已拒绝");
         }
       }
+      details.open = false;
     }
     this.onPermit?.(id, approved);
   }
@@ -938,7 +950,9 @@ function makePermitButton(
   button.setAttribute("aria-label", text);
   const i = document.createElement("i");
   i.className = `codicon ${icon}`;
-  button.appendChild(i);
+  const label = document.createElement("span");
+  label.textContent = text;
+  button.append(i, label);
   return button;
 }
 

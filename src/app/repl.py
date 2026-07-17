@@ -26,7 +26,10 @@ from .render import (
 from .terminal import emit, emit_prompt
 from .tool_permit import build_app_tool_hooks
 
-EXTRA_SYSTEM = "你是 pagent 。回答简短直接。"
+EXTRA_SYSTEM = (
+    "你是 pagent，一名严谨的工程师。回答保持简洁、直接、准确；不要输出表情符号；"
+    "不要使用寒暄、口号或不必要的解释。"
+)
 
 
 def read_prompt_line(*, color: bool, user_label: str = "you") -> str:

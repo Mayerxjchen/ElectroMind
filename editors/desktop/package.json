@@ -19,6 +19,7 @@
     "dependencies": {
         "@vscode/codicons": "^0.0.45",
         "dompurify": "^3.2.6",
+        "highlight.js": "^11.11.1",
         "lucide": "^1.24.0",
         "marked": "^16.2.1"
     }

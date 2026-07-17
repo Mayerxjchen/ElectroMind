@@ -160,7 +160,12 @@ async def test_list_threads_uses_pagent_home(tmp_path, monkeypatch):
     assert payload["method"] == "ThreadList"
     assert payload["params"]["home"] == str((home / ".pagent").resolve())
     assert payload["params"]["threads"] == [
-        {"id": "thread-demo", "title": "demo title", "project_path": ""}
+        {
+            "id": "thread-demo",
+            "title": "demo title",
+            "project_path": "",
+            "backend": "local",
+        }
     ]
 
 
@@ -466,3 +471,37 @@ async def test_reset_failure_keeps_process_alive(monkeypatch):
     assert "Error" in methods
     error = next(json.loads(line) for line in lines if "Error" in line)
     assert error["params"]["where"] == "reset"
+
+
+@pytest.mark.asyncio
+async def test_reset_cleans_previous_empty_thread(monkeypatch):
+    closed: list[str] = []
+    cleaned: list[set[str] | frozenset[str]] = []
+    previous = MagicMock()
+    previous.thread.id = "thread-empty"
+    previous.close = AsyncMock(side_effect=lambda: closed.append("thread-empty"))
+    fresh = MagicMock()
+    fresh.thread.id = "thread-new"
+
+    async def fake_open_fresh(_config, project_path=None):
+        assert project_path is None
+        return fresh
+
+    monkeypatch.setattr(wire, "open_fresh_runner", fake_open_fresh)
+    monkeypatch.setattr(wire, "emit_history_replay", lambda _runner: None)
+    monkeypatch.setattr(
+        wire,
+        "clean_empty_threads",
+        lambda *, keep_thread_ids=frozenset(): cleaned.append(keep_thread_ids),
+    )
+
+    result = await wire.handle_command(
+        {"cmd": "reset"},
+        previous,
+        ReplConfig(),
+        {"turn": None, "thread_id": "thread-empty"},
+    )
+
+    assert result is fresh
+    assert closed == ["thread-empty"]
+    assert cleaned == [frozenset()]

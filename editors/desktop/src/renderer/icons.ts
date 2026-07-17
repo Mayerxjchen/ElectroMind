@@ -1,5 +1,6 @@
 import {
   Activity,
+  ArrowLeft,
   ArrowUp,
   Box,
   ChevronDown,
@@ -13,11 +14,13 @@ import {
   FileJson,
   FileText,
   Folder,
+  FolderOpen,
   FolderTree,
   Globe,
   HardDrive,
   History,
-  Layers,
+  Keyboard,
+  LoaderCircle,
   Minus,
   Moon,
   PanelLeftClose,
@@ -26,8 +29,11 @@ import {
   PanelRightOpen,
   Pin,
   PinOff,
+  Plug,
   Plus,
   Server,
+  Settings,
+  Wrench,
   X,
   createElement,
   type IconNode,
@@ -35,6 +41,7 @@ import {
 
 type DesktopIconName =
   | "activity"
+  | "arrow-left"
   | "arrow-up"
   | "box"
   | "chevron-down"
@@ -48,11 +55,13 @@ type DesktopIconName =
   | "file-json"
   | "file-text"
   | "folder"
+  | "folder-open"
   | "folder-tree"
   | "globe"
   | "hard-drive"
   | "history"
-  | "layers"
+  | "keyboard"
+  | "loader-circle"
   | "minus"
   | "moon"
   | "panel-left-close"
@@ -61,12 +70,16 @@ type DesktopIconName =
   | "panel-right-open"
   | "pin"
   | "pin-off"
+  | "plug"
   | "plus"
   | "server"
+  | "settings"
+  | "wrench"
   | "x";
 
 const iconRegistry: Record<DesktopIconName, IconNode> = {
   activity: Activity,
+  "arrow-left": ArrowLeft,
   "arrow-up": ArrowUp,
   box: Box,
   "chevron-down": ChevronDown,
@@ -80,11 +93,13 @@ const iconRegistry: Record<DesktopIconName, IconNode> = {
   "file-json": FileJson,
   "file-text": FileText,
   folder: Folder,
+  "folder-open": FolderOpen,
   "folder-tree": FolderTree,
   globe: Globe,
   "hard-drive": HardDrive,
   history: History,
-  layers: Layers,
+  keyboard: Keyboard,
+  "loader-circle": LoaderCircle,
   minus: Minus,
   moon: Moon,
   "panel-left-close": PanelLeftClose,
@@ -93,8 +108,11 @@ const iconRegistry: Record<DesktopIconName, IconNode> = {
   "panel-right-open": PanelRightOpen,
   pin: Pin,
   "pin-off": PinOff,
+  plug: Plug,
   plus: Plus,
   server: Server,
+  settings: Settings,
+  wrench: Wrench,
   x: X,
 };
 

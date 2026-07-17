@@ -29,17 +29,29 @@ const desktopApi: DesktopApi = {
   getThreadMeta(threadId: string) {
     return ipcRenderer.invoke("desktop:get-thread-meta", threadId);
   },
+  getSettings() {
+    return ipcRenderer.invoke("desktop:get-settings");
+  },
+  openDocumentation() {
+    return ipcRenderer.invoke("desktop:open-documentation");
+  },
   listArtifacts() {
     return ipcRenderer.invoke("desktop:list-artifacts");
   },
   openArtifact(path: string) {
     return ipcRenderer.invoke("desktop:open-artifact", path);
   },
+  readArtifact(path: string) {
+    return ipcRenderer.invoke("desktop:read-artifact", path);
+  },
   getSandboxStatus() {
     return ipcRenderer.invoke("desktop:get-sandbox-status");
   },
   listSandboxTree() {
     return ipcRenderer.invoke("desktop:list-sandbox-tree");
+  },
+  listProjectFiles() {
+    return ipcRenderer.invoke("desktop:list-project-files");
   },
   selectProject() {
     return ipcRenderer.invoke("desktop:select-project");
@@ -55,6 +67,9 @@ const desktopApi: DesktopApi = {
   },
   requestHistoryReplay() {
     return ipcRenderer.invoke("desktop:request-history");
+  },
+  sendWireCommand(command: Record<string, unknown>) {
+    return ipcRenderer.invoke("desktop:send-wire-command", command);
   },
   permitToolCall(toolCallId: string) {
     return ipcRenderer.invoke("desktop:permit-tool-call", toolCallId);
