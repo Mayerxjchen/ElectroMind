@@ -1,7 +1,7 @@
 {
     "name": "pagent-desktop",
     "productName": "pagent Desktop",
-    "version": "0.1.0",
+    "version": "0.7.5",
     "description": "pagent 的 Electron 桌面端骨架。",
     "private": true,
     "main": "dist/main.js",
