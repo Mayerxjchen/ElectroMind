@@ -27,7 +27,10 @@ import type {
   ArtifactSummary,
   MentionFile,
   MentionSource,
+  NewSessionOptions,
+  ResetSessionOptions,
   RuntimeState,
+  SandboxBackendOption,
   SandboxStatus,
   SandboxTreeNode,
   Skill,
@@ -35,7 +38,8 @@ import type {
   ThreadSummary,
   WireEvent,
 } from "../shared/protocol";
-import { renderIcon, type DesktopIconName } from "./icons";
+import { renderIcon, renderWechatIcon, type DesktopIconName } from "./icons";
+import { mountToaster, toast } from "./toast";
 
 const INPUT_MAX_HEIGHT_PX = 160;
 const LEFT_PANE_WIDTH_PX = 232;
@@ -44,7 +48,8 @@ const RIGHT_PANE_WIDTH_PX = 352;
 const RIGHT_COLLAPSED_WIDTH_PX = 44;
 
 type ThemeMode = "dark" | "light";
-type PanelTab = "sandbox" | "terminal" | "artifacts";
+type PanelTab = "project" | "sandbox" | "terminal";
+type ProjectPane = "files" | "artifacts";
 type ActivityState = "running" | "sleeping" | "error";
 type ResourceKind = "cpu" | "memory" | "disk";
 type TerminalEntryKind = "command" | "stdout" | "stderr" | "status";
@@ -163,7 +168,7 @@ function sandboxBackendIconName(runtime: RuntimeState): DesktopIconName {
   if (backend === "local") {
     return "hard-drive";
   }
-  if (backend === "docker" || backend === "podman") {
+  if (backend === "container" || backend === "docker" || backend === "podman") {
     return "container";
   }
   if (backend === "ssh") {
@@ -173,7 +178,7 @@ function sandboxBackendIconName(runtime: RuntimeState): DesktopIconName {
 }
 
 function sessionSandboxLabel(backend: string): string {
-  if (backend === "docker" || backend === "podman") {
+  if (backend === "container" || backend === "docker" || backend === "podman") {
     return "container";
   }
   if (backend === "ssh") {
@@ -183,13 +188,49 @@ function sessionSandboxLabel(backend: string): string {
 }
 
 function sessionSandboxIconName(backend: string): DesktopIconName {
-  if (backend === "docker" || backend === "podman") {
+  if (backend === "container" || backend === "docker" || backend === "podman") {
     return "container";
   }
   if (backend === "ssh") {
     return "globe";
   }
   return "hard-drive";
+}
+
+function sandboxBackendOptionLabel(backend: SandboxBackendOption): string {
+  if (backend === "local") {
+    return "本机";
+  }
+  if (backend === "container" || backend === "docker" || backend === "podman") {
+    return "容器";
+  }
+  return "SSH";
+}
+
+function sandboxBackendOptionSub(backend: SandboxBackendOption): string {
+  if (backend === "local") {
+    return "local";
+  }
+  if (backend === "container") {
+    return "auto";
+  }
+  if (backend === "docker") {
+    return "docker";
+  }
+  if (backend === "podman") {
+    return "podman";
+  }
+  return "remote";
+}
+
+function sandboxBackendOptionHint(backend: SandboxBackendOption): string {
+  if (backend === "local") {
+    return "命令与文件落在本机 thread workspace，无需 Docker。";
+  }
+  if (backend === "container" || backend === "docker" || backend === "podman") {
+    return "命令在容器内执行；工作区仍挂载到本机 thread workspace。";
+  }
+  return "通过 SSH 在远端主机执行；需填写 Host 与远程工作目录。";
 }
 
 function sandboxPresenceClass(runtime: RuntimeState): "alive" | "dead" | "pending" {
@@ -200,6 +241,34 @@ function sandboxPresenceClass(runtime: RuntimeState): "alive" | "dead" | "pendin
     return "dead";
   }
   return "pending";
+}
+
+/** 沙箱路径卡标签：标明 local / container / ssh。 */
+function sandboxRootCardLabel(backend: string): string {
+  if (backend === "local") {
+    return "本机沙箱";
+  }
+  if (backend === "container" || backend === "docker" || backend === "podman") {
+    return "容器沙箱";
+  }
+  if (backend === "ssh") {
+    return "SSH 沙箱";
+  }
+  return "沙箱";
+}
+
+/** 沙箱面板路径卡标签：标明 local / container / ssh。 */
+function sandboxRootLabel(backend: string): string {
+  if (backend === "local") {
+    return "本机沙箱";
+  }
+  if (backend === "container" || backend === "docker" || backend === "podman") {
+    return "容器沙箱";
+  }
+  if (backend === "ssh") {
+    return "SSH 沙箱";
+  }
+  return "沙箱";
 }
 
 function currentSessionTitle(
@@ -270,9 +339,14 @@ function renderSessionList(
               <span class="session-time">${escapeHtml(relativeTime)}</span>
             </span>
           </button>
-          <button class="session-meta-button" type="button" data-thread-meta data-thread-id="${escapeHtml(session.id)}" title="查看会话信息">
-            ${renderIcon("circle-alert")}
-          </button>
+          <div class="session-actions">
+            <button class="session-action-button" type="button" data-thread-delete data-thread-id="${escapeHtml(session.id)}" title="删除会话" aria-label="删除会话">
+              ${renderIcon("trash-2")}
+            </button>
+            <button class="session-action-button" type="button" data-thread-meta data-thread-id="${escapeHtml(session.id)}" title="查看会话信息" aria-label="查看会话信息">
+              ${renderIcon("circle-alert")}
+            </button>
+          </div>
         </div>
       `;
     })
@@ -387,6 +461,85 @@ function parseSettings(content: string): SettingsSection[] {
   return [...sections.values()].filter((section) => section.entries.length > 0);
 }
 
+function renderNewSessionForm(
+  options: NewSessionOptions,
+  draft: {
+    backend: SandboxBackendOption;
+    projectPath: string;
+    sshHost: string;
+    sshWorkdir: string;
+  },
+): string {
+  const backends = options.availableBackends.length > 0
+    ? options.availableBackends
+    : (["local"] as SandboxBackendOption[]);
+  const backend = backends.includes(draft.backend) ? draft.backend : backends[0];
+  const sshHosts = options.sshHosts;
+  const backendCards = backends
+    .map((item) => {
+      const active = item === backend ? " active" : "";
+      return `
+        <button class="new-session-backend${active}" type="button" data-backend="${escapeHtml(item)}">
+          <span class="new-session-backend-icon" aria-hidden="true">${renderIcon(sessionSandboxIconName(item))}</span>
+          <span class="new-session-backend-copy">
+            <span class="new-session-backend-label">${escapeHtml(sandboxBackendOptionLabel(item))}</span>
+            <span class="new-session-backend-sub">${escapeHtml(sandboxBackendOptionSub(item))}</span>
+          </span>
+        </button>
+      `;
+    })
+    .join("");
+  const sshBlock = backend === "ssh"
+    ? `
+      <label class="new-session-field">
+        <span class="new-session-label">SSH Host</span>
+        ${sshHosts.length > 0
+          ? `<div class="new-session-dropdown" data-ssh-dropdown>
+              <button class="new-session-input new-session-dropdown-trigger" type="button" data-ssh-dropdown-toggle aria-haspopup="listbox" aria-expanded="false">
+                <span class="new-session-dropdown-value${draft.sshHost ? "" : " is-placeholder"}" data-ssh-host-label>${escapeHtml(draft.sshHost || "选择 Host…")}</span>
+                <span class="new-session-dropdown-chevron" aria-hidden="true">${renderIcon("chevron-down")}</span>
+              </button>
+              <input type="hidden" data-ssh-host value="${escapeHtml(draft.sshHost)}" />
+              <div class="new-session-dropdown-menu" data-ssh-dropdown-menu hidden role="listbox">
+                ${sshHosts.map((host) => {
+                  const active = host === draft.sshHost ? " active" : "";
+                  return `<button class="new-session-dropdown-option${active}" type="button" role="option" data-ssh-host-option value="${escapeHtml(host)}" aria-selected="${host === draft.sshHost ? "true" : "false"}">${escapeHtml(host)}</button>`;
+                }).join("")}
+              </div>
+            </div>`
+          : `<input class="new-session-input" data-ssh-host type="text" value="${escapeHtml(draft.sshHost)}" placeholder="例如 myserver" />`
+        }
+      </label>
+      <label class="new-session-field">
+        <span class="new-session-label">远程工作目录</span>
+        <input class="new-session-input" data-ssh-workdir type="text" value="${escapeHtml(draft.sshWorkdir)}" placeholder="~/pagent" />
+      </label>
+    `
+    : "";
+  return `
+    <div class="new-session-form">
+      <div class="new-session-field">
+        <span class="new-session-label">沙箱类型</span>
+        <div class="new-session-backends" data-backend-list style="--backend-count: ${backends.length}">${backendCards}</div>
+        <div class="new-session-hint" data-backend-hint>${escapeHtml(sandboxBackendOptionHint(backend))}</div>
+      </div>
+      <label class="new-session-field">
+        <span class="new-session-label">项目目录</span>
+        <div class="new-session-path-row">
+          <input class="new-session-input" data-project-path type="text" value="${escapeHtml(draft.projectPath)}" spellcheck="false" />
+          <button class="new-session-browse" type="button" data-pick-project>浏览</button>
+        </div>
+        <div class="new-session-hint">绑定宿主项目（host_root）；agent 沙箱 workspace 仍按会话自动创建。</div>
+      </label>
+      ${sshBlock}
+      <div class="new-session-actions">
+        <button class="new-session-secondary" type="button" data-new-session-cancel>取消</button>
+        <button class="new-session-primary" type="button" data-new-session-confirm>创建会话</button>
+      </div>
+    </div>
+  `;
+}
+
 function renderSettings(settings: AppSettings): string {
   if (!settings.exists) {
     return `
@@ -470,13 +623,34 @@ function renderTreeRows(
     .join("");
 }
 
-function renderArtifacts(artifacts: ArtifactSummary[], rootPath: string): string {
-  const header = `
+function renderPathRootCard(rootPath: string, label = "本机路径"): string {
+  if (!rootPath) {
+    return "";
+  }
+  return `
     <div class="artifact-root">
-      <div class="artifact-root-label">本机路径</div>
+      <div class="artifact-root-label">${escapeHtml(label)}</div>
       <div class="artifact-root-path" title="${escapeHtml(rootPath)}">${escapeHtml(rootPath)}</div>
     </div>
   `;
+}
+
+/** 沙箱标识卡片：标明 backend 类型与 workdir。 */
+function sandboxPathRootLabel(backend: string): string {
+  if (backend === "local") {
+    return "本机沙箱";
+  }
+  if (backend === "container" || backend === "docker" || backend === "podman") {
+    return "容器沙箱";
+  }
+  if (backend === "ssh") {
+    return "SSH 沙箱";
+  }
+  return "沙箱";
+}
+
+function renderArtifacts(artifacts: ArtifactSummary[], rootPath: string): string {
+  const header = renderPathRootCard(rootPath);
   if (artifacts.length === 0) {
     return `
       ${header}
@@ -615,7 +789,13 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           <button class="titlebar-action" type="button" data-docs-open title="打开文档" aria-label="打开文档">
             <i class="codicon codicon-github" aria-hidden="true"></i>
           </button>
-          <button class="titlebar-action" type="button" data-shortcuts-open title="快捷键" aria-label="快捷键">
+          <button
+            class="titlebar-action"
+            type="button"
+            data-shortcuts-open
+            title="快捷键与心智模型"
+            aria-label="快捷键与心智模型"
+          >
             ${renderIcon("keyboard")}
           </button>
           <button class="titlebar-action title-settings-button" type="button" data-settings-open title="设置" aria-label="设置">
@@ -635,9 +815,41 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
               <div class="skills-list" data-skills-list></div>
             </div>
             <div class="left-footer">
-              <div class="user-chip">
-                <span class="user-avatar">${escapeHtml(appInfo.userName.charAt(0).toUpperCase())}</span>
-                <span class="user-name">${escapeHtml(appInfo.userName)}</span>
+              <div class="user-menu" data-user-menu>
+                <button
+                  class="user-chip"
+                  type="button"
+                  data-user-menu-toggle
+                  aria-haspopup="menu"
+                  aria-expanded="false"
+                  title="账户与设置"
+                >
+                  <span class="user-avatar">${escapeHtml(appInfo.userName.charAt(0).toUpperCase())}</span>
+                  <span class="user-name">${escapeHtml(appInfo.userName)}</span>
+                  <span class="user-chip-chevron" aria-hidden="true">${renderIcon("chevron-down")}</span>
+                </button>
+                <div class="user-menu-dropdown" data-user-menu-dropdown hidden role="menu">
+                  <div class="user-menu-header">
+                    <span class="user-avatar">${escapeHtml(appInfo.userName.charAt(0).toUpperCase())}</span>
+                    <div class="user-menu-meta">
+                      <div class="user-menu-name">${escapeHtml(appInfo.userName)}</div>
+                      <div class="user-menu-status" data-user-menu-status>未登录</div>
+                    </div>
+                  </div>
+                  <div class="user-menu-divider"></div>
+                  <button class="user-menu-item" type="button" role="menuitem" data-user-menu-wechat>
+                    <span class="user-menu-item-icon wechat">${renderWechatIcon()}</span>
+                    <span>微信登录</span>
+                  </button>
+                  <button class="user-menu-item" type="button" role="menuitem" data-user-menu-settings>
+                    <span class="user-menu-item-icon">${renderIcon("settings")}</span>
+                    <span>设置</span>
+                  </button>
+                  <button class="user-menu-item" type="button" role="menuitem" data-user-menu-docs>
+                    <span class="user-menu-item-icon">${renderIcon("file-text")}</span>
+                    <span>文档</span>
+                  </button>
+                </div>
               </div>
               <div class="left-footer-actions">
                 <button class="icon-button" type="button" data-pin-sidebar title="钉住侧栏">
@@ -666,7 +878,14 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
               <button class="collapsed-icon" type="button" data-theme-toggle title="切换主题">
                 ${renderIcon("moon")}
               </button>
-              <button class="collapsed-icon user" type="button" title="${escapeHtml(appInfo.userName)}">
+              <button
+                class="collapsed-icon user"
+                type="button"
+                data-user-menu-toggle
+                title="账户与设置"
+                aria-haspopup="menu"
+                aria-expanded="false"
+              >
                 <span class="user-avatar small">${escapeHtml(appInfo.userName.charAt(0).toUpperCase())}</span>
               </button>
             </div>
@@ -707,6 +926,15 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                   </button>
                   <button
                     type="button"
+                    class="composer-btn yolo-btn"
+                    data-yolo-toggle
+                    title="自动审批：关闭（点击开启 YOLO 模式）"
+                    aria-label="YOLO 模式"
+                  >
+                    ${renderIcon("zap")}
+                  </button>
+                  <button
+                    type="button"
                     class="history-dock-dot"
                     data-history-dock
                     hidden
@@ -715,7 +943,18 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                   >
                     ${renderIcon("history")}
                   </button>
-                  <span class="desktop-composer-hint" data-last-error></span>
+                  <div class="desktop-composer-hint" data-composer-hint hidden>
+                    <span class="desktop-composer-hint-text" data-last-error></span>
+                    <button
+                      type="button"
+                      class="desktop-composer-hint-close"
+                      data-clear-last-error
+                      title="关闭"
+                      aria-label="关闭错误提示"
+                    >
+                      ${renderIcon("x")}
+                    </button>
+                  </div>
                 </div>
                 <button class="composer-btn primary" data-send-message title="发送">
                   ${renderIcon("arrow-up")}
@@ -731,34 +970,84 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           <div class="pane-expanded">
             <div class="pane-topbar right-topbar">
               <div class="tab-group" role="tablist" aria-label="右侧面板">
-                <button class="tab-button active" type="button" data-tab="sandbox">沙箱</button>
+                <button class="tab-button active" type="button" data-tab="project">项目</button>
+                <button class="tab-button" type="button" data-tab="sandbox">沙箱</button>
                 <button class="tab-button" type="button" data-tab="terminal">Log</button>
-                <button class="tab-button" type="button" data-tab="artifacts">
-                  Artifacts
-                  <span class="tab-badge" data-artifact-count>0</span>
-                </button>
               </div>
-              <span class="panel-lamp sleeping" data-panel-lamp aria-hidden="true"></span>
             </div>
 
             <div class="right-content">
-              <section class="right-view active" data-view="sandbox">
+              <section class="right-view active" data-view="project">
+                <div class="project-host" data-project-host data-project-pane="files">
+                  <div class="file-panel-header project-host-header">
+                    <div
+                      class="jelly-switch"
+                      data-project-pane-switch
+                      data-pane="files"
+                      role="tablist"
+                      aria-label="项目视图"
+                    >
+                      <span class="jelly-switch-thumb" data-project-pane-thumb aria-hidden="true"></span>
+                      <button
+                        type="button"
+                        class="jelly-switch-option active"
+                        data-project-pane="files"
+                        role="tab"
+                        aria-selected="true"
+                      >
+                        目录
+                      </button>
+                      <button
+                        type="button"
+                        class="jelly-switch-option"
+                        data-project-pane="artifacts"
+                        role="tab"
+                        aria-selected="false"
+                      >
+                        产物
+                        <span class="tab-badge" data-artifact-count>0</span>
+                      </button>
+                    </div>
+                    <button
+                      class="file-panel-refresh"
+                      type="button"
+                      data-refresh-project
+                      title="刷新项目目录"
+                      aria-label="刷新项目目录"
+                    >
+                      ${renderIcon("refresh-cw")}
+                    </button>
+                  </div>
+                  <div class="file-panel project-files-pane" data-project-files>
+                    <div class="file-tree" data-project-tree></div>
+                  </div>
+                  <div class="artifacts-panel project-artifacts-pane" data-artifacts-panel hidden>
+                    <div class="artifacts-list" data-artifacts-list></div>
+                    <div class="artifact-preview" data-artifact-preview hidden></div>
+                  </div>
+                </div>
+              </section>
+
+              <section class="right-view" data-view="sandbox">
                 <div class="file-panel">
-                  <div class="file-panel-header">文件系统</div>
+                  <div class="file-panel-header">
+                    <span>文件系统</span>
+                    <button
+                      class="file-panel-refresh"
+                      type="button"
+                      data-refresh-sandbox
+                      title="刷新沙箱文件"
+                      aria-label="刷新沙箱文件"
+                    >
+                      ${renderIcon("refresh-cw")}
+                    </button>
+                  </div>
                   <div class="file-tree" data-file-tree></div>
                 </div>
               </section>
 
               <section class="right-view" data-view="terminal">
                 <div class="terminal-panel" data-terminal-panel></div>
-              </section>
-
-              <section class="right-view" data-view="artifacts">
-                <div class="artifacts-panel" data-artifacts-panel>
-                  <div class="file-panel-header">用户产物</div>
-                  <div class="artifacts-list" data-artifacts-list></div>
-                  <div class="artifact-preview" data-artifact-preview hidden></div>
-                </div>
               </section>
             </div>
 
@@ -787,6 +1076,9 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           </div>
 
           <div class="pane-collapsed">
+            <button class="collapsed-icon" type="button" data-tab="project" title="项目">
+              ${renderIcon("folder")}
+            </button>
             <button class="collapsed-icon" type="button" data-tab="sandbox" title="沙箱">
               ${renderIcon("folder-tree")}
             </button>
@@ -795,6 +1087,18 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
             </button>
           </div>
         </aside>
+      </div>
+      <div class="desktop-modal" data-new-session-modal hidden>
+        <div class="desktop-modal-backdrop" data-new-session-close></div>
+        <section class="desktop-modal-card new-session-modal-card" role="dialog" aria-modal="true" aria-labelledby="new-session-title">
+          <div class="desktop-modal-header">
+            <div id="new-session-title" class="desktop-modal-title">新建任务</div>
+            <button class="modal-close-button" type="button" data-new-session-close title="关闭" aria-label="关闭">
+              ${renderIcon("x")}
+            </button>
+          </div>
+          <div class="desktop-modal-body" data-new-session-body></div>
+        </section>
       </div>
       <div class="desktop-modal" data-thread-meta-modal hidden>
         <div class="desktop-modal-backdrop" data-thread-meta-close></div>
@@ -824,12 +1128,12 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
         <div class="desktop-modal-backdrop" data-shortcuts-close></div>
         <section class="desktop-modal-card shortcuts-modal-card" role="dialog" aria-modal="true" aria-labelledby="shortcuts-title">
           <div class="desktop-modal-header">
-            <div id="shortcuts-title" class="desktop-modal-title">快捷键</div>
+            <div id="shortcuts-title" class="desktop-modal-title">快捷键与心智模型</div>
             <button class="modal-close-button" type="button" data-shortcuts-close title="关闭" aria-label="关闭">
               ${renderIcon("x")}
             </button>
           </div>
-          <div class="desktop-modal-body">
+          <div class="desktop-modal-body shortcuts-modal-body">
             <div class="shortcuts-list">
               <div class="shortcut-item">
                 <span class="shortcut-label">收缩左侧</span>
@@ -852,7 +1156,7 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 </div>
               </div>
               <div class="shortcut-item">
-                <span class="shortcut-label">打开快捷键面板</span>
+                <span class="shortcut-label">打开本面板</span>
                 <div class="shortcut-keys">
                   <kbd class="key-modifier">
                     <span class="key-icon">⌘</span>
@@ -862,6 +1166,107 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 </div>
               </div>
             </div>
+            <section class="mental-model" data-mental-model aria-label="心智模型演示">
+              <div class="mental-model-heading">
+                <div class="mental-model-title">一条 Thread，两处绑定</div>
+              </div>
+              <div class="mental-carousel" data-mental-carousel>
+                <button
+                  type="button"
+                  class="mental-carousel-nav"
+                  data-mental-prev
+                  title="上一条"
+                  aria-label="上一条"
+                >
+                  ${renderIcon("arrow-left")}
+                </button>
+                <div class="mental-carousel-viewport">
+                  <div class="mental-carousel-track" data-mental-track>
+                    <div class="mental-carousel-slide">
+                      <div class="mental-carousel-slide-title">Thread</div>
+                      <div class="mental-carousel-slide-body">
+                        每次对话落在一条 Thread 上：消息历史、配置与工作区都绑在一起。
+                      </div>
+                    </div>
+                    <div class="mental-carousel-slide">
+                      <div class="mental-carousel-slide-title">Project</div>
+                      <div class="mental-carousel-slide-body">
+                        Thread 绑定你的 Project（宿主目录）。右侧「项目」看的就是这里。
+                      </div>
+                    </div>
+                    <div class="mental-carousel-slide">
+                      <div class="mental-carousel-slide-title">Agent Computer</div>
+                      <div class="mental-carousel-slide-body">
+                        同时绑定一台 Agent Computer（沙箱）。右侧「沙箱」看的就是它的工作区。
+                      </div>
+                    </div>
+                    <div class="mental-carousel-slide">
+                      <div class="mental-carousel-slide-title">Artifacts</div>
+                      <div class="mental-carousel-slide-body">
+                        Artifacts 在 Project 里（<code>project/artifacts/</code>）。
+                        <code>copy_from_host</code> 从项目拉进沙箱，
+                        <code>copy_to_host</code> 交回该目录。
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  class="mental-carousel-nav"
+                  data-mental-next
+                  title="下一条"
+                  aria-label="下一条"
+                >
+                  ${renderIcon("chevron-right")}
+                </button>
+              </div>
+              <div class="mental-carousel-dots" data-mental-dots role="tablist" aria-label="说明页"></div>
+              <div class="mental-model-stage" data-mental-stage>
+                <svg class="mental-model-links" viewBox="0 0 360 120" aria-hidden="true">
+                  <path
+                    class="mental-link mental-link-project"
+                    d="M180 28 C120 28, 90 52, 78 78"
+                    fill="none"
+                    stroke-linecap="round"
+                  />
+                  <path
+                    class="mental-link mental-link-agent"
+                    d="M180 28 C240 28, 270 52, 288 78"
+                    fill="none"
+                    stroke-linecap="round"
+                  />
+                  <circle class="mental-packet mental-packet-project" r="3.5" />
+                  <circle class="mental-packet mental-packet-agent" r="3.5" />
+                </svg>
+                <div class="mental-bridge" aria-hidden="true">
+                  <span class="mental-bridge-line"></span>
+                  <span class="mental-bridge-packet mental-bridge-packet-out"></span>
+                  <span class="mental-bridge-packet mental-bridge-packet-in"></span>
+                </div>
+                <div class="mental-node mental-node-thread">
+                  <span class="mental-node-icon">${renderIcon("activity")}</span>
+                  <span class="mental-node-label">Thread</span>
+                  <span class="mental-node-sub">会话</span>
+                </div>
+                <div class="mental-node mental-node-project">
+                  <span class="mental-node-icon">${renderIcon("folder")}</span>
+                  <span class="mental-node-label">Project</span>
+                  <span class="mental-node-sub">你的项目目录</span>
+                  <div class="mental-nested mental-nested-artifacts">
+                    <span class="mental-nested-label">artifacts/</span>
+                    <span class="mental-nested-methods">
+                      <span>copy_from_host</span>
+                      <span>copy_to_host</span>
+                    </span>
+                  </div>
+                </div>
+                <div class="mental-node mental-node-agent">
+                  <span class="mental-node-icon">${renderIcon("hard-drive")}</span>
+                  <span class="mental-node-label">Agent Computer</span>
+                  <span class="mental-node-sub">沙箱工作区</span>
+                </div>
+              </div>
+            </section>
           </div>
         </section>
       </div>
@@ -996,6 +1401,7 @@ async function start(): Promise<void> {
     window.desktop.getRuntimeState(),
   ]);
   renderShell(appInfo, initialRuntime);
+  mountToaster();
 
   const workbench = findRequired<HTMLElement>("[data-workbench]");
   const sessionList = findRequired<HTMLElement>("[data-session-list]");
@@ -1003,6 +1409,7 @@ async function start(): Promise<void> {
   const skillsPanel = findRequired<HTMLElement>("[data-skills-panel]");
   const skillsList = findRequired<HTMLElement>("[data-skills-list]");
   const fileTree = findRequired<HTMLElement>("[data-file-tree]");
+  const projectTree = findRequired<HTMLElement>("[data-project-tree]");
   const terminalPanel = findRequired<HTMLElement>("[data-terminal-panel]");
   const artifactsList = findRequired<HTMLElement>("[data-artifacts-list]");
   const artifactsPanel = findRequired<HTMLElement>("[data-artifacts-panel]");
@@ -1012,18 +1419,21 @@ async function start(): Promise<void> {
   const promptInput = findRequired<HTMLTextAreaElement>("#prompt");
   const mentionPopup = findRequired<HTMLElement>("[data-mention-popup]");
   const sendMessageButton = findRequired<HTMLButtonElement>("[data-send-message]");
+  const composerHint = findRequired<HTMLElement>("[data-composer-hint]");
   const errorText = findRequired<HTMLElement>("[data-last-error]");
+  const clearLastErrorButton = findRequired<HTMLButtonElement>("[data-clear-last-error]");
   const taskTitle = findRequired<HTMLElement>("[data-task-title]");
   const projectButton = findRequired<HTMLElement>("[data-select-project]");
   const projectText = findRequired<HTMLElement>("[data-project-label]");
   const sandboxBackendIcon = findRequired<HTMLElement>("[data-sandbox-backend-icon]");
   const sandboxBackend = findRequired<HTMLElement>("[data-sandbox-backend]");
   const sandboxPill = findRequired<HTMLElement>("[data-sandbox-pill]");
-  const panelLamp = findRequired<HTMLElement>("[data-panel-lamp]");
   const resourceStrip = findRequired<HTMLElement>("[data-resource-strip]");
   const rightFooter = findRequired<HTMLElement>("[data-right-footer]");
   const threadMetaModal = findRequired<HTMLElement>("[data-thread-meta-modal]");
   const threadMetaBody = findRequired<HTMLElement>("[data-thread-meta-body]");
+  const newSessionModal = findRequired<HTMLElement>("[data-new-session-modal]");
+  const newSessionBody = findRequired<HTMLElement>("[data-new-session-body]");
   const settingsOpenButton = findRequired<HTMLButtonElement>("[data-settings-open]");
   const documentationButton = findRequired<HTMLButtonElement>("[data-docs-open]");
   const shortcutsOpenButton = findRequired<HTMLButtonElement>("[data-shortcuts-open]");
@@ -1035,7 +1445,8 @@ async function start(): Promise<void> {
 
   const uiState = {
     theme: readStoredTheme(),
-    activeTab: "sandbox" as PanelTab,
+    activeTab: "project" as PanelTab,
+    projectPane: "files" as ProjectPane,
     leftCollapsed: false,
     rightCollapsed: false,
     sidebarDocked: false,
@@ -1044,8 +1455,11 @@ async function start(): Promise<void> {
     rightWidth: RIGHT_PANE_WIDTH_PX,
     activityState: "sleeping" as ActivityState,
     terminalEntries: [] as TerminalEntry[],
-    expandedTree: new Set<string>(["app"]),
+    expandedTree: new Set<string>(),
+    expandedProjectTree: new Set<string>(),
     sandboxTree: [] as SandboxTreeNode[],
+    projectTreeNodes: [] as SandboxTreeNode[],
+    projectLoadedPath: "",
     sandboxStatus: {
       threadId: "",
       backend: "",
@@ -1060,7 +1474,12 @@ async function start(): Promise<void> {
   };
   const historyDockButton = findRequired<HTMLButtonElement>("[data-history-dock]");
   const skillsButton = findRequired<HTMLButtonElement>("[data-skills-open]");
+  const yoloButton = findRequired<HTMLButtonElement>("[data-yolo-toggle]");
   const pinSidebarButton = findRequired<HTMLButtonElement>("[data-pin-sidebar]");
+  const projectHost = findRequired<HTMLElement>("[data-project-host]");
+  const projectPaneSwitch = findRequired<HTMLElement>("[data-project-pane-switch]");
+  const projectFilesPane = findRequired<HTMLElement>("[data-project-files]");
+  const refreshProjectButton = findRequired<HTMLButtonElement>("[data-refresh-project]");
   let keepSidebarOpen = false;
   let artifactPreviewPath = "";
 
@@ -1160,6 +1579,15 @@ async function start(): Promise<void> {
   let metaModalRequestId = 0;
   let settingsModalCloseTimer = 0;
   let settingsRequestId = 0;
+  let newSessionModalCloseTimer = 0;
+  let newSessionRequestId = 0;
+  let newSessionDraft = {
+    backend: "local" as SandboxBackendOption,
+    projectPath: "",
+    sshHost: "",
+    sshWorkdir: "~/pagent",
+  };
+  let newSessionOptionsCache: NewSessionOptions | null = null;
 
   function closeThreadMetaModal(): void {
     if (threadMetaModal.hidden) {
@@ -1245,10 +1673,116 @@ async function start(): Promise<void> {
   }
 
   let shortcutsModalCloseTimer = 0;
+  const mentalModel = findRequired<HTMLElement>("[data-mental-model]");
+  const mentalTrack = findRequired<HTMLElement>("[data-mental-track]");
+  const mentalDots = findRequired<HTMLElement>("[data-mental-dots]");
+  const mentalPrev = findRequired<HTMLButtonElement>("[data-mental-prev]");
+  const mentalNext = findRequired<HTMLButtonElement>("[data-mental-next]");
+  const mentalSlides = Array.from(
+    mentalTrack.querySelectorAll<HTMLElement>(".mental-carousel-slide"),
+  );
+  let mentalSlideIndex = 0;
+
+  function stopMentalModelDemo(): void {
+    mentalModel.classList.remove("is-playing");
+  }
+
+  function applyMentalCarousel(index: number): void {
+    const total = mentalSlides.length;
+    if (total === 0) {
+      return;
+    }
+    mentalSlideIndex = ((index % total) + total) % total;
+    mentalTrack.style.transform = `translateX(-${mentalSlideIndex * 100}%)`;
+    mentalDots.querySelectorAll<HTMLButtonElement>("[data-mental-dot]").forEach((dot, i) => {
+      const active = i === mentalSlideIndex;
+      dot.classList.toggle("active", active);
+      dot.setAttribute("aria-selected", active ? "true" : "false");
+    });
+    mentalPrev.disabled = mentalSlideIndex === 0;
+    mentalNext.disabled = mentalSlideIndex === total - 1;
+  }
+
+  function buildMentalCarouselDots(): void {
+    mentalDots.innerHTML = mentalSlides
+      .map(
+        (_, index) => `
+      <button
+        type="button"
+        class="mental-carousel-dot"
+        data-mental-dot="${index}"
+        role="tab"
+        aria-label="第 ${index + 1} 页"
+        aria-selected="false"
+      ></button>
+    `,
+      )
+      .join("");
+  }
+
+  function layoutMentalBridge(): void {
+    const stage = mentalModel.querySelector<HTMLElement>("[data-mental-stage]");
+    const artifacts = mentalModel.querySelector<HTMLElement>(".mental-nested-artifacts");
+    const agent = mentalModel.querySelector<HTMLElement>(".mental-node-agent");
+    const bridge = mentalModel.querySelector<HTMLElement>(".mental-bridge");
+    if (!stage || !artifacts || !agent || !bridge) {
+      return;
+    }
+    const stageRect = stage.getBoundingClientRect();
+    const artifactsRect = artifacts.getBoundingClientRect();
+    const agentRect = agent.getBoundingClientRect();
+    if (stageRect.width < 1 || artifactsRect.width < 1 || agentRect.width < 1) {
+      return;
+    }
+    const left = Math.max(0, artifactsRect.right - stageRect.left);
+    const right = Math.max(0, stageRect.right - agentRect.left);
+    const top =
+      (artifactsRect.top + artifactsRect.bottom) / 2 - stageRect.top - 7;
+    bridge.style.left = `${left}px`;
+    bridge.style.right = `${right}px`;
+    bridge.style.top = `${top}px`;
+  }
+
+  function playMentalModelDemo(): void {
+    stopMentalModelDemo();
+    void mentalModel.offsetWidth;
+    mentalModel.classList.add("is-playing");
+    applyMentalCarousel(0);
+    // 节点入场动画会改 transform，结束后再量一次对齐虚线。
+    window.requestAnimationFrame(() => {
+      layoutMentalBridge();
+      window.setTimeout(layoutMentalBridge, 1800);
+    });
+  }
+
+  buildMentalCarouselDots();
+  applyMentalCarousel(0);
+
+  mentalPrev.addEventListener("click", () => {
+    applyMentalCarousel(mentalSlideIndex - 1);
+  });
+  mentalNext.addEventListener("click", () => {
+    applyMentalCarousel(mentalSlideIndex + 1);
+  });
+  mentalDots.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const dot = target.closest<HTMLButtonElement>("[data-mental-dot]");
+    if (!dot) {
+      return;
+    }
+    const index = Number(dot.dataset.mentalDot);
+    if (Number.isFinite(index)) {
+      applyMentalCarousel(index);
+    }
+  });
 
   function openShortcutsModal(): void {
     window.clearTimeout(shortcutsModalCloseTimer);
     shortcutsModal.hidden = false;
+    playMentalModelDemo();
     window.requestAnimationFrame(() => {
       shortcutsModal.classList.add("is-open");
     });
@@ -1259,15 +1793,167 @@ async function start(): Promise<void> {
       return;
     }
     shortcutsModal.classList.remove("is-open");
+    stopMentalModelDemo();
     window.clearTimeout(shortcutsModalCloseTimer);
     shortcutsModalCloseTimer = window.setTimeout(() => {
       shortcutsModal.hidden = true;
     }, 140);
   }
 
+  function syncNewSessionDraftFromDom(): void {
+    const projectInput = newSessionBody.querySelector<HTMLInputElement>("[data-project-path]");
+    if (projectInput) {
+      newSessionDraft.projectPath = projectInput.value.trim();
+    }
+    const sshHostEl = newSessionBody.querySelector<HTMLInputElement>("[data-ssh-host]");
+    if (sshHostEl) {
+      newSessionDraft.sshHost = sshHostEl.value.trim();
+    }
+    const sshWorkdirInput = newSessionBody.querySelector<HTMLInputElement>("[data-ssh-workdir]");
+    if (sshWorkdirInput) {
+      newSessionDraft.sshWorkdir = sshWorkdirInput.value.trim() || "~/pagent";
+    }
+  }
+
+  function closeSshHostDropdown(): void {
+    const dropdown = newSessionBody.querySelector<HTMLElement>("[data-ssh-dropdown]");
+    if (!dropdown) {
+      return;
+    }
+    const menu = dropdown.querySelector<HTMLElement>("[data-ssh-dropdown-menu]");
+    const trigger = dropdown.querySelector<HTMLButtonElement>("[data-ssh-dropdown-toggle]");
+    if (menu) {
+      menu.hidden = true;
+    }
+    dropdown.classList.remove("is-open");
+    trigger?.setAttribute("aria-expanded", "false");
+  }
+
+  function toggleSshHostDropdown(): void {
+    const dropdown = newSessionBody.querySelector<HTMLElement>("[data-ssh-dropdown]");
+    if (!dropdown) {
+      return;
+    }
+    const menu = dropdown.querySelector<HTMLElement>("[data-ssh-dropdown-menu]");
+    const trigger = dropdown.querySelector<HTMLButtonElement>("[data-ssh-dropdown-toggle]");
+    if (!menu || !trigger) {
+      return;
+    }
+    const open = menu.hidden;
+    menu.hidden = !open;
+    dropdown.classList.toggle("is-open", open);
+    trigger.setAttribute("aria-expanded", String(open));
+  }
+
+  function selectSshHost(host: string): void {
+    newSessionDraft.sshHost = host;
+    const input = newSessionBody.querySelector<HTMLInputElement>("[data-ssh-host]");
+    const label = newSessionBody.querySelector<HTMLElement>("[data-ssh-host-label]");
+    if (input) {
+      input.value = host;
+    }
+    if (label) {
+      label.textContent = host || "选择 Host…";
+      label.classList.toggle("is-placeholder", !host);
+    }
+    newSessionBody.querySelectorAll<HTMLElement>("[data-ssh-host-option]").forEach((option) => {
+      const active = option.getAttribute("value") === host;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-selected", String(active));
+    });
+    closeSshHostDropdown();
+  }
+
+  function paintNewSessionForm(): void {
+    if (!newSessionOptionsCache) {
+      return;
+    }
+    newSessionBody.innerHTML = renderNewSessionForm(newSessionOptionsCache, newSessionDraft);
+  }
+
+  function closeNewSessionModal(): void {
+    if (newSessionModal.hidden) {
+      return;
+    }
+    newSessionRequestId += 1;
+    newSessionModal.classList.remove("is-open");
+    window.clearTimeout(newSessionModalCloseTimer);
+    newSessionModalCloseTimer = window.setTimeout(() => {
+      newSessionModal.hidden = true;
+      newSessionBody.innerHTML = "";
+      newSessionOptionsCache = null;
+    }, 140);
+  }
+
+  async function openNewSessionModal(): Promise<void> {
+    const requestId = newSessionRequestId + 1;
+    newSessionRequestId = requestId;
+    window.clearTimeout(newSessionModalCloseTimer);
+    newSessionBody.innerHTML = renderThreadMetaSkeleton();
+    newSessionModal.hidden = false;
+    window.requestAnimationFrame(() => {
+      if (newSessionRequestId === requestId) {
+        newSessionModal.classList.add("is-open");
+      }
+    });
+    try {
+      const options = await window.desktop.getNewSessionOptions();
+      if (newSessionModal.hidden || newSessionRequestId !== requestId) {
+        return;
+      }
+      newSessionOptionsCache = options;
+      const backends = options.availableBackends;
+      if (!backends.includes(newSessionDraft.backend)) {
+        newSessionDraft.backend = backends[0] ?? "local";
+      }
+      newSessionDraft.projectPath = options.projectPath || uiState.runtime.projectPath;
+      if (
+        newSessionDraft.backend === "ssh" &&
+        !newSessionDraft.sshHost &&
+        options.sshHosts.length > 0
+      ) {
+        newSessionDraft.sshHost = options.sshHosts[0];
+      }
+      paintNewSessionForm();
+    } catch (error) {
+      if (newSessionModal.hidden || newSessionRequestId !== requestId) {
+        return;
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      newSessionBody.innerHTML = `
+        <div class="thread-meta-error">${escapeHtml(message)}</div>
+      `;
+    }
+  }
+
+  async function confirmNewSession(): Promise<void> {
+    syncNewSessionDraftFromDom();
+    if (!newSessionDraft.projectPath) {
+      return;
+    }
+    if (newSessionDraft.backend === "ssh" && !newSessionDraft.sshHost) {
+      return;
+    }
+    const options: ResetSessionOptions = {
+      backend: newSessionDraft.backend,
+      projectPath: newSessionDraft.projectPath,
+    };
+    if (newSessionDraft.backend === "ssh") {
+      options.sshHost = newSessionDraft.sshHost;
+      options.sshWorkdir = newSessionDraft.sshWorkdir || "~/pagent";
+    }
+    closeNewSessionModal();
+    chatRenderer.showHistorySkeleton();
+    setComposerHint("");
+    uiState.activityState = "sleeping";
+    applyActivityState();
+    clearSandboxPanel();
+    await window.desktop.resetSession(options);
+    await refreshSessions();
+    await refreshArtifacts();
+  }
+
   function applyActivityState(): void {
-    const stateClass = uiState.activityState;
-    panelLamp.className = `panel-lamp ${stateClass}`;
     const running = uiState.activityState === "running";
     sendMessageButton.disabled = running;
     sendMessageButton.title = running ? "正在执行" : "发送";
@@ -1340,9 +2026,22 @@ async function start(): Promise<void> {
     }
   }
 
+  function renderSandboxRootCard(): string {
+    const backend =
+      uiState.sandboxStatus.backend || uiState.runtime.sandboxBackend || "";
+    const label = sandboxPathRootLabel(backend);
+    const workdir = uiState.sandboxStatus.workdir.trim();
+    const pathText =
+      workdir ||
+      (uiState.runtime.currentThreadId ? "待连接" : "未启动");
+    return renderPathRootCard(pathText, label);
+  }
+
   function renderTree(): void {
+    const header = renderSandboxRootCard();
     if (uiState.sandboxTree.length === 0) {
       fileTree.innerHTML = `
+        ${header}
         <div class="session-empty">
           <div class="session-empty-title">沙箱里还没有文件</div>
           <div class="session-empty-copy">沙箱连接后，这里会展示当前 workdir 的目录树。</div>
@@ -1350,7 +2049,28 @@ async function start(): Promise<void> {
       `;
       return;
     }
-    fileTree.innerHTML = renderTreeRows(uiState.sandboxTree, uiState.expandedTree);
+    fileTree.innerHTML = `${header}${renderTreeRows(
+      uiState.sandboxTree,
+      uiState.expandedTree,
+    )}`;
+  }
+
+  function renderProjectTree(): void {
+    const header = renderPathRootCard(uiState.runtime.projectPath, "本机路径");
+    if (uiState.projectTreeNodes.length === 0) {
+      projectTree.innerHTML = `
+        ${header}
+        <div class="session-empty">
+          <div class="session-empty-title">项目目录为空</div>
+          <div class="session-empty-copy">绑定项目后，这里会展示项目目录树。</div>
+        </div>
+      `;
+      return;
+    }
+    projectTree.innerHTML = `${header}${renderTreeRows(
+      uiState.projectTreeNodes,
+      uiState.expandedProjectTree,
+    )}`;
   }
 
   function renderTerminal(): void {
@@ -1386,6 +2106,7 @@ async function start(): Promise<void> {
   function closeArtifactPreview(): void {
     artifactPreviewPath = "";
     artifactsPanel.classList.remove("preview-open");
+    projectHost.classList.remove("preview-open");
     artifactPreview.hidden = true;
     artifactPreview.innerHTML = "";
   }
@@ -1393,6 +2114,7 @@ async function start(): Promise<void> {
   async function showArtifactPreview(filePath: string): Promise<void> {
     artifactPreviewPath = filePath;
     artifactsPanel.classList.add("preview-open");
+    projectHost.classList.add("preview-open");
     artifactPreview.hidden = false;
     artifactPreview.innerHTML = `<div class="artifact-preview-body artifact-preview-empty">加载中…</div>`;
     const preview = await window.desktop.readArtifact(filePath);
@@ -1400,6 +2122,32 @@ async function start(): Promise<void> {
       return;
     }
     artifactPreview.innerHTML = renderArtifactPreview(preview);
+  }
+
+  function applyProjectPane(): void {
+    const pane = uiState.projectPane;
+    projectHost.dataset.projectPane = pane;
+    projectPaneSwitch.dataset.pane = pane;
+    projectFilesPane.hidden = pane !== "files";
+    artifactsPanel.hidden = pane !== "artifacts";
+    projectPaneSwitch
+      .querySelectorAll<HTMLButtonElement>("[data-project-pane]")
+      .forEach((button) => {
+        const active = button.dataset.projectPane === pane;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", active ? "true" : "false");
+      });
+    if (pane === "files") {
+      refreshProjectButton.title = "刷新项目目录";
+      refreshProjectButton.setAttribute("aria-label", "刷新项目目录");
+    } else {
+      refreshProjectButton.title = "刷新产物";
+      refreshProjectButton.setAttribute("aria-label", "刷新产物");
+    }
+    resourceStrip.classList.toggle(
+      "hidden",
+      uiState.activeTab === "project" && pane === "artifacts",
+    );
   }
 
   function applyRightTab(): void {
@@ -1410,7 +2158,7 @@ async function start(): Promise<void> {
       node.classList.toggle("active", node.dataset.tab === uiState.activeTab);
     });
     rightFooter.dataset.tab = uiState.activeTab;
-    resourceStrip.classList.toggle("hidden", uiState.activeTab === "artifacts");
+    applyProjectPane();
   }
 
   function appendTerminalEntry(kind: TerminalEntryKind, text: string): void {
@@ -1446,6 +2194,41 @@ async function start(): Promise<void> {
     renderTree();
   }
 
+  async function refreshProjectTree(): Promise<void> {
+    uiState.projectTreeNodes = await window.desktop.listProjectTree();
+    uiState.projectLoadedPath = uiState.runtime.projectPath;
+    uiState.expandedProjectTree = new Set(
+      uiState.projectTreeNodes
+        .filter((node) => node.kind === "dir")
+        .map((node) => node.id),
+    );
+    renderProjectTree();
+  }
+
+  async function ensureProjectPanelLoaded(): Promise<void> {
+    const projectPath = uiState.runtime.projectPath;
+    if (!projectPath || uiState.projectLoadedPath === projectPath) {
+      return;
+    }
+    await refreshProjectTree();
+  }
+
+  async function forceRefreshProjectPanel(): Promise<void> {
+    const button = findRequired<HTMLButtonElement>("[data-refresh-project]");
+    if (button.disabled) {
+      return;
+    }
+    button.disabled = true;
+    button.classList.add("is-busy");
+    uiState.projectLoadedPath = "";
+    try {
+      await refreshProjectTree();
+    } finally {
+      button.disabled = false;
+      button.classList.remove("is-busy");
+    }
+  }
+
   async function refreshSandboxStatus(): Promise<void> {
     const status = await window.desktop.getSandboxStatus();
     uiState.sandboxStatus = status;
@@ -1457,6 +2240,7 @@ async function start(): Promise<void> {
         status.threadId === uiState.runtime.currentThreadId ? status.alive : undefined,
     };
     applyHeader();
+    renderTree();
   }
 
   async function ensureSandboxPanelLoaded(): Promise<void> {
@@ -1464,22 +2248,66 @@ async function start(): Promise<void> {
     if (!threadId || uiState.sandboxLoadedThreadId === threadId) {
       return;
     }
-    await Promise.all([
-      refreshSandboxTree(),
-      refreshSandboxStatus(),
-    ]);
+    // 先拉 status（workdir/backend），再拉目录树，避免根卡片短暂空白。
+    await refreshSandboxStatus();
+    await refreshSandboxTree();
+  }
+
+  async function forceRefreshSandboxPanel(): Promise<void> {
+    const button = findRequired<HTMLButtonElement>("[data-refresh-sandbox]");
+    if (button.disabled) {
+      return;
+    }
+    button.disabled = true;
+    button.classList.add("is-busy");
+    // 清掉缓存标记，强制重新拉取当前 thread 的目录树。
+    uiState.sandboxLoadedThreadId = "";
+    try {
+      await refreshSandboxStatus();
+      await refreshSandboxTree();
+    } finally {
+      button.disabled = false;
+      button.classList.remove("is-busy");
+    }
+  }
+
+  function setComposerHint(message: string): void {
+    const text = message.trim();
+    errorText.textContent = text;
+    errorText.title = text;
+    composerHint.hidden = !text;
+    composerHint.classList.toggle("is-error", Boolean(text));
+  }
+
+  function dismissComposerHint(): void {
+    setComposerHint("");
+    void window.desktop.clearLastError();
+    if (uiState.activityState === "error" && uiState.runtime.status !== "error") {
+      uiState.activityState = "sleeping";
+      applyActivityState();
+    }
+  }
+
+  function applyYoloButton(): void {
+    const enabled = uiState.runtime.yoloMode === true;
+    yoloButton.classList.toggle("active", enabled);
+    yoloButton.title = enabled
+      ? "自动审批：开启（点击关闭 YOLO 模式）"
+      : "自动审批：关闭（点击开启 YOLO 模式）";
+    yoloButton.setAttribute("aria-label", enabled ? "YOLO 已开启" : "YOLO 模式");
   }
 
   function applyRuntimeState(state: RuntimeState): void {
     uiState.runtime = state;
     if (state.status === "error") {
       uiState.activityState = "error";
-    } else if (uiState.activityState === "error") {
+    } else if (uiState.activityState === "error" && !state.lastError) {
       uiState.activityState = "sleeping";
     }
-    errorText.textContent = state.lastError ?? "";
+    setComposerHint(state.lastError ?? "");
     applyHeader();
     applyActivityState();
+    applyYoloButton();
   }
 
   async function sendMessage(): Promise<void> {
@@ -1493,6 +2321,7 @@ async function start(): Promise<void> {
     chatRenderer.addUser(text);
     promptInput.value = "";
     resizePrompt(promptInput);
+    setComposerHint("");
     uiState.activityState = "running";
     applyActivityState();
     appendTerminalEntry("command", text);
@@ -1560,12 +2389,34 @@ async function start(): Promise<void> {
       event.method === "ToolCallBegin"
     ) {
       uiState.activityState = "running";
-    } else if (event.method === "RunEnd" || event.method === "HistoryReplay") {
+      if (event.method === "RunBegin") {
+        setComposerHint("");
+      }
+    } else if (event.method === "RunEnd") {
       uiState.activityState = "sleeping";
+      void refreshSessions();
+      void refreshArtifacts();
+    } else if (event.method === "HistoryReplay") {
+      const threadId = String(event.params.thread_id ?? "");
+      // 空 thread_id 通常是 reset/resume 失败后的占位回放，等后续 Error 定态。
+      if (threadId) {
+        uiState.activityState = "sleeping";
+        setComposerHint("");
+      }
       void refreshSessions();
       void refreshArtifacts();
     } else if (event.method === "Error") {
       uiState.activityState = "error";
+      const message = String(event.params.message ?? "").trim();
+      if (message) {
+        setComposerHint(message);
+      }
+      // 新建/恢复会话失败时没有可用 thread，清掉沙箱侧状态避免显示陈旧目录。
+      const where = String(event.params.where ?? "");
+      if (where === "reset" || where === "resume" || where === "open") {
+        clearSandboxPanel();
+        void refreshSessions();
+      }
     }
 
     if (event.method === "Skills") {
@@ -1799,8 +2650,32 @@ async function start(): Promise<void> {
     toggleSkillsPanel(sessionList.hidden === false);
   });
 
+  yoloButton.addEventListener("click", () => {
+    const next = !uiState.runtime.yoloMode;
+    uiState.runtime = { ...uiState.runtime, yoloMode: next };
+    applyYoloButton();
+    void window.desktop.setYoloMode(next).then((state) => {
+      applyRuntimeState(state);
+      if (state.yoloMode) {
+        toast.warning("YOLO 已开启", {
+          description: "工具调用将自动批准，请确认信任当前任务。",
+        });
+      } else {
+        toast.info("YOLO 已关闭", {
+          description: "工具调用需要手动批准。",
+        });
+      }
+    });
+  });
+
   sendMessageButton.addEventListener("click", () => {
     void sendMessage();
+  });
+
+  clearLastErrorButton.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    dismissComposerHint();
   });
 
   document.querySelectorAll<HTMLElement>("[data-theme-toggle]").forEach((button) => {
@@ -1808,25 +2683,77 @@ async function start(): Promise<void> {
   });
 
   document.querySelectorAll<HTMLElement>("[data-new-task]").forEach((button) => {
-    button.addEventListener("click", async () => {
-      chatRenderer.showHistorySkeleton();
-      uiState.activityState = "sleeping";
-      applyActivityState();
-      await window.desktop.resetSession();
-      await refreshSessions();
-      await refreshArtifacts();
+    button.addEventListener("click", () => {
+      void openNewSessionModal();
     });
+  });
+
+  newSessionModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.closest("[data-new-session-close]") || target.closest("[data-new-session-cancel]")) {
+      closeNewSessionModal();
+      return;
+    }
+    const hostOption = target.closest<HTMLElement>("[data-ssh-host-option]");
+    if (hostOption) {
+      selectSshHost(hostOption.getAttribute("value") || "");
+      return;
+    }
+    if (target.closest("[data-ssh-dropdown-toggle]")) {
+      toggleSshHostDropdown();
+      return;
+    }
+    if (!target.closest("[data-ssh-dropdown]")) {
+      closeSshHostDropdown();
+    }
+    const backendButton = target.closest<HTMLElement>("[data-backend]");
+    if (backendButton?.dataset.backend) {
+      syncNewSessionDraftFromDom();
+      newSessionDraft.backend = backendButton.dataset.backend as SandboxBackendOption;
+      if (
+        newSessionDraft.backend === "ssh" &&
+        !newSessionDraft.sshHost &&
+        newSessionOptionsCache &&
+        newSessionOptionsCache.sshHosts.length > 0
+      ) {
+        newSessionDraft.sshHost = newSessionOptionsCache.sshHosts[0];
+      }
+      paintNewSessionForm();
+      return;
+    }
+    if (target.closest("[data-pick-project]")) {
+      void (async () => {
+        syncNewSessionDraftFromDom();
+        const picked = await window.desktop.pickDirectory(newSessionDraft.projectPath);
+        if (!picked) {
+          return;
+        }
+        newSessionDraft.projectPath = picked;
+        paintNewSessionForm();
+      })();
+      return;
+    }
+    if (target.closest("[data-new-session-confirm]")) {
+      void confirmNewSession();
+    }
   });
 
   projectButton.addEventListener("click", async () => {
     const state = await window.desktop.selectProject();
     applyRuntimeState(state);
+    uiState.projectLoadedPath = "";
     chatRenderer.showHistorySkeleton();
     uiState.activityState = "sleeping";
     applyActivityState();
     await window.desktop.resetSession();
-    await refreshSessions();
-    await refreshArtifacts();
+    await Promise.all([
+      refreshSessions(),
+      refreshArtifacts(),
+      ensureProjectPanelLoaded(),
+    ]);
   });
 
   settingsOpenButton.addEventListener("click", () => {
@@ -1835,6 +2762,106 @@ async function start(): Promise<void> {
 
   documentationButton.addEventListener("click", () => {
     void window.desktop.openDocumentation();
+  });
+
+  const userMenu = findRequired<HTMLElement>("[data-user-menu]");
+  const userMenuDropdown = findRequired<HTMLElement>("[data-user-menu-dropdown]");
+  const userMenuStatus = findRequired<HTMLElement>("[data-user-menu-status]");
+  const userMenuToggles = Array.from(
+    document.querySelectorAll<HTMLButtonElement>("[data-user-menu-toggle]"),
+  );
+
+  function layoutUserMenuDropdown(): void {
+    const toggle = userMenu.querySelector<HTMLElement>("[data-user-menu-toggle]");
+    if (!toggle) {
+      return;
+    }
+    const rect = toggle.getBoundingClientRect();
+    const width = Math.max(rect.width, 208);
+    userMenuDropdown.style.position = "fixed";
+    userMenuDropdown.style.left = `${Math.max(8, rect.left)}px`;
+    userMenuDropdown.style.width = `${width}px`;
+    userMenuDropdown.style.right = "auto";
+    userMenuDropdown.style.top = "auto";
+    userMenuDropdown.style.bottom = `${Math.max(8, window.innerHeight - rect.top + 8)}px`;
+  }
+
+  function setUserMenuOpen(open: boolean): void {
+    userMenu.classList.toggle("is-open", open);
+    userMenuDropdown.hidden = !open;
+    for (const toggle of userMenuToggles) {
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+    }
+    if (open) {
+      layoutUserMenuDropdown();
+    }
+  }
+
+  function toggleUserMenu(): void {
+    const next = userMenuDropdown.hidden;
+    if (next && uiState.leftCollapsed) {
+      uiState.leftCollapsed = false;
+      uiState.sidebarDocked = false;
+      applyWorkbenchChrome();
+      window.requestAnimationFrame(() => {
+        setUserMenuOpen(true);
+      });
+      return;
+    }
+    setUserMenuOpen(next);
+  }
+
+  for (const toggle of userMenuToggles) {
+    toggle.addEventListener("click", (event) => {
+      event.stopPropagation();
+      toggleUserMenu();
+    });
+  }
+
+  findRequired<HTMLButtonElement>("[data-user-menu-wechat]").addEventListener(
+    "click",
+    () => {
+      setUserMenuOpen(false);
+      toast.info("微信登录即将开放", {
+        description: "接入后可在此用微信扫码登录。",
+      });
+    },
+  );
+
+  findRequired<HTMLButtonElement>("[data-user-menu-settings]").addEventListener(
+    "click",
+    () => {
+      setUserMenuOpen(false);
+      void openSettingsModal();
+    },
+  );
+
+  findRequired<HTMLButtonElement>("[data-user-menu-docs]").addEventListener(
+    "click",
+    () => {
+      setUserMenuOpen(false);
+      void window.desktop.openDocumentation();
+    },
+  );
+
+  document.addEventListener("mousedown", (event) => {
+    if (userMenuDropdown.hidden) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Node)) {
+      return;
+    }
+    if (userMenu.contains(target)) {
+      return;
+    }
+    if (
+      target instanceof Element &&
+      target.closest("[data-user-menu-toggle]")
+    ) {
+      return;
+    }
+    setUserMenuOpen(false);
   });
 
   shortcutsOpenButton.addEventListener("click", () => {
@@ -1882,7 +2909,7 @@ async function start(): Promise<void> {
   document.querySelectorAll<HTMLElement>("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       const tab = button.dataset.tab;
-      if (tab !== "sandbox" && tab !== "terminal" && tab !== "artifacts") {
+      if (tab !== "project" && tab !== "sandbox" && tab !== "terminal") {
         return;
       }
       uiState.activeTab = tab;
@@ -1892,12 +2919,74 @@ async function start(): Promise<void> {
       if (tab === "sandbox") {
         void ensureSandboxPanelLoaded();
       }
+      if (tab === "project") {
+        if (uiState.projectPane === "files") {
+          void ensureProjectPanelLoaded();
+        } else {
+          void refreshArtifacts();
+        }
+      }
     });
+  });
+
+  projectPaneSwitch
+    .querySelectorAll<HTMLButtonElement>("[data-project-pane]")
+    .forEach((button) => {
+      button.addEventListener("click", () => {
+        const pane = button.dataset.projectPane;
+        if (pane !== "files" && pane !== "artifacts") {
+          return;
+        }
+        if (pane === uiState.projectPane) {
+          return;
+        }
+        if (pane === "files") {
+          closeArtifactPreview();
+        }
+        uiState.projectPane = pane;
+        applyProjectPane();
+        if (pane === "files") {
+          void ensureProjectPanelLoaded();
+        } else {
+          void refreshArtifacts();
+        }
+      });
+    });
+
+  findRequired<HTMLButtonElement>("[data-refresh-sandbox]").addEventListener("click", () => {
+    void forceRefreshSandboxPanel();
+  });
+  refreshProjectButton.addEventListener("click", () => {
+    if (uiState.projectPane === "artifacts") {
+      void refreshArtifacts();
+      return;
+    }
+    void forceRefreshProjectPanel();
   });
 
   sessionList.addEventListener("click", (event) => {
     const target = event.target;
     if (!(target instanceof Element)) {
+      return;
+    }
+    const deleteButton = target.closest<HTMLElement>("[data-thread-delete]");
+    if (deleteButton) {
+      const threadId = deleteButton.dataset.threadId;
+      if (!threadId) {
+        return;
+      }
+      const deletingCurrent = threadId === uiState.runtime.currentThreadId;
+      void (async () => {
+        if (deletingCurrent) {
+          chatRenderer.showHistorySkeleton();
+          clearSandboxPanel();
+        }
+        await window.desktop.deleteThread(threadId);
+        await refreshSessions();
+        if (deletingCurrent) {
+          chatRenderer.clear();
+        }
+      })();
       return;
     }
     const metaButton = target.closest<HTMLElement>("[data-thread-meta]");
@@ -1943,6 +3032,18 @@ async function start(): Promise<void> {
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (!userMenuDropdown.hidden) {
+        setUserMenuOpen(false);
+        return;
+      }
+      const sshMenu = newSessionBody.querySelector<HTMLElement>("[data-ssh-dropdown-menu]");
+      if (!newSessionModal.hidden && sshMenu && !sshMenu.hidden) {
+        closeSshHostDropdown();
+        return;
+      }
+      if (!newSessionModal.hidden) {
+        closeNewSessionModal();
+      }
       if (!threadMetaModal.hidden) {
         closeThreadMetaModal();
       }
@@ -1995,6 +3096,27 @@ async function start(): Promise<void> {
       uiState.expandedTree.add(treeId);
     }
     renderTree();
+  });
+
+  projectTree.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const button = target.closest<HTMLElement>("[data-tree-toggle]");
+    if (!button) {
+      return;
+    }
+    const treeId = button.dataset.treeToggle;
+    if (!treeId) {
+      return;
+    }
+    if (uiState.expandedProjectTree.has(treeId)) {
+      uiState.expandedProjectTree.delete(treeId);
+    } else {
+      uiState.expandedProjectTree.add(treeId);
+    }
+    renderProjectTree();
   });
 
   artifactsList.addEventListener("click", (event) => {
@@ -2060,19 +3182,30 @@ async function start(): Promise<void> {
     if (!text || isRoutineWireLog(text)) {
       return;
     }
+    // 非致命 stderr 用 sonner；真正的 lastError 仍走 composer hint。
     if (!errorText.textContent) {
-      errorText.textContent = text;
+      toast.warning(summarize(text, 72), {
+        description: text.length > 72 ? text : undefined,
+        duration: 4800,
+      });
     }
     appendTerminalEntry("stderr", text);
   });
 
   const disposeRuntimeState = window.desktop.onRuntimeState((state) => {
     const previousThreadId = uiState.runtime.currentThreadId;
+    const previousProjectPath = uiState.runtime.projectPath;
     applyRuntimeState(state);
     if (state.currentThreadId !== previousThreadId) {
       clearSandboxPanel();
       void refreshSessions();
       void refreshArtifacts();
+    }
+    if (state.projectPath !== previousProjectPath) {
+      uiState.projectLoadedPath = "";
+      if (uiState.activeTab === "project") {
+        void ensureProjectPanelLoaded();
+      }
     }
   });
 
@@ -2098,6 +3231,7 @@ async function start(): Promise<void> {
   await Promise.all([
     refreshSessions(),
     refreshArtifacts(),
+    ensureProjectPanelLoaded(),
     window.desktop.requestHistoryReplay(),
   ]);
 }

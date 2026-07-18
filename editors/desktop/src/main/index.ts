@@ -7,7 +7,15 @@ import {
   shell,
   type OpenDialogOptions,
 } from "electron";
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import type { Dirent } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -19,7 +27,10 @@ import type {
   ArtifactPreview,
   ArtifactSummary,
   DesktopEvent,
+  NewSessionOptions,
+  ResetSessionOptions,
   RuntimeState,
+  SandboxBackendOption,
   SandboxStatus,
   SandboxTreeNode,
   ThreadMeta,
@@ -66,6 +77,7 @@ let currentThreadId = "";
 let bridgeStatus: RuntimeState["status"] = "idle";
 let lastError = "";
 let recentStderr = "";
+let yoloMode = loadYoloMode();
 let sandboxStatus: SandboxStatusPayload = {
   thread_id: "",
   backend: "",
@@ -118,6 +130,35 @@ function userPagentHome(): string {
   return path.join(homedir(), ".pagent");
 }
 
+function desktopSettingsPath(): string {
+  return path.join(userPagentHome(), "desktop.json");
+}
+
+/** 从 ~/.pagent/desktop.json 读取 YOLO；缺省或损坏时为 false。 */
+function loadYoloMode(): boolean {
+  try {
+    const data = JSON.parse(readFileSync(desktopSettingsPath(), "utf8")) as {
+      yoloMode?: unknown;
+    };
+    return data.yoloMode === true;
+  } catch {
+    return false;
+  }
+}
+
+function saveYoloMode(enabled: boolean): void {
+  const filePath = desktopSettingsPath();
+  mkdirSync(path.dirname(filePath), { recursive: true });
+  let existing: Record<string, unknown> = {};
+  try {
+    existing = JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
+  } catch {
+    // keep empty
+  }
+  existing.yoloMode = enabled;
+  writeFileSync(filePath, `${JSON.stringify(existing, null, 2)}\n`, "utf8");
+}
+
 /** 桌面默认用户 project（host_root）；agent 沙箱仍是 thread/workspace。 */
 function defaultProjectPath(): string {
   return path.join(userPagentHome(), "default");
@@ -142,6 +183,76 @@ function bridgeWorkingDirectory(): string {
 function setProjectPath(nextProjectPath: string): void {
   projectPath = nextProjectPath;
   ensureProjectDirectory();
+}
+
+function commandExists(cli: string): boolean {
+  try {
+    execFileSync("which", [cli], { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 新建会话可选 backend：local / container（自动探测 docker|podman）/ ssh。 */
+function detectAvailableBackends(): SandboxBackendOption[] {
+  const backends: SandboxBackendOption[] = ["local"];
+  if (commandExists("docker") || commandExists("podman")) {
+    backends.push("container");
+  }
+  backends.push("ssh");
+  return backends;
+}
+
+/** 从 ~/.ssh/config 解析显式 Host 别名（过滤通配）。 */
+function readSshHosts(configPath = "~/.ssh/config"): string[] {
+  const expanded = configPath.replace(/^~(?=$|[/\\])/, homedir());
+  try {
+    const text = readFileSync(path.resolve(expanded), "utf-8");
+    const hosts: string[] = [];
+    for (const line of text.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) {
+        continue;
+      }
+      if (!trimmed.toLowerCase().startsWith("host ")) {
+        continue;
+      }
+      for (const token of trimmed.slice(5).trim().split(/\s+/)) {
+        if (token.includes("*") || token.includes("?")) {
+          continue;
+        }
+        hosts.push(token);
+      }
+    }
+    return hosts;
+  } catch {
+    return [];
+  }
+}
+
+function newSessionOptions(): NewSessionOptions {
+  return {
+    projectPath,
+    availableBackends: detectAvailableBackends(),
+    sshHosts: readSshHosts(),
+  };
+}
+
+async function pickDirectory(defaultPath?: string): Promise<string | null> {
+  const options: OpenDialogOptions = {
+    properties: ["openDirectory", "createDirectory"],
+    defaultPath: defaultPath || projectPath,
+    title: "选择项目目录",
+    buttonLabel: "选择",
+  };
+  const result = mainWindow
+    ? await dialog.showOpenDialog(mainWindow, options)
+    : await dialog.showOpenDialog(options);
+  if (result.canceled || result.filePaths.length === 0) {
+    return null;
+  }
+  return result.filePaths[0];
 }
 
 function artifactsDirectory(): string {
@@ -206,6 +317,7 @@ function runtimeState(): RuntimeState {
         : undefined,
     sandboxAlive:
       sandboxStatus.thread_id === currentThreadId ? sandboxStatus.alive : undefined,
+    yoloMode,
     bridgeActive: bridge !== undefined,
     status: bridgeStatus,
     lastError: lastError || undefined,
@@ -563,6 +675,59 @@ function listProjectFiles(): string[] {
   return results.sort((a, b) => a.localeCompare(b));
 }
 
+type ProjectTreeNode = {
+  id: string;
+  label: string;
+  kind: "dir" | "file";
+  count?: number;
+  children?: ProjectTreeNode[];
+};
+
+/** 递归列出 project 目录树，供右侧「项目」面板展示。 */
+function listProjectTree(dir = projectPath, prefix = ""): ProjectTreeNode[] {
+  if (!existsSync(dir)) {
+    return [];
+  }
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(dir, { withFileTypes: true }) as Dirent[];
+  } catch {
+    return [];
+  }
+  entries.sort((a, b) => {
+    if (a.isDirectory() !== b.isDirectory()) {
+      return a.isDirectory() ? -1 : 1;
+    }
+    return a.name.localeCompare(b.name);
+  });
+  const nodes: ProjectTreeNode[] = [];
+  for (const entry of entries) {
+    if (entry.name.startsWith(".") && entry.name !== ".pagent") {
+      continue;
+    }
+    if (PROJECT_FILE_IGNORE.has(entry.name)) {
+      continue;
+    }
+    const nodeId = prefix ? `${prefix}/${entry.name}` : entry.name;
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      const children = listProjectTree(full, nodeId);
+      nodes.push({
+        id: nodeId,
+        label: entry.name,
+        kind: "dir",
+        count: children.length,
+        children,
+      });
+      continue;
+    }
+    if (entry.isFile()) {
+      nodes.push({ id: nodeId, label: entry.name, kind: "file" });
+    }
+  }
+  return nodes;
+}
+
 function postDesktopEvent(event: DesktopEvent): void {
   if (!mainWindow || mainWindow.isDestroyed()) {
     return;
@@ -586,6 +751,16 @@ function notifyRuntimeState(): void {
     return;
   }
   mainWindow.webContents.send("desktop:runtime-state", runtimeState());
+}
+
+function clearLastError(notify = true): void {
+  if (!lastError) {
+    return;
+  }
+  lastError = "";
+  if (notify) {
+    notifyRuntimeState();
+  }
 }
 
 function reportBridgeFailure(message: string, where: string): void {
@@ -647,7 +822,14 @@ function handleWireLine(line: string): void {
     if (nextProjectPath) {
       setProjectPath(nextProjectPath);
     }
+    // 成功切到会话后清掉上一轮残留错误（reset 失败会紧跟着再发 Error）。
+    if (event.method === "HistoryReplay" && currentThreadId) {
+      lastError = "";
+    }
     notifyRuntimeState();
+  }
+  if (event.method === "RunBegin") {
+    clearLastError(false);
   }
   if (event.method === "Error") {
     lastError = readString(event.params, "message");
@@ -674,7 +856,9 @@ function ensureBridge(): AgentBridge | undefined {
   ensureProjectDirectory();
   notifyRuntimeState();
 
-  const wireInvocation = resolvePagentWireInvocation(pagentProjectRoot());
+  const wireInvocation = resolvePagentWireInvocation(pagentProjectRoot(), {
+    yolo: yoloMode,
+  });
   const nextBridge = new AgentBridge({
     command: wireInvocation.command,
     args: wireInvocation.args,
@@ -899,6 +1083,27 @@ app.on("will-quit", () => {
 
 ipcMain.handle("desktop:get-app-info", async () => appInfo());
 ipcMain.handle("desktop:get-runtime-state", async () => runtimeState());
+/** YOLO 改变审批 hook 装配，持久化后重启 wire 生效。 */
+ipcMain.handle("desktop:set-yolo-mode", async (_event, enabled: boolean) => {
+  const next = Boolean(enabled);
+  if (next === yoloMode) {
+    return runtimeState();
+  }
+  yoloMode = next;
+  saveYoloMode(next);
+  const resumeId = currentThreadId;
+  disposeBridge();
+  ensureBridge();
+  if (resumeId) {
+    bridge?.send({
+      cmd: "resume",
+      thread_id: resumeId,
+      project_path: projectPath,
+    });
+  }
+  notifyRuntimeState();
+  return runtimeState();
+});
 ipcMain.handle("desktop:list-threads", async () => {
   const payload = await requestThreadList();
   return toThreadSummaries(payload);
@@ -935,7 +1140,12 @@ ipcMain.handle("desktop:list-sandbox-tree", async () => {
   return payload.nodes;
 });
 ipcMain.handle("desktop:list-project-files", async () => listProjectFiles());
+ipcMain.handle("desktop:list-project-tree", async () => listProjectTree());
+ipcMain.handle("desktop:clear-last-error", async () => {
+  clearLastError();
+});
 ipcMain.handle("desktop:resume-thread", async (_event, threadId: string) => {
+  clearLastError(false);
   if (!threadId) {
     return;
   }
@@ -945,7 +1155,28 @@ ipcMain.handle("desktop:resume-thread", async (_event, threadId: string) => {
   }
   activeBridge.send({ cmd: "resume", thread_id: threadId, project_path: projectPath });
 });
+ipcMain.handle("desktop:delete-thread", async (_event, threadId: string) => {
+  if (!threadId || typeof threadId !== "string") {
+    return;
+  }
+  const activeBridge = ensureBridge();
+  if (!activeBridge) {
+    return;
+  }
+  const deletingCurrent = threadId === currentThreadId;
+  activeBridge.send({
+    cmd: "delete_thread",
+    thread_id: threadId,
+    project_path: projectPath,
+  });
+  if (deletingCurrent) {
+    currentThreadId = "";
+    clearLastError(false);
+    notifyRuntimeState();
+  }
+});
 ipcMain.handle("desktop:send-user-input", async (_event, text: string) => {
+  clearLastError();
   const activeBridge = ensureBridge();
   if (!activeBridge) {
     return;
@@ -959,27 +1190,58 @@ ipcMain.handle("desktop:send-wire-command", async (_event, command: Record<strin
   }
   activeBridge.send(command);
 });
-ipcMain.handle("desktop:reset-session", async () => {
-  const activeBridge = ensureBridge();
-  if (!activeBridge) {
-    return;
-  }
-  activeBridge.send({ cmd: "reset", project_path: projectPath });
+ipcMain.handle(
+  "desktop:reset-session",
+  async (_event, options?: ResetSessionOptions) => {
+    clearLastError(false);
+    const activeBridge = ensureBridge();
+    if (!activeBridge) {
+      return;
+    }
+    const nextProject =
+      typeof options?.projectPath === "string" && options.projectPath.trim()
+        ? options.projectPath.trim()
+        : projectPath;
+    if (nextProject !== projectPath) {
+      setProjectPath(nextProject);
+      notifyRuntimeState();
+    }
+    const command: Record<string, unknown> = {
+      cmd: "reset",
+      project_path: nextProject,
+    };
+    if (options?.backend) {
+      command.backend = options.backend;
+    }
+    if (options?.image?.trim()) {
+      command.image = options.image.trim();
+    }
+    if (options?.sshHost?.trim()) {
+      command.ssh_host = options.sshHost.trim();
+    }
+    if (options?.sshConfig?.trim()) {
+      command.ssh_config = options.sshConfig.trim();
+    }
+    if (options?.sshWorkdir?.trim()) {
+      command.ssh_workdir = options.sshWorkdir.trim();
+    }
+    activeBridge.send(command);
+  },
+);
+ipcMain.handle("desktop:pick-directory", async (_event, defaultPath?: string) => {
+  return pickDirectory(
+    typeof defaultPath === "string" ? defaultPath : undefined,
+  );
+});
+ipcMain.handle("desktop:get-new-session-options", async () => {
+  return newSessionOptions();
 });
 ipcMain.handle("desktop:select-project", async () => {
-  const options: OpenDialogOptions = {
-    properties: ["openDirectory", "createDirectory"],
-    defaultPath: projectPath,
-    title: "选择项目目录",
-    buttonLabel: "绑定项目",
-  };
-  const result = mainWindow
-    ? await dialog.showOpenDialog(mainWindow, options)
-    : await dialog.showOpenDialog(options);
-  if (result.canceled || result.filePaths.length === 0) {
+  const picked = await pickDirectory(projectPath);
+  if (!picked) {
     return runtimeState();
   }
-  setProjectPath(result.filePaths[0]);
+  setProjectPath(picked);
   disposeBridge();
   currentThreadId = "";
   postSyntheticHistoryReplay();

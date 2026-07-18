@@ -131,9 +131,15 @@ export function resolveCliCommand(command: string): string {
   return trimmed;
 }
 
-export function resolvePagentWireInvocation(projectRoot: string): CliInvocation {
+export function resolvePagentWireInvocation(
+  projectRoot: string,
+  options?: { yolo?: boolean },
+): CliInvocation {
   // 桌面端默认 local sandbox：不依赖本机 Docker daemon。
   const wireArgs = ["--wire", "--backend", "local"];
+  if (options?.yolo) {
+    wireArgs.push("--permission-mode", "auto");
+  }
   const uv = resolveCliCommand("uv");
   if (uv) {
     return {

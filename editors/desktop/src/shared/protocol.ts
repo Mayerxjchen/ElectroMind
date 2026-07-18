@@ -12,6 +12,7 @@ export type RuntimeState = {
     currentThreadId?: string;
     sandboxBackend?: string;
     sandboxAlive?: boolean;
+    yoloMode: boolean;
     bridgeActive: boolean;
     status: "idle" | "starting" | "ready" | "error";
     lastError?: string;
@@ -74,6 +75,24 @@ export type SandboxStatus = {
     workdir: string;
 };
 
+/** 新建会话可选的 sandbox backend（与 wire / ThreadSpec 对齐）。 */
+export type SandboxBackendOption = "local" | "container" | "docker" | "podman" | "ssh";
+
+export type ResetSessionOptions = {
+    backend?: SandboxBackendOption;
+    projectPath?: string;
+    sshHost?: string;
+    sshConfig?: string;
+    sshWorkdir?: string;
+    image?: string;
+};
+
+export type NewSessionOptions = {
+    projectPath: string;
+    availableBackends: SandboxBackendOption[];
+    sshHosts: string[];
+};
+
 export type SandboxTreeNode = {
     id: string;
     label: string;
@@ -101,6 +120,7 @@ export type DesktopEvent =
 export type DesktopApi = {
     getAppInfo(): Promise<AppInfo>;
     getRuntimeState(): Promise<RuntimeState>;
+    setYoloMode(enabled: boolean): Promise<RuntimeState>;
     listThreads(): Promise<ThreadSummary[]>;
     getThreadMeta(threadId: string): Promise<ThreadMeta>;
     getSettings(): Promise<AppSettings>;
@@ -111,10 +131,15 @@ export type DesktopApi = {
     getSandboxStatus(): Promise<SandboxStatus>;
     listSandboxTree(): Promise<SandboxTreeNode[]>;
     listProjectFiles(): Promise<string[]>;
+    listProjectTree(): Promise<SandboxTreeNode[]>;
     selectProject(): Promise<RuntimeState>;
+    pickDirectory(defaultPath?: string): Promise<string | null>;
+    getNewSessionOptions(): Promise<NewSessionOptions>;
     resumeThread(threadId: string): Promise<void>;
+    deleteThread(threadId: string): Promise<void>;
     sendUserInput(text: string): Promise<void>;
-    resetSession(): Promise<void>;
+    clearLastError(): Promise<void>;
+    resetSession(options?: ResetSessionOptions): Promise<void>;
     requestHistoryReplay(): Promise<void>;
     sendWireCommand(command: Record<string, unknown>): Promise<void>;
     permitToolCall(toolCallId: string): Promise<void>;

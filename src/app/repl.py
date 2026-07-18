@@ -163,18 +163,30 @@ def format_fatal_error(exc: BaseException, *, phase: str) -> str:
     label = "关闭" if phase == "close" else "启动"
     name = type(exc).__name__
     module = type(exc).__module__ or ""
-    if "asyncssh" in module or name.startswith("SFTP") or name == "DisconnectError":
+    text = str(exc).strip() or name
+    if (
+        "asyncssh" in module
+        or name.startswith("SFTP")
+        or name in {"DisconnectError", "ConnectionLost", "ConnectionError", "TimeoutError"}
+        or "ssh" in text.lower() and ("connect" in text.lower() or "timed out" in text.lower())
+    ):
         hint = (
-            "请检查 SSH 别名、网络，以及远端 workdir 是否可写。"
+            "请检查 SSH 别名、网络、密钥，以及远端 workdir 是否可写。"
             if phase == "start"
             else "SSH 连接可能已断开。"
         )
-        return f"pagent {label}失败（SSH 沙箱）: {exc}\n  {hint}"
+        return f"pagent {label}失败（SSH 沙箱）: {text}\n  {hint}"
+    lowered = text.lower()
+    if "docker" in lowered or "podman" in lowered:
+        return (
+            f"pagent {label}失败（容器沙箱）: {text}\n"
+            "  请确认 Docker/Podman 已启动，且镜像已构建。"
+        )
     if isinstance(exc, (FileNotFoundError, KeyError, ValueError)):
-        return f"pagent {label}失败: {exc}"
+        return f"pagent {label}失败: {text}"
     if isinstance(exc, OSError):
-        return f"pagent {label}失败: {exc}"
-    return f"pagent {label}失败: {name}: {exc}"
+        return f"pagent {label}失败: {text}"
+    return f"pagent {label}失败: {name}: {text}"
 
 
 async def run_blocking_repl(config: ReplConfig, *, color: bool | None = None) -> int:

@@ -187,6 +187,21 @@ export class ChatRenderer {
 
   /** 展示一轮失败：撤掉 loading / 打字机，插入错误气泡。 */
   showError(message: string): void {
+    // reset/resume 失败时 wire 会先发空 HistoryReplay 再发 Error；
+    // HistoryReplay 的骨架离开动画若晚于 Error，会 clear() 掉错误气泡。
+    if (this.historyTransitionTimer) {
+      clearTimeout(this.historyTransitionTimer);
+      this.historyTransitionTimer = undefined;
+    }
+    const wasLoading =
+      Boolean(this.historySkeleton) || this.root.classList.contains("is-loading");
+    this.historySkeleton = undefined;
+    this.root.classList.remove("is-loading");
+    this.root.classList.remove("history-entering");
+    if (wasLoading) {
+      this.root.replaceChildren();
+      this.emptyState = undefined;
+    }
     this.hideEmptyState();
     this.removePlaceholder();
     this.finishAssistant();

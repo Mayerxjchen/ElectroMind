@@ -80,6 +80,9 @@ const rendererOptions = {
   platform: "browser",
   format: "iife",
   target: "chrome128",
+  // renderer 复用 ../vscode/src/webview；裸 import 会从 vscode 目录向上找
+  // node_modules，这里补上 desktop 自己的依赖目录。
+  nodePaths: [path.join(root, "node_modules")],
   sourcemap: true,
   logLevel: "info",
   plugins: [ignoreVendorSourceMaps],

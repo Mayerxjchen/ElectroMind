@@ -17,9 +17,12 @@
     {"cmd": "history"}                            回放当前 thread 的历史，供 Webview 重建
     {"cmd": "permit", "tool_call_id": "..."}      批准某次工具调用
     {"cmd": "deny", "tool_call_id": "...", "reason": "..."}  拒绝某次工具调用
-    {"cmd": "reset"}                              结束当前会话、开一个干净 thread
+    {"cmd": "reset", ...}                         结束当前会话、开一个干净 thread
+                                                  可选字段：project_path / backend /
+                                                  image / ssh_host / ssh_config / ssh_workdir
     {"cmd": "resume", "thread_id": "..."}         切到已有 thread，回放其历史
     {"cmd": "list_threads"}                       列出当前 pagent home 下可恢复会话
+    {"cmd": "delete_thread", "thread_id": "..."}  软删除：metainfo 打 deleted_at，列表隐藏
     {"cmd": "cancel"}                             取消当前运行（并发取消属后续课程）
 
 reset 与 resume 换 runner 后都补发一条 ``HistoryReplay`` 控制事件：空数组表示新会话
@@ -54,7 +57,7 @@ from pagentv4.runtime.thread import Thread, default_threads_root
 
 from .clean import clean_pagent, format_clean_report, iter_thread_dirs
 from .config import ReplConfig
-from .repl import open_runner
+from .repl import format_fatal_error, open_runner
 from .tool_permit import needs_tool_permit, summarize_tool_args
 
 # metainfo.json 里 title 的最大字符数：超出截断加省略号，供前端会话列表展示。
@@ -87,6 +90,27 @@ def command_project_path(command: dict) -> str | None:
     if isinstance(value, str) and value.strip():
         return value.strip()
     return None
+
+
+# reset 可携带的 ThreadSpec / ReplConfig 覆盖字段（字符串，空值忽略）。
+_RESET_OVERRIDE_KEYS = (
+    "backend",
+    "image",
+    "ssh_host",
+    "ssh_config",
+    "ssh_workdir",
+    "project_path",
+)
+
+
+def apply_command_overrides(config: ReplConfig, command: dict) -> ReplConfig:
+    """把 wire 命令里的可选字段叠到 ReplConfig，供 reset 按会话选 sandbox。"""
+    updates: dict[str, str] = {}
+    for key in _RESET_OVERRIDE_KEYS:
+        value = command.get(key)
+        if isinstance(value, str) and value.strip():
+            updates[key] = value.strip()
+    return replace(config, **updates) if updates else config
 
 
 def parse_command(line: str) -> dict | None:
@@ -243,6 +267,22 @@ def load_toml_file(path) -> dict:
         return tomllib.load(fp)
 
 
+def thread_is_soft_deleted(meta: dict) -> bool:
+    """metainfo 里有非空 deleted_at 即视为软删除，列表扫描时隐藏。"""
+    value = meta.get("deleted_at")
+    return isinstance(value, str) and bool(value.strip())
+
+
+def soft_delete_thread(thread_id: str) -> None:
+    """给 thread 的 metainfo 打上 deleted_at，不删磁盘目录。"""
+    thread = Thread.open(thread_id)
+    metainfo = thread.load_metainfo()
+    if thread_is_soft_deleted(metainfo):
+        return
+    metainfo["deleted_at"] = datetime.now().isoformat(timespec="seconds")
+    thread.save_metainfo(metainfo)
+
+
 def list_thread_entries(project_path: str | None = None) -> list[dict[str, str]]:
     """按当前 cwd 解析的 pagent home 列出可恢复 thread（与落盘同一判定）。"""
     entries: list[dict[str, str]] = []
@@ -252,14 +292,19 @@ def list_thread_entries(project_path: str | None = None) -> list[dict[str, str]]
         reverse=True,
     ):
         title = ""
+        meta: dict = {}
         meta_path = thread_dir / "metainfo.json"
         if meta_path.is_file():
             try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+                loaded = json.loads(meta_path.read_text(encoding="utf-8"))
             except (OSError, json.JSONDecodeError):
-                meta = {}
+                loaded = {}
+            if isinstance(loaded, dict):
+                meta = loaded
             raw = meta.get("title", "")
             title = raw if isinstance(raw, str) else ""
+        if thread_is_soft_deleted(meta):
+            continue
         spec = thread_spec(thread_dir)
         entries.append(
             {
@@ -570,8 +615,8 @@ def emit_error(message: str, *, where: str = "") -> None:
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
-def format_exc(exc: BaseException) -> str:
-    """把异常收成一行可读信息；SystemExit 的 code 可能是字符串。"""
+def format_exc(exc: BaseException, *, phase: str = "start") -> str:
+    """把异常收成可读信息；沙箱启动失败走 format_fatal_error（含 SSH 提示）。"""
     if isinstance(exc, SystemExit):
         code = exc.code
         if isinstance(code, str) and code.strip():
@@ -579,7 +624,7 @@ def format_exc(exc: BaseException) -> str:
         if code not in (None, 0):
             return f"进程退出 code={code}"
         return "进程退出"
-    return str(exc) or exc.__class__.__name__
+    return format_fatal_error(exc, phase=phase)
 
 
 async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> None:
@@ -694,6 +739,33 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         emit_thread_list(command_project_path(command))
         return runner
 
+    if cmd == "delete_thread":
+        thread_id = command.get("thread_id")
+        if not (isinstance(thread_id, str) and thread_id.strip()):
+            log("[wire] delete_thread missing thread_id")
+            return runner
+        thread_id = thread_id.strip()
+        try:
+            soft_delete_thread(thread_id)
+        except (Exception, SystemExit) as exc:
+            log(f"[wire] delete_thread failed: {exc}")
+            emit_error(format_exc(exc, phase="start"), where="delete_thread")
+            return runner
+        # 删的是当前会话：关掉 runner 并空回放，前端清屏；不自动开新会话。
+        deleted_current = False
+        if runner is not None and runner.thread.id == thread_id:
+            await runner.close()
+            runner = None
+            deleted_current = True
+        if state.get("thread_id") == thread_id:
+            state["thread_id"] = None
+            deleted_current = True
+        if deleted_current:
+            emit_empty_history_replay()
+        emit_thread_list(command_project_path(command))
+        log(f"[wire] delete_thread：已软删除 {thread_id}")
+        return runner
+
     if cmd == "sandbox_tree":
         if runner is None and isinstance(state.get("thread_id"), str):
             try:
@@ -741,13 +813,15 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         project_path = command_project_path(command)
         try:
             thread = open_thread_history(thread_id, project_path)
+            if thread_is_soft_deleted(thread.load_metainfo()):
+                raise ValueError(f"会话已删除：{thread_id}")
         except (Exception, SystemExit) as exc:
             log(f"[wire] resume failed: {exc}")
             if runner is None:
                 emit_empty_history_replay()
             else:
                 emit_history_replay(runner)
-            emit_error(format_exc(exc), where="resume")
+            emit_error(format_exc(exc, phase="start"), where="resume")
             return runner
         if runner is not None:
             await runner.close()
@@ -769,20 +843,26 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             runner = None
         if isinstance(previous_thread_id, str):
             clean_empty_threads()
-        project_path = command_project_path(command)
+        reset_config = apply_command_overrides(config, command)
+        project_path = reset_config.project_path
         try:
-            runner = await open_fresh_runner(config, project_path)
+            runner = await open_fresh_runner(reset_config, project_path)
         except (Exception, SystemExit) as exc:
             log(f"[wire] reset failed: {exc}")
             state["thread_id"] = None
             state["project_path"] = project_path
+            # Thread.open 已落盘，沙箱启动失败时清掉这个空会话，避免列表里留僵尸 thread。
+            clean_empty_threads()
             emit_empty_history_replay()
-            emit_error(format_exc(exc), where="reset")
+            emit_error(format_exc(exc, phase="start"), where="reset")
             return None
         state["thread_id"] = runner.thread.id
         state["project_path"] = project_path
         emit_history_replay(runner)
-        log("[wire] reset：已开新会话")
+        log(
+            "[wire] reset：已开新会话"
+            + (f" backend={reset_config.backend}" if reset_config.backend else "")
+        )
         return runner
 
     if cmd == "cancel":

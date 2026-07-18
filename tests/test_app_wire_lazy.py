@@ -505,3 +505,95 @@ async def test_reset_cleans_previous_empty_thread(monkeypatch):
     assert result is fresh
     assert closed == ["thread-empty"]
     assert cleaned == [frozenset()]
+
+
+def test_list_thread_entries_hides_soft_deleted(tmp_path, monkeypatch):
+    """metainfo.deleted_at 非空的 thread 不应出现在列表里。"""
+    from pathlib import Path
+
+    alive = tmp_path / "thread-alive"
+    deleted = tmp_path / "thread-gone"
+    for folder, meta in (
+        (alive, {"title": "可见"}),
+        (deleted, {"title": "已删", "deleted_at": "2026-07-18T12:00:00"}),
+    ):
+        folder.mkdir()
+        (folder / "thread.toml").write_text("[sandbox]\nbackend = \"local\"\n", encoding="utf-8")
+        (folder / "metainfo.json").write_text(
+            json.dumps(meta, ensure_ascii=False),
+            encoding="utf-8",
+        )
+
+    monkeypatch.setattr(wire, "default_threads_root", lambda: Path(tmp_path))
+    monkeypatch.setattr(wire, "iter_thread_dirs", lambda root: [alive, deleted])
+
+    entries = wire.list_thread_entries()
+    assert [item["id"] for item in entries] == ["thread-alive"]
+    assert entries[0]["title"] == "可见"
+
+
+@pytest.mark.asyncio
+async def test_delete_thread_marks_deleted_at(monkeypatch):
+    saved: dict = {}
+
+    class FakeThread:
+        id = "thread-x"
+
+        def load_metainfo(self):
+            return {"title": "demo"}
+
+        def save_metainfo(self, meta):
+            saved.update(meta)
+
+    monkeypatch.setattr(wire.Thread, "open", staticmethod(lambda _id: FakeThread()))
+    monkeypatch.setattr(wire, "emit_thread_list", lambda _project=None: None)
+
+    result = await wire.handle_command(
+        {"cmd": "delete_thread", "thread_id": "thread-x"},
+        None,
+        ReplConfig(),
+        {"turn": None},
+    )
+    assert result is None
+    assert saved.get("title") == "demo"
+    assert isinstance(saved.get("deleted_at"), str) and saved["deleted_at"]
+
+
+@pytest.mark.asyncio
+async def test_reset_applies_backend_and_project_overrides(monkeypatch):
+    """新建会话可经 wire reset 指定 backend / project_path。"""
+    seen: dict[str, object] = {}
+    fresh = MagicMock()
+    fresh.thread.id = "thread-new"
+
+    async def fake_open_fresh(config, project_path=None):
+        seen["backend"] = config.backend
+        seen["project_path"] = project_path
+        seen["ssh_host"] = config.ssh_host
+        seen["ssh_workdir"] = config.ssh_workdir
+        return fresh
+
+    monkeypatch.setattr(wire, "open_fresh_runner", fake_open_fresh)
+    monkeypatch.setattr(wire, "emit_history_replay", lambda _runner: None)
+    monkeypatch.setattr(wire, "clean_empty_threads", lambda **_kwargs: None)
+
+    result = await wire.handle_command(
+        {
+            "cmd": "reset",
+            "backend": "ssh",
+            "project_path": "/tmp/demo",
+            "ssh_host": "box",
+            "ssh_workdir": "~/work",
+        },
+        None,
+        ReplConfig(backend="local"),
+        {"turn": None},
+    )
+
+    assert result is fresh
+    assert seen == {
+        "backend": "ssh",
+        "project_path": "/tmp/demo",
+        "ssh_host": "box",
+        "ssh_workdir": "~/work",
+    }

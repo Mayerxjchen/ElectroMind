@@ -2,6 +2,7 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   DesktopApi,
   DesktopEvent,
+  ResetSessionOptions,
   RuntimeState,
 } from "../shared/protocol";
 
@@ -22,6 +23,9 @@ const desktopApi: DesktopApi = {
   },
   getRuntimeState() {
     return ipcRenderer.invoke("desktop:get-runtime-state");
+  },
+  setYoloMode(enabled: boolean) {
+    return ipcRenderer.invoke("desktop:set-yolo-mode", enabled);
   },
   listThreads() {
     return ipcRenderer.invoke("desktop:list-threads");
@@ -53,17 +57,32 @@ const desktopApi: DesktopApi = {
   listProjectFiles() {
     return ipcRenderer.invoke("desktop:list-project-files");
   },
+  listProjectTree() {
+    return ipcRenderer.invoke("desktop:list-project-tree");
+  },
   selectProject() {
     return ipcRenderer.invoke("desktop:select-project");
+  },
+  pickDirectory(defaultPath?: string) {
+    return ipcRenderer.invoke("desktop:pick-directory", defaultPath);
+  },
+  getNewSessionOptions() {
+    return ipcRenderer.invoke("desktop:get-new-session-options");
   },
   resumeThread(threadId: string) {
     return ipcRenderer.invoke("desktop:resume-thread", threadId);
   },
+  deleteThread(threadId: string) {
+    return ipcRenderer.invoke("desktop:delete-thread", threadId);
+  },
   sendUserInput(text: string) {
     return ipcRenderer.invoke("desktop:send-user-input", text);
   },
-  resetSession() {
-    return ipcRenderer.invoke("desktop:reset-session");
+  clearLastError() {
+    return ipcRenderer.invoke("desktop:clear-last-error");
+  },
+  resetSession(options?: ResetSessionOptions) {
+    return ipcRenderer.invoke("desktop:reset-session", options);
   },
   requestHistoryReplay() {
     return ipcRenderer.invoke("desktop:request-history");
