@@ -2527,6 +2527,21 @@ button {
     opacity: 0.82;
 }
 
+.composer-floating .composer-btn.primary.is-stop {
+    background: var(--danger, #c45c4a);
+    border-color: transparent;
+    color: #fff;
+}
+
+.composer-floating .composer-btn.primary.is-stop:hover {
+    filter: brightness(1.06);
+}
+
+.composer-floating .composer-btn.primary.is-stop .desktop-icon {
+    width: 12px;
+    height: 12px;
+}
+
 /* YOLO：激活时只改图标颜色，不加外圈。 */
 .composer-floating .yolo-btn {
     transition: color 0.14s ease;

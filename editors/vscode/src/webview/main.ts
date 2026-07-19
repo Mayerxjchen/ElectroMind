@@ -389,6 +389,7 @@ if (app) {
   let yoloEnabled = false;
   let modeSwitching = false;
   let historyLoading = false;
+  let taskRunning = false;
 
   // 斜杠方框图标（与命令卡同款内联 SVG），放进斜杠按钮。
   slashBtn.innerHTML =
@@ -439,6 +440,18 @@ if (app) {
     slashBtn.disabled = historyLoading;
     modeBtn.disabled = historyLoading || modeSwitching;
     yoloBtn.disabled = historyLoading || modeSwitching;
+    if (taskRunning) {
+      sendBtn.disabled = historyLoading;
+      sendBtn.title = "停止";
+      sendBtn.setAttribute("aria-label", "停止");
+      sendBtn.classList.add("is-stop");
+      sendBtn.innerHTML = '<i class="codicon codicon-debug-stop"></i>';
+      return;
+    }
+    sendBtn.classList.remove("is-stop");
+    sendBtn.title = "发送";
+    sendBtn.setAttribute("aria-label", "发送");
+    sendBtn.innerHTML = '<i class="codicon codicon-arrow-up"></i>';
     sendBtn.disabled = historyLoading || input.value.trim().length === 0;
   };
 
@@ -448,8 +461,6 @@ if (app) {
     input.style.height = `${Math.min(input.scrollHeight, INPUT_MAX_HEIGHT_PX)}px`;
   };
 
-  // 发送：本地先上屏 user 气泡（slash 命令除外，结果由后端 SlashResult 卡渲染），
-  // 再把输入 postMessage 给宿主，复位输入框。
   const send = () => {
     const text = input.value.trim();
     if (!text) {
@@ -501,6 +512,14 @@ if (app) {
     yoloBtn.setAttribute("aria-label", yoloEnabled ? "YOLO 已开启" : "YOLO 模式");
   };
 
+  const sendOrStop = () => {
+    if (taskRunning) {
+      vscodeApi.postMessage({ type: "cancelRun" });
+      return;
+    }
+    send();
+  };
+
   // 回车发送、Shift+Enter 换行；输入法组合（isComposing）中的回车不触发发送。
   // 斜杠菜单打开时，方向键/回车/Esc 先交给菜单处理（导航/选中/关闭）。
   input.addEventListener("keydown", (event) => {
@@ -509,7 +528,7 @@ if (app) {
     }
     if (event.key === "Enter" && !event.shiftKey && !event.isComposing) {
       event.preventDefault();
-      send();
+      sendOrStop();
     }
   });
   // 输入时更新自适应高度；行首以 / 开头则联动打开/过滤斜杠菜单。
@@ -518,7 +537,7 @@ if (app) {
     syncSendState();
     slashMenuController.syncFromInput();
   });
-  sendBtn.addEventListener("click", send);
+  sendBtn.addEventListener("click", sendOrStop);
   // 斜杠按钮：切换菜单显隐；打开时若输入框为空补一个 / 便于继续输入过滤。
   slashBtn.addEventListener("click", () => {
     slashMenuController.toggleFromButton();
@@ -581,6 +600,16 @@ if (app) {
     const message = event.data;
     if (message.type === "event") {
       const wireEvent = { method: message.method, params: message.params };
+      if (wireEvent.method === "RunBegin") {
+        taskRunning = true;
+        syncSendState();
+      } else if (wireEvent.method === "RunEnd" || wireEvent.method === "Error") {
+        taskRunning = false;
+        syncSendState();
+      } else if (wireEvent.method === "HistoryReplay" && message.params.thread_id) {
+        taskRunning = false;
+        syncSendState();
+      }
       contextUsageRing.handleWireEvent(wireEvent);
       renderer.handleEvent(wireEvent);
       return;

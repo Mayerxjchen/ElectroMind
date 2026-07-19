@@ -39,11 +39,13 @@ def test_touch_thread_usage_writes_metainfo(tmp_path, monkeypatch):
             "completion_tokens": 20,
             "prompt_tokens_details": {"cached_tokens": 400},
         },
+        context_limit=64_000,
     )
 
     metainfo = json.loads((thread.root / METAINFO_FILENAME).read_text(encoding="utf-8"))
     assert metainfo["usage"]["prompt_tokens"] == 500
     assert metainfo["usage"]["cached_tokens"] == 400
+    assert metainfo["usage"]["context_limit"] == 64_000
 
 
 def test_emit_thread_history_replay_includes_usage(monkeypatch):
@@ -56,6 +58,9 @@ def test_emit_thread_history_replay_includes_usage(monkeypatch):
 
     class FakeThread:
         id = "thread-2"
+
+        class spec:
+            model = "deepseek-chat"
 
         def load_metainfo(self):
             return {
@@ -71,6 +76,7 @@ def test_emit_thread_history_replay_includes_usage(monkeypatch):
     wire.emit_thread_history_replay(FakeThread())
 
     assert captured["params"]["usage"]["prompt_tokens"] == 99
+    assert captured["params"]["context_limit"] == 64_000
 
 
 def test_emit_history_replay_includes_usage(monkeypatch):
@@ -83,17 +89,17 @@ def test_emit_history_replay_includes_usage(monkeypatch):
 
     class FakeThread:
         id = "thread-1"
+        project_path = None
+
+        class spec:
+            model = "deepseek-v4-flash"
+            project_path = ""
 
         def load_metainfo(self):
             return {
                 "title": "hello",
                 "usage": {"prompt_tokens": 42, "cached_tokens": 10},
             }
-
-        project_path = None
-
-        class spec:
-            project_path = ""
 
     class FakeRunner:
         thread = FakeThread()
@@ -103,3 +109,4 @@ def test_emit_history_replay_includes_usage(monkeypatch):
 
     assert captured["method"] == "HistoryReplay"
     assert captured["params"]["usage"]["prompt_tokens"] == 42
+    assert captured["params"]["context_limit"] == 128_000

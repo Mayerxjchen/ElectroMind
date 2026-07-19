@@ -219,6 +219,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       });
       return;
     }
+    if (message.type === "cancelRun") {
+      this.bridge?.send({ cmd: "cancel" });
+      return;
+    }
   }
 
   private workspaceRoot(): string | undefined {

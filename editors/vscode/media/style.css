@@ -531,6 +531,21 @@ body {
   font-weight: 600;
 }
 
+.composer-btn.primary.is-stop {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-inputValidation-errorForeground, #f48771);
+  border-color: transparent;
+}
+
+.composer-btn.primary.is-stop:hover {
+  background: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: var(--vscode-editor-foreground, #fff);
+}
+
+.composer-btn.primary.is-stop .codicon {
+  font-size: 14px;
+}
+
 /* 斜杠按钮内的方框斜杠图标（内联 SVG），尺寸随按钮走。 */
 .composer-btn>svg {
   width: 16px;

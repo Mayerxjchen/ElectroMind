@@ -20,7 +20,9 @@ export type ViewToHost =
   // 批准一次挂起的工具调用（危险工具在执行前弹审批）。
   | { type: "permit"; toolCallId: string }
   // 拒绝一次挂起的工具调用；reason 会作为 tool result 回给模型。
-  | { type: "deny"; toolCallId: string; reason?: string };
+  | { type: "deny"; toolCallId: string; reason?: string }
+  // 停止当前正在运行的 Agent 任务。
+  | { type: "cancelRun" };
 
 /** 一条 slash 命令的元信息（后端下发，前端填充斜杠菜单）。 */
 export type SlashCommand = { name: string; summary: string };

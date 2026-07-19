@@ -1961,11 +1961,12 @@ async function start(): Promise<void> {
 
   function applyActivityState(): void {
     const running = uiState.activityState === "running";
-    sendMessageButton.disabled = running;
-    sendMessageButton.title = running ? "正在执行" : "发送";
-    sendMessageButton.setAttribute("aria-label", running ? "正在执行" : "发送");
+    sendMessageButton.disabled = false;
+    sendMessageButton.classList.toggle("is-stop", running);
+    sendMessageButton.title = running ? "停止" : "发送";
+    sendMessageButton.setAttribute("aria-label", running ? "停止" : "发送");
     sendMessageButton.innerHTML = running
-      ? renderIcon("loader-circle", "desktop-icon spinning")
+      ? renderIcon("square")
       : renderIcon("arrow-up");
 
     const resourceMap = resourceSnapshot(uiState.activityState);
@@ -2316,6 +2317,13 @@ async function start(): Promise<void> {
     applyYoloButton();
   }
 
+  async function cancelRun(): Promise<void> {
+    if (uiState.activityState !== "running") {
+      return;
+    }
+    await window.desktop.sendWireCommand({ cmd: "cancel" });
+  }
+
   async function sendMessage(): Promise<void> {
     if (uiState.activityState === "running") {
       return;
@@ -2642,6 +2650,10 @@ async function start(): Promise<void> {
       return;
     }
     event.preventDefault();
+    if (uiState.activityState === "running") {
+      void cancelRun();
+      return;
+    }
     void sendMessage();
   });
   resizePrompt(promptInput);
@@ -2676,6 +2688,10 @@ async function start(): Promise<void> {
   });
 
   sendMessageButton.addEventListener("click", () => {
+    if (uiState.activityState === "running") {
+      void cancelRun();
+      return;
+    }
     void sendMessage();
   });
 

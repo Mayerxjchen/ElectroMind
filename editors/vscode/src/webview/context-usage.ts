@@ -260,6 +260,10 @@ export class ContextUsageRing {
       return;
     }
     if (event.method === "HistoryReplay") {
+      const topLimit = readCount(event.params.context_limit);
+      if (topLimit > 0) {
+        this.tracker.setContextLimit(topLimit);
+      }
       const usage = event.params.usage;
       if (usage) {
         this.tracker.restoreFromSnapshot(usage);

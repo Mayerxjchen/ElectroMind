@@ -50,6 +50,7 @@ from datetime import datetime
 
 from pagentv4 import ToolCallBegin
 from pagentv4.adapters.acp import encode_event_line
+from pagentv4.core.context_limit import DEFAULT_CONTEXT_LIMIT, resolve_context_limit
 from pagentv4.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
 from pagentv4.core.turn_result import TurnResult
 from pagentv4.ithread import SPEC_FILENAME, ThreadSpec
@@ -63,7 +64,15 @@ from .tool_permit import needs_tool_permit, summarize_tool_args
 
 # metainfo.json 里 title 的最大字符数：超出截断加省略号，供前端会话列表展示。
 TITLE_MAX_CHARS = 40
-DEFAULT_CONTEXT_LIMIT = 128_000
+
+
+def thread_context_limit(thread) -> int:
+    """从 thread spec 的 model 名推断上下文窗口上限。"""
+    spec = getattr(thread, "spec", None)
+    model = getattr(spec, "model", None) if spec is not None else None
+    if isinstance(model, str) and model.strip():
+        return resolve_context_limit(model)
+    return DEFAULT_CONTEXT_LIMIT
 
 
 def log(text: str) -> None:
@@ -199,6 +208,7 @@ def emit_history_replay_payload(
     project_path: str,
     messages: list[dict],
     usage: dict | None = None,
+    context_limit: int | None = None,
 ) -> None:
     params: dict = {
         "thread_id": thread_id,
@@ -206,6 +216,8 @@ def emit_history_replay_payload(
         "project_path": project_path,
         "messages": messages,
     }
+    if context_limit is not None and context_limit > 0:
+        params["context_limit"] = context_limit
     if usage:
         params["usage"] = usage
     payload = {
@@ -226,12 +238,14 @@ def emit_history_replay(runner) -> None:
     """
     metainfo = runner.thread.load_metainfo()
     usage = metainfo.get("usage")
+    limit = thread_context_limit(runner.thread)
     emit_history_replay_payload(
         thread_id=runner.thread.id,
         title=metainfo.get("title", ""),
         project_path=runner_project_path(runner),
         messages=history_messages(runner),
         usage=usage if isinstance(usage, dict) else None,
+        context_limit=limit,
     )
 
 
@@ -248,12 +262,14 @@ def emit_thread_history_replay(thread, project_path: str | None = None) -> None:
             close()
     metainfo = thread.load_metainfo()
     usage = metainfo.get("usage")
+    limit = thread_context_limit(thread)
     emit_history_replay_payload(
         thread_id=thread.id,
         title=metainfo.get("title", ""),
         project_path=resolved,
         messages=history_message_items(messages),
         usage=usage if isinstance(usage, dict) else None,
+        context_limit=limit,
     )
 
 
@@ -719,7 +735,11 @@ async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> N
         emit_error(format_exc(exc), where="turn")
     finally:
         if last_usage is not None:
-            touch_thread_usage(runner.thread, last_usage)
+            touch_thread_usage(
+                runner.thread,
+                last_usage,
+                context_limit=thread_context_limit(runner.thread),
+            )
         state["turn"] = None
 
 
