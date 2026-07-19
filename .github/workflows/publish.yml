@@ -75,6 +75,10 @@ jobs:
           cache: "npm"
           cache-dependency-path: editors/desktop/package-lock.json
 
+      - name: Install VS Code webview deps (shared by desktop typecheck)
+        working-directory: editors/vscode
+        run: npm ci
+
       - name: Install Desktop deps
         working-directory: editors/desktop
         run: npm ci

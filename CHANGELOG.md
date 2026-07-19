@@ -5,9 +5,9 @@
 提取某一版正文用于 GitHub Release：
 
 ```bash
-./scripts/release-notes.sh 0.7.7
+./scripts/release-notes.sh 0.7.8
 # 或管道给 gh：
-./scripts/release-notes.sh 0.7.7 | gh release create v0.7.7 --title v0.7.7 --notes-file -
+./scripts/release-notes.sh 0.7.8 | gh release create v0.7.8 --title v0.7.8 --notes-file -
 ```
 
 ---
@@ -15,6 +15,30 @@
 ## Unreleased
 
 （下次发版前写在这里）
+
+---
+
+## 0.7.8 — 2026-07-19
+
+修复 Release CI 桌面端打包失败。
+
+### Highlights
+
+- **CI**：desktop job 安装 vscode 共享依赖；`tsconfig` paths 解析 `dompurify` / `marked`
+- 其余功能同 0.7.7（上下文圆环、停止按钮、孤立工具卡修复、桌面文档等）
+
+### Install
+
+```bash
+uv tool install --force pagent
+```
+
+- VS Code：`pagent-vscode-0.7.8.vsix`
+- 桌面端（macOS Apple Silicon）：`pagent-Desktop-0.7.8-arm64.zip`
+
+### Links
+
+- Compare: https://github.com/SyncLionPaw/pagent/compare/v0.7.7...v0.7.8
 
 ---
 
