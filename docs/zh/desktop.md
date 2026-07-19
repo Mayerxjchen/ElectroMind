@@ -28,9 +28,19 @@ uv tool install pagent
 
 解压后把 **pagent Desktop** 拖进「应用程序」文件夹。
 
-::: tip macOS 首次打开
-安装包尚未公证。若系统拦截，请 **右键应用 → 打开 → 仍要打开**，确认一次后以后可双击正常启动。
-:::
+### macOS 提示「已损坏，无法打开」？
+
+从 GitHub 下载的 zip 会带系统**隔离标记**，未签名应用常被误报为「已损坏」——**不是包坏了**。
+
+**推荐**：打开「终端」，执行（安装路径默认如下）：
+
+```bash
+xattr -cr "/Applications/pagent Desktop.app"
+```
+
+然后双击打开。zip 里也有 **`打开说明.txt`**。
+
+若只是首次拦截，也可试 **右键应用 → 打开 → 仍要打开**（对「已损坏」提示有时无效，优先用上面的 `xattr`）。
 
 **Windows / Linux** 安装包暂未发布，可先用 [VS Code 插件](./vscode) 或终端命令 `pagent`。
 
@@ -126,6 +136,7 @@ model = "deepseek-v4-flash"
 
 | 现象 | 可以试试 |
 | --- | --- |
+| **「已损坏，无法打开」** | 终端：`xattr -cr "/Applications/pagent Desktop.app"` |
 | 后端 / Bridge 起不来 | 执行 `uv tool install pagent`；看右侧日志 |
 | 发送后报错 | 检查 `pagent.toml` 或 `DEEPSEEK_API_KEY` |
 | 设置里写「还没有配置文件」 | 按上文创建 `~/.pagent/pagent.toml` |

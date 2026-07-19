@@ -24,13 +24,23 @@ Get the desktop build from [pagent GitHub Releases](https://github.com/SyncLionP
 
 - **macOS (Apple Silicon)** — `pagent-Desktop-<version>-arm64.zip`, or `pagent Desktop.app` inside the release assets.
 
-Unzip if needed, then move **pagent Desktop** into **Applications**.
+Unzip and move **pagent Desktop** into **Applications**.
 
-::: tip macOS first open
-The `.app` is not notarized yet. If macOS blocks it, right-click the app → **Open** → confirm once. After that, double-click works normally.
-:::
+### macOS says the app is “damaged”?
 
-**Windows / Linux builds** are not published on Releases yet. On those platforms you can use the [VS Code extension](./vscode) or the terminal (`pagent`).
+Downloads from GitHub get a **quarantine** flag. Unsigned apps often show *“pagent Desktop is damaged and can’t be opened”* — the build is usually fine.
+
+**Fix (recommended)** — run in Terminal:
+
+```bash
+xattr -cr "/Applications/pagent Desktop.app"
+```
+
+Then open the app normally. The zip also includes **`打开说明.txt`** (Chinese open instructions).
+
+**Right-click → Open** works for some Gatekeeper prompts but not always for the “damaged” message; prefer `xattr` above.
+
+**Windows / Linux** builds are not published yet. Use the [VS Code extension](./vscode) or the `pagent` CLI.
 
 ## Before your first message: API key
 
@@ -127,6 +137,7 @@ Do not share or commit `pagent.toml` if it contains a real API key.
 | --- | --- |
 | “Bridge” or backend won’t start | Run `uv tool install pagent`; check the log panel on the right |
 | Error after sending | Add API key to `pagent.toml` or `DEEPSEEK_API_KEY` |
+| “Damaged, can’t be opened” | Run `xattr -cr "/Applications/pagent Desktop.app"` (see above) |
 | Settings says no config file | Create `~/.pagent/pagent.toml` as above |
 | Tool stuck on “running” | Tap **Stop**, or send again; recent versions fix stale tool cards on reload |
 
