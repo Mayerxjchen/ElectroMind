@@ -23,7 +23,7 @@
     {"cmd": "resume", "thread_id": "..."}         切到已有 thread，回放其历史
     {"cmd": "list_threads"}                       列出当前 pagent home 下可恢复会话
     {"cmd": "delete_thread", "thread_id": "..."}  软删除：metainfo 打 deleted_at，列表隐藏
-    {"cmd": "cancel"}                             取消当前运行（并发取消属后续课程）
+    {"cmd": "cancel"}                             取消当前运行中的 Agent 任务
 
 reset 与 resume 换 runner 后都补发一条 ``HistoryReplay`` 控制事件：空数组表示新会话
 （前端清屏），非空则携带该 thread 的历史消息，前端逐条重建气泡/思考/工具卡。
@@ -50,7 +50,9 @@ from datetime import datetime
 
 from pagentv4 import ToolCallBegin
 from pagentv4.adapters.acp import encode_event_line
+from pagentv4.core.context_limit import DEFAULT_CONTEXT_LIMIT, resolve_context_limit
 from pagentv4.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
+from pagentv4.core.turn_result import TurnResult
 from pagentv4.ithread import SPEC_FILENAME, ThreadSpec
 from pagentv4.paths import resolve_pagent_home
 from pagentv4.runtime.thread import Thread, default_threads_root
@@ -62,6 +64,15 @@ from .tool_permit import needs_tool_permit, summarize_tool_args
 
 # metainfo.json 里 title 的最大字符数：超出截断加省略号，供前端会话列表展示。
 TITLE_MAX_CHARS = 40
+
+
+def thread_context_limit(thread) -> int:
+    """从 thread spec 的 model 名推断上下文窗口上限。"""
+    spec = getattr(thread, "spec", None)
+    model = getattr(spec, "model", None) if spec is not None else None
+    if isinstance(model, str) and model.strip():
+        return resolve_context_limit(model)
+    return DEFAULT_CONTEXT_LIMIT
 
 
 def log(text: str) -> None:
@@ -196,16 +207,23 @@ def emit_history_replay_payload(
     title: str,
     project_path: str,
     messages: list[dict],
+    usage: dict | None = None,
+    context_limit: int | None = None,
 ) -> None:
+    params: dict = {
+        "thread_id": thread_id,
+        "title": title,
+        "project_path": project_path,
+        "messages": messages,
+    }
+    if context_limit is not None and context_limit > 0:
+        params["context_limit"] = context_limit
+    if usage:
+        params["usage"] = usage
     payload = {
         "jsonrpc": "2.0",
         "method": "HistoryReplay",
-        "params": {
-            "thread_id": thread_id,
-            "title": title,
-            "project_path": project_path,
-            "messages": messages,
-        },
+        "params": params,
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
@@ -216,12 +234,18 @@ def emit_history_replay(runner) -> None:
     空数组表示新会话（前端清屏）；非空则前端逐条回放成气泡/思考/工具卡。
     与 PermitRequest 一样是 wire 层控制事件，套 JSON-RPC notification 形状。
     metainfo 里的 title 一并带上，前端据此在标题栏/列表展示面向用户的名字。
+    持久化的 usage 快照（若有）随 params.usage 下发，供上下文 ring 恢复。
     """
+    metainfo = runner.thread.load_metainfo()
+    usage = metainfo.get("usage")
+    limit = thread_context_limit(runner.thread)
     emit_history_replay_payload(
         thread_id=runner.thread.id,
-        title=runner.thread.load_metainfo().get("title", ""),
+        title=metainfo.get("title", ""),
         project_path=runner_project_path(runner),
         messages=history_messages(runner),
+        usage=usage if isinstance(usage, dict) else None,
+        context_limit=limit,
     )
 
 
@@ -229,11 +253,23 @@ def emit_thread_history_replay(thread, project_path: str | None = None) -> None:
     """只读取 thread 配置与消息，不打开 sandbox，用于轻量切换会话。"""
     bound = getattr(thread, "project_path", None)
     resolved = project_path or (str(bound) if bound is not None else "")
+    messages = thread.load_messages()
+    if messages.complete_orphan_tool_results():
+        store = thread.open_store()
+        store.save(thread.messages_conversation_id, messages)
+        close = getattr(store, "close", None)
+        if callable(close):
+            close()
+    metainfo = thread.load_metainfo()
+    usage = metainfo.get("usage")
+    limit = thread_context_limit(thread)
     emit_history_replay_payload(
         thread_id=thread.id,
-        title=thread.load_metainfo().get("title", ""),
+        title=metainfo.get("title", ""),
         project_path=resolved,
-        messages=history_message_items(thread.load_messages()),
+        messages=history_message_items(messages),
+        usage=usage if isinstance(usage, dict) else None,
+        context_limit=limit,
     )
 
 
@@ -492,6 +528,56 @@ def make_title(text: str) -> str:
     return one_line[:TITLE_MAX_CHARS] + "…"
 
 
+def build_usage_snapshot(
+    usage: dict | None,
+    *,
+    context_limit: int = DEFAULT_CONTEXT_LIMIT,
+) -> dict | None:
+    """把 TurnResult.usage 规整成可写入 metainfo.json 的扁平快照。"""
+    if not isinstance(usage, dict):
+        return None
+    prompt = usage.get("prompt_tokens")
+    if not isinstance(prompt, int) or prompt <= 0:
+        return None
+
+    prompt_details = usage.get("prompt_tokens_details")
+    completion_details = usage.get("completion_tokens_details")
+    cached = 0
+    cache_write = 0
+    if isinstance(prompt_details, dict):
+        cached = prompt_details.get("cached_tokens") or 0
+        cache_write = prompt_details.get("cache_write_tokens") or 0
+    reasoning = 0
+    if isinstance(completion_details, dict):
+        reasoning = completion_details.get("reasoning_tokens") or 0
+    completion = usage.get("completion_tokens") or 0
+
+    return {
+        "context_limit": context_limit,
+        "prompt_tokens": prompt,
+        "cached_tokens": min(int(cached), prompt),
+        "cache_write_tokens": int(cache_write) if cache_write else 0,
+        "completion_tokens": int(completion) if completion else 0,
+        "reasoning_tokens": int(reasoning) if reasoning else 0,
+        "updated_at": datetime.now().isoformat(timespec="seconds"),
+    }
+
+
+def touch_thread_usage(
+    thread,
+    usage: dict | None,
+    *,
+    context_limit: int = DEFAULT_CONTEXT_LIMIT,
+) -> None:
+    """把最近一次 LLM 调用的 usage 快照写入 metainfo.json。"""
+    snapshot = build_usage_snapshot(usage, context_limit=context_limit)
+    if snapshot is None:
+        return
+    metainfo = thread.load_metainfo()
+    metainfo["usage"] = snapshot
+    thread.save_metainfo(metainfo)
+
+
 def touch_thread_metainfo(runner, user_text: str) -> None:
     """更新 thread 的 metainfo.json：首条用户消息定标题，每轮刷新时间戳与消息数。
 
@@ -630,9 +716,12 @@ def format_exc(exc: BaseException, *, phase: str = "start") -> str:
 async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> None:
     """跑一轮 Agent，事件逐行透传 stdout；需审批工具补发 PermitRequest。"""
     ask_permit = not config.permission_auto()
+    last_usage: dict | None = None
     try:
         async for event in runner.run(text, return_type="event"):
             emit_line(encode_event_line(event))
+            if isinstance(event, TurnResult) and event.usage:
+                last_usage = event.usage
             if (
                 ask_permit
                 and isinstance(event, ToolCallBegin)
@@ -645,6 +734,12 @@ async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> N
         log(f"[wire] turn failed: {exc}")
         emit_error(format_exc(exc), where="turn")
     finally:
+        if last_usage is not None:
+            touch_thread_usage(
+                runner.thread,
+                last_usage,
+                context_limit=thread_context_limit(runner.thread),
+            )
         state["turn"] = None
 
 
@@ -808,7 +903,11 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             log("[wire] resume missing thread_id")
             return runner
         if turn_active(state):
-            log("[wire] 运行中，暂不能切换会话（取消见后续课程）")
+            log("[wire] resume rejected: turn active")
+            emit_error(
+                "助手正在运行，无法切换会话。请等待完成或先停止当前任务。",
+                where="resume",
+            )
             return runner
         project_path = command_project_path(command)
         try:
@@ -833,7 +932,11 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
 
     if cmd == "reset":
         if turn_active(state):
-            log("[wire] 运行中，暂不能新建会话（取消见后续课程）")
+            log("[wire] reset rejected: turn active")
+            emit_error(
+                "助手正在运行，无法新建会话。请等待完成或先停止当前任务。",
+                where="reset",
+            )
             return runner
         previous_thread_id = (
             runner.thread.id if runner is not None else state.get("thread_id")
@@ -866,7 +969,11 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         return runner
 
     if cmd == "cancel":
-        log("[wire] cancel received (并发取消见后续课程)")
+        if runner is not None and turn_active(state):
+            runner.cancel_run()
+            log("[wire] cancel：已请求停止当前任务")
+        else:
+            log("[wire] cancel：当前没有运行中的任务")
         return runner
 
     # 以下命令需要已打开的 runner。

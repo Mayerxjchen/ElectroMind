@@ -154,6 +154,7 @@ class BaseRunner(LoopAdapter):
 
     async def after_run_end(self, *, turn: int) -> None:
         del turn
+        self.messages.complete_orphan_tool_results()
         self.flush_conversation()
 
     def flush_conversation(self) -> None:

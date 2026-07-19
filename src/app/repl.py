@@ -167,8 +167,10 @@ def format_fatal_error(exc: BaseException, *, phase: str) -> str:
     if (
         "asyncssh" in module
         or name.startswith("SFTP")
-        or name in {"DisconnectError", "ConnectionLost", "ConnectionError", "TimeoutError"}
-        or "ssh" in text.lower() and ("connect" in text.lower() or "timed out" in text.lower())
+        or name
+        in {"DisconnectError", "ConnectionLost", "ConnectionError", "TimeoutError"}
+        or "ssh" in text.lower()
+        and ("connect" in text.lower() or "timed out" in text.lower())
     ):
         hint = (
             "请检查 SSH 别名、网络、密钥，以及远端 workdir 是否可写。"

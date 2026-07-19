@@ -361,6 +361,32 @@ class Messages(BaseModel):
             return 0
         return max(turn_ids)
 
+    def complete_orphan_tool_results(
+        self, *, text: str = "已中断：任务结束，未返回结果"
+    ) -> int:
+        """为已持久化但缺少 tool 行的 assistant tool_call 补上占位结果。"""
+        fulfilled = {
+            message.content.tool_call_id
+            for message in self.data
+            if message.role == "tool" and isinstance(message.content, ToolResult)
+        }
+        added = 0
+        for message in self.data:
+            if message.role != "assistant":
+                continue
+            chunk = message.content
+            if not isinstance(chunk, ToolCall):
+                continue
+            if chunk.id in fulfilled:
+                continue
+            result = Message.tool_result(chunk.id, text)
+            if message.turn_id is not None:
+                result.turn_id = message.turn_id
+            self += result
+            fulfilled.add(chunk.id)
+            added += 1
+        return added
+
     def __iter__(self):
         return iter(self.data)
 

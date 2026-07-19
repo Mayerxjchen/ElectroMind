@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 
 from .message import Message, TextChunk, ThinkingChunk, ToolCall
@@ -18,6 +20,7 @@ class TurnResult:
     content: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     reasoning_content: str = ""
+    usage: dict | None = None
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -47,6 +50,14 @@ class TurnResult:
             content=content,
             tool_calls=tool_calls,
             reasoning_content=reasoning_content,
+        )
+
+    def with_usage(self, usage: dict | None) -> TurnResult:
+        return TurnResult(
+            content=self.content,
+            tool_calls=self.tool_calls,
+            reasoning_content=self.reasoning_content,
+            usage=usage,
         )
 
     @property

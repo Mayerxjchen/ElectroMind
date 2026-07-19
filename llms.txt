@@ -18,6 +18,7 @@ This file helps LLMs and coding agents find pagent documentation. Prefer **agent
 - [Wire protocol](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire.md): JSON-RPC 2.0 NDJSON for browsers and non-Python clients
 - [Reasoning streams](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/reasoning.md): reasoning_content, ReasoningDelta
 - [Wire demo](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/wire-demo.md): Local FastAPI + browser UI (examples/wire_browser/)
+- [Desktop app](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/desktop.md): Download, API key, first task, composer — end-user guide
 - [VS Code extension](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/vscode.md): Install the plugin, configure pagent, runtime modes, buttons, slash commands
 - [Developer guide](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/development.md): Repo layout, local dev, docs site
 - [pagentv4 overview](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/pagentv4/index.md): Typed API with Runner, sandbox, and persistence
@@ -36,6 +37,7 @@ This file helps LLMs and coding agents find pagent documentation. Prefer **agent
 
 ## Optional
 
+- [简体中文桌面端](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/zh/desktop.md)
 - [简体中文快速开始](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/zh/guide/quick-start.md)
 - [简体中文 pagentv4 概览](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/zh/pagentv4/index.md)
 - [简体中文 pagentv4 快速开始](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/docs/zh/pagentv4/quick-start.md)

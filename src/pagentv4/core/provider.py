@@ -78,6 +78,10 @@ class Provider:
         if tools is not None:
             kwargs["tools"] = tools
 
+        stream_options = dict(kwargs.get("stream_options") or {})
+        stream_options.setdefault("include_usage", True)
+        kwargs["stream_options"] = stream_options
+
         return await self.client.chat.completions.create(**kwargs)
 
 

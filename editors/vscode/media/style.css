@@ -414,6 +414,13 @@ body {
   gap: 4px;
 }
 
+.composer-actions-end {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
 .mode-switch {
   cursor: pointer;
   display: inline-flex;
@@ -522,6 +529,21 @@ body {
 .composer-btn.primary .codicon {
   font-size: 15px;
   font-weight: 600;
+}
+
+.composer-btn.primary.is-stop {
+  background: var(--vscode-inputValidation-errorBackground, #5a1d1d);
+  color: var(--vscode-inputValidation-errorForeground, #f48771);
+  border-color: transparent;
+}
+
+.composer-btn.primary.is-stop:hover {
+  background: var(--vscode-inputValidation-errorBorder, #be1100);
+  color: var(--vscode-editor-foreground, #fff);
+}
+
+.composer-btn.primary.is-stop .codicon {
+  font-size: 14px;
 }
 
 /* 斜杠按钮内的方框斜杠图标（内联 SVG），尺寸随按钮走。 */
@@ -1141,4 +1163,106 @@ body {
  * 弥补 CSS 变量在高对比场景表达力不足。data-theme 由宿主推的主题类别写入 <body>。 */
 body[data-theme="high-contrast"] .bubble {
   border: 1px solid var(--vscode-contrastBorder, var(--vscode-foreground));
+}
+
+/* Composer context usage ring (TurnResult.usage). */
+.context-usage-btn {
+  position: relative;
+  padding: 0;
+}
+
+.context-usage-svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.context-usage-track {
+  stroke: color-mix(in srgb, var(--vscode-descriptionForeground) 24%, transparent);
+}
+
+.context-usage-cached {
+  stroke: #2fbf8f;
+}
+
+.context-usage-uncached {
+  stroke: var(--vscode-focusBorder, #4495ff);
+}
+
+.context-usage-btn.is-hot .context-usage-uncached {
+  stroke: var(--vscode-notificationsWarningIcon-foreground, #cca700);
+}
+
+.context-usage-btn.is-idle .context-usage-track {
+  opacity: 0.55;
+}
+
+.context-usage-popover {
+  position: fixed;
+  z-index: 10050;
+  min-width: 220px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  background: var(--vscode-editorWidget-background, var(--vscode-input-background));
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  color: var(--vscode-foreground);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.context-usage-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+}
+
+.context-usage-row.is-emphasis .context-usage-label,
+.context-usage-row.is-emphasis .context-usage-value {
+  font-weight: 600;
+}
+
+.context-usage-label {
+  color: var(--vscode-descriptionForeground);
+}
+
+.context-usage-value {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.context-usage-divider {
+  border: 0;
+  border-top: 1px solid var(--vscode-input-border, var(--vscode-panel-border));
+  margin: 6px 0;
+}
+
+.context-usage-legend {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.context-usage-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.context-usage-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  display: inline-block;
+}
+
+.context-usage-swatch.cached {
+  background: #2fbf8f;
+}
+
+.context-usage-swatch.uncached {
+  background: var(--vscode-focusBorder, #4495ff);
 }

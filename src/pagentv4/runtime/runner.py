@@ -221,6 +221,7 @@ class Runner(BaseRunner):
             yield TurnEnd(exc.turn, stopped=True, stop_reason="cancelled")
             yield RunEnd(exc.turn, stop_reason="cancelled")
             self.run_state.phase = "tearing_down"
+            self.messages.complete_orphan_tool_results(text="已取消：任务被中断")
             self.flush_conversation()
             self.run_state.phase = "ended"
 

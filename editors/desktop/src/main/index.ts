@@ -87,7 +87,7 @@ let sandboxStatus: SandboxStatusPayload = {
 let threadListWaiters: Array<(payload: ThreadListPayload) => void> = [];
 let sandboxTreeWaiters: SandboxTreeWaiter[] = [];
 let sandboxStatusWaiters: SandboxStatusWaiter[] = [];
-const DOCUMENTATION_URL = "https://synclionpaw.github.io/pagent/";
+import { DOCUMENTATION_URL } from "../shared/docs";
 
 /** dock/about 用带透明边距的高清图标（符合 macOS 图标网格，避免视觉偏大）。 */
 function appIconPngPath(): string {

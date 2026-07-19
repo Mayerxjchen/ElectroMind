@@ -70,6 +70,34 @@ async def test_provider_rejects_model_run_kwargs():
         await provider.complete([], model="override")
 
 
+@pytest.mark.asyncio
+async def test_provider_requests_include_usage(monkeypatch):
+    captured: dict = {}
+
+    class FakeCompletions:
+        async def create(self, **kwargs):
+            captured.update(kwargs)
+
+            async def stream():
+                if False:
+                    yield None
+
+            return stream()
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    provider = Provider("test-model", apikey="dummy")
+    monkeypatch.setattr(provider, "client", FakeClient())
+
+    await provider.complete([{"role": "user", "content": "hi"}])
+
+    assert captured["stream_options"] == {"include_usage": True}
+
+
 def test_hosted_providers_use_env_api_key(monkeypatch):
     monkeypatch.setenv("MOONSHOT_API_KEY", "mk")
     monkeypatch.setenv("MIMO_API_KEY", "mm")

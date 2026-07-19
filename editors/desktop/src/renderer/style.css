@@ -1628,6 +1628,44 @@ button {
     width: min(560px, calc(100% - 32px));
 }
 
+.docs-qr-modal-card {
+    width: min(360px, calc(100vw - 32px));
+}
+
+.docs-qr-body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    text-align: center;
+    padding-top: 4px;
+}
+
+.docs-qr-frame {
+    padding: 12px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.06);
+}
+
+.docs-qr-frame canvas {
+    display: block;
+    width: 220px;
+    height: 220px;
+}
+
+.docs-qr-hint {
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+
+.docs-qr-open {
+    width: 100%;
+    margin-top: 4px;
+}
+
 .shortcuts-modal-body {
     display: flex;
     flex-direction: column;
@@ -2345,7 +2383,7 @@ button {
     background: transparent;
     box-shadow: var(--composer-shadow);
     padding: 6px 10px 6px 12px;
-    overflow: hidden;
+    overflow: visible;
     transition:
         box-shadow 160ms ease,
         transform 160ms ease;
@@ -2509,6 +2547,13 @@ button {
     background: transparent;
 }
 
+.composer-floating .composer-actions-end {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
 .composer-floating .composer-btn {
     width: 24px;
     height: 24px;
@@ -2518,6 +2563,21 @@ button {
 .composer-floating .composer-btn:disabled {
     cursor: progress;
     opacity: 0.82;
+}
+
+.composer-floating .composer-btn.primary.is-stop {
+    background: var(--danger, #c45c4a);
+    border-color: transparent;
+    color: #fff;
+}
+
+.composer-floating .composer-btn.primary.is-stop:hover {
+    filter: brightness(1.06);
+}
+
+.composer-floating .composer-btn.primary.is-stop .desktop-icon {
+    width: 12px;
+    height: 12px;
 }
 
 /* YOLO：激活时只改图标颜色，不加外圈。 */
@@ -3533,4 +3593,112 @@ html:has(.desktop-shell.macos) .sonner-toaster {
     .sonner-toast {
         transition: none;
     }
+}
+
+/* Context usage ring — shared with chat.css / VS Code webview. */
+.context-usage-btn {
+    position: relative;
+    padding: 0;
+}
+
+.context-usage-svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+}
+
+.context-usage-track {
+    stroke: color-mix(in srgb, var(--text-secondary) 28%, transparent);
+}
+
+.context-usage-cached {
+    stroke: #2fbf8f;
+}
+
+.context-usage-uncached {
+    stroke: var(--primary, #6dbdff);
+}
+
+.context-usage-btn.is-hot .context-usage-uncached {
+    stroke: var(--warning, #c9a227);
+}
+
+.context-usage-btn.is-idle .context-usage-track {
+    opacity: 0.55;
+}
+
+.context-usage-popover {
+    position: fixed;
+    z-index: 10050;
+    min-width: 220px;
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--hairline);
+    background: color-mix(in srgb, var(--panel-bg) 92%, transparent);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
+    color: var(--text-primary);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.context-usage-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 0;
+}
+
+.context-usage-row.is-emphasis .context-usage-label,
+.context-usage-row.is-emphasis .context-usage-value {
+    font-weight: 600;
+}
+
+.context-usage-label {
+    color: var(--text-secondary);
+}
+
+.context-usage-value {
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+}
+
+.context-usage-divider {
+    border: 0;
+    border-top: 1px solid var(--hairline);
+    margin: 6px 0;
+}
+
+.context-usage-legend {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+    color: var(--text-secondary);
+}
+
+.context-usage-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.context-usage-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    display: inline-block;
+}
+
+.context-usage-swatch.cached {
+    background: #2fbf8f;
+}
+
+.context-usage-swatch.uncached {
+    background: var(--primary, #6dbdff);
+}
+
+.composer-floating .context-usage-btn {
+    width: 24px;
+    height: 24px;
 }

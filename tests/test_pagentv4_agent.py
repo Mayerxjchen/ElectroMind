@@ -1,10 +1,13 @@
+from types import SimpleNamespace
+
 import pytest
 
 from pagentv4 import Agent, AgentCore, Runner, ThreadAgent
+from pagentv4.core.turn_result import TurnResult
 
 
 class FakeStreamChunk:
-    def __init__(self, *, content=None, reasoning=None, tool_calls=None):
+    def __init__(self, *, content=None, reasoning=None, tool_calls=None, usage=None):
         delta = type(
             "Delta",
             (),
@@ -14,7 +17,12 @@ class FakeStreamChunk:
                 "tool_calls": tool_calls,
             },
         )()
-        self.choices = [type("Choice", (), {"delta": delta})()]
+        self.choices = (
+            [type("Choice", (), {"delta": delta})()]
+            if (content is not None or reasoning is not None or tool_calls is not None)
+            else []
+        )
+        self.usage = usage
 
 
 class FakeProvider:
@@ -255,3 +263,59 @@ async def test_run_awaits_async_event_handler(tmp_path, monkeypatch):
         assert "TextDelta" in seen
     finally:
         await runner.close()
+
+
+class FakeUsage(SimpleNamespace):
+    pass
+
+
+@pytest.mark.asyncio
+async def test_turn_result_includes_usage_from_final_chunk(tmp_path, monkeypatch):
+    provider = FakeProvider(
+        [
+            [
+                FakeStreamChunk(content="hel"),
+                FakeStreamChunk(content="lo"),
+                FakeStreamChunk(
+                    usage=FakeUsage(
+                        prompt_tokens=120,
+                        completion_tokens=8,
+                        total_tokens=128,
+                        prompt_tokens_details=SimpleNamespace(cached_tokens=96),
+                    )
+                ),
+            ]
+        ]
+    )
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="test")
+    turn_results: list[TurnResult] = []
+    try:
+        async for event in runner.run("hi"):
+            if isinstance(event, TurnResult):
+                turn_results.append(event)
+    finally:
+        await runner.close()
+
+    assert len(turn_results) == 1
+    assert turn_results[0].usage == {
+        "prompt_tokens": 120,
+        "completion_tokens": 8,
+        "total_tokens": 128,
+        "prompt_tokens_details": {"cached_tokens": 96},
+    }
+
+
+@pytest.mark.asyncio
+async def test_turn_result_usage_none_without_usage_chunk(tmp_path, monkeypatch):
+    provider = FakeProvider([[FakeStreamChunk(content="ok")]])
+    runner = await open_runner(tmp_path, monkeypatch, provider, system="test")
+    turn_results: list[TurnResult] = []
+    try:
+        async for event in runner.run("hi"):
+            if isinstance(event, TurnResult):
+                turn_results.append(event)
+    finally:
+        await runner.close()
+
+    assert len(turn_results) == 1
+    assert turn_results[0].usage is None

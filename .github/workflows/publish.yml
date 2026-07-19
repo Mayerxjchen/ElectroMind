@@ -59,3 +59,35 @@ jobs:
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  desktop:
+    runs-on: macos-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Setup Node
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: editors/desktop/package-lock.json
+
+      - name: Install Desktop deps
+        working-directory: editors/desktop
+        run: npm ci
+
+      - name: Type check Desktop
+        working-directory: editors/desktop
+        run: npm run check
+
+      - name: Package Desktop (macOS arm64)
+        working-directory: editors/desktop
+        run: npm run package
+
+      - name: Upload Desktop app to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: editors/desktop/release/*.zip

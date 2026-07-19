@@ -3,6 +3,7 @@ from collections.abc import AsyncIterator
 from .message import Message, Messages, ToolCall
 from .provider import ProviderProtocol
 from .tool import FunctionTool, to_openai_tools
+from .usage import usage_to_dict
 
 
 class AgentCore:
@@ -29,6 +30,7 @@ class AgentCore:
         if max_turns < 1:
             raise ValueError("max_turns must be >= 1")
         self.max_turns = max_turns
+        self.last_usage: dict | None = None
 
     async def generate_messages(
         self,
@@ -41,8 +43,13 @@ class AgentCore:
             **run_kwargs,
         )
         tool_calls_by_idx: dict[int, dict] = {}
+        self.last_usage = None
 
         async for chunk in stream:
+            chunk_usage = getattr(chunk, "usage", None)
+            if chunk_usage is not None:
+                self.last_usage = usage_to_dict(chunk_usage)
+
             choices = getattr(chunk, "choices", None) or []
             if not choices:
                 continue

@@ -44,6 +44,8 @@ uv tool install pagent
 
 保存后，插件会写入 `pagent.toml`，然后即可开始对话。
 
+[桌面端](/zh/desktop) **没有**这套引导，需事先配置 `pagent.toml` 或 `DEEPSEEK_API_KEY`。
+
 ## 插件会创建哪些文件
 
 插件会使用一个 pagent home 目录保存配置、会话和本地 skills。

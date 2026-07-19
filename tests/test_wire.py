@@ -84,6 +84,22 @@ def test_v4_turn_result_wire_roundtrip_with_typed_tool_call():
     assert restored.tool_calls[0].name == "echo"
 
 
+def test_v4_turn_result_wire_roundtrip_with_usage():
+    event = V4TurnResult(
+        content="done",
+        usage={
+            "prompt_tokens": 10,
+            "completion_tokens": 5,
+            "total_tokens": 15,
+            "prompt_tokens_details": {"cached_tokens": 8},
+        },
+    )
+
+    restored = decode_v4_event_line(encode_v4_event_line(event))
+
+    assert restored == event
+
+
 @pytest.mark.parametrize(
     "event",
     [
