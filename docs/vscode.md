@@ -51,6 +51,9 @@ If no API key has been configured yet, the extension asks for:
 After saving the config, the extension writes `pagent.toml` and you can start
 chatting.
 
+The [Desktop app](/desktop) does **not** include this guided setup — configure
+`pagent.toml` or `DEEPSEEK_API_KEY` before chatting.
+
 ## Files Created by the Extension
 
 The extension uses a pagent home directory for config, conversation history, and

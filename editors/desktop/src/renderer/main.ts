@@ -245,34 +245,6 @@ function sandboxPresenceClass(runtime: RuntimeState): "alive" | "dead" | "pendin
   return "pending";
 }
 
-/** 沙箱路径卡标签：标明 local / container / ssh。 */
-function sandboxRootCardLabel(backend: string): string {
-  if (backend === "local") {
-    return "本机沙箱";
-  }
-  if (backend === "container" || backend === "docker" || backend === "podman") {
-    return "容器沙箱";
-  }
-  if (backend === "ssh") {
-    return "SSH 沙箱";
-  }
-  return "沙箱";
-}
-
-/** 沙箱面板路径卡标签：标明 local / container / ssh。 */
-function sandboxRootLabel(backend: string): string {
-  if (backend === "local") {
-    return "本机沙箱";
-  }
-  if (backend === "container" || backend === "docker" || backend === "podman") {
-    return "容器沙箱";
-  }
-  if (backend === "ssh") {
-    return "SSH 沙箱";
-  }
-  return "沙箱";
-}
-
 function currentSessionTitle(
   runtime: RuntimeState,
   sessions: ThreadSummary[],
@@ -2836,7 +2808,6 @@ async function start(): Promise<void> {
 
   const userMenu = findRequired<HTMLElement>("[data-user-menu]");
   const userMenuDropdown = findRequired<HTMLElement>("[data-user-menu-dropdown]");
-  const userMenuStatus = findRequired<HTMLElement>("[data-user-menu-status]");
   const userMenuToggles = Array.from(
     document.querySelectorAll<HTMLButtonElement>("[data-user-menu-toggle]"),
   );

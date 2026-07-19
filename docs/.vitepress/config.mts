@@ -78,6 +78,7 @@ export default withMermaid(
         nav: [
           { text: "Guide", link: "/guide/quick-start", activeMatch: "/guide/" },
           { text: "pagentv4", link: "/pagentv4/" },
+          { text: "Desktop", link: "/desktop" },
           { text: "VS Code", link: "/vscode" },
           { text: "Wire", link: "/wire" },
           { text: "Dev", link: "/development" },
@@ -89,6 +90,7 @@ export default withMermaid(
               { text: "Introduction", link: "/" },
               { text: "Install", link: "/guide/install" },
               { text: "Quick start", link: "/guide/quick-start" },
+              { text: "Desktop app", link: "/desktop" },
             ],
           },
           {
@@ -99,6 +101,7 @@ export default withMermaid(
               { text: "Core types", link: "/pagentv4/core-types" },
               { text: "Messages", link: "/pagentv4/messages" },
               { text: "Tools", link: "/pagentv4/tools" },
+              { text: "Desktop app", link: "/desktop" },
               { text: "VS Code extension", link: "/vscode" },
               { text: "Sandbox", link: "/pagentv4/sandbox" },
             ],
@@ -159,6 +162,7 @@ export default withMermaid(
         nav: [
           { text: "指南", link: "/zh/guide/quick-start", activeMatch: "/zh/guide/" },
           { text: "pagentv4", link: "/zh/pagentv4/" },
+          { text: "桌面端", link: "/zh/desktop" },
           { text: "插件", link: "/zh/vscode" },
           { text: "Wire", link: "/zh/wire" },
           { text: "开发", link: "/zh/development" },
@@ -170,6 +174,7 @@ export default withMermaid(
               { text: "简介", link: "/zh/" },
               { text: "安装", link: "/zh/guide/install" },
               { text: "快速开始", link: "/zh/guide/quick-start" },
+              { text: "桌面端", link: "/zh/desktop" },
             ],
           },
           {
@@ -180,6 +185,7 @@ export default withMermaid(
               { text: "核心类型", link: "/zh/pagentv4/core-types" },
               { text: "消息", link: "/zh/pagentv4/messages" },
               { text: "工具", link: "/zh/pagentv4/tools" },
+              { text: "桌面端", link: "/zh/desktop" },
               { text: "VS Code 插件", link: "/zh/vscode" },
               { text: "Sandbox", link: "/zh/pagentv4/sandbox" },
             ],

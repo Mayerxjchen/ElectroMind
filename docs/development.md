@@ -67,7 +67,13 @@ On push to `main`, [docs.yml](https://github.com/SyncLionPaw/pagent/blob/main/.g
 
 ## Publishing
 
-`.github/workflows/publish.yml` — PyPI via Trusted Publishing on release.
+Release notes live in **[`CHANGELOG.md`](../CHANGELOG.md)** at the repo root (one file, newest version first). Before tagging, write under `## Unreleased`, then rename that section to `## x.y.z — date`.
+
+```bash
+./scripts/release-notes.sh 0.7.7 | gh release create v0.7.7 --title v0.7.7 --notes-file -
+```
+
+`.github/workflows/publish.yml` — on **published** GitHub Release: uploads VS Code `.vsix`, builds Desktop macOS zip, publishes wheel to PyPI (Trusted Publishing).
 
 ## See also
 
