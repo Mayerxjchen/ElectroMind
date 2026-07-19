@@ -3,7 +3,7 @@
   "displayName": "pagent",
   "description": "pagent Agent for VS Code，支持多轮对话、工具调用、会话恢复与多种运行模式。",
   "icon": "media/logo-icon.png",
-  "version": "0.7.8",
+  "version": "0.7.9",
   "publisher": "synclionpaw",
   "private": true,
   "license": "MIT",

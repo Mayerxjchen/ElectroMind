@@ -5,9 +5,9 @@
 提取某一版正文用于 GitHub Release：
 
 ```bash
-./scripts/release-notes.sh 0.7.8
+./scripts/release-notes.sh 0.7.9
 # 或管道给 gh：
-./scripts/release-notes.sh 0.7.8 | gh release create v0.7.8 --title v0.7.8 --notes-file -
+./scripts/release-notes.sh 0.7.9 | gh release create v0.7.9 --title v0.7.9 --notes-file -
 ```
 
 ---
@@ -15,6 +15,38 @@
 ## Unreleased
 
 （下次发版前写在这里）
+
+---
+
+## 0.7.9 — 2026-07-19
+
+修复 macOS 下载后「已损坏」说明，以及打包版打开黑屏。
+
+### Highlights
+
+- **黑屏修复**：`marked` 打包改用 ESM 入口；打包后 `userData` 不再写入 `.app` 内只读目录
+- **后端**：Release 版使用 PATH 里的 `pagent`（`uv tool install pagent`），不再误指 `.app` 内路径
+- **macOS**：zip 内附 `打开说明.txt`；文档写明 `xattr -cr` 去掉隔离标记
+- 含 0.7.8 CI 修复（桌面 Release 自动构建）
+
+### Install
+
+```bash
+uv tool install --force pagent
+```
+
+- VS Code：`pagent-vscode-0.7.9.vsix`
+- 桌面端（macOS Apple Silicon）：`pagent-Desktop-0.7.9-arm64.zip`
+
+若提示「已损坏」：
+
+```bash
+xattr -cr "/Applications/pagent Desktop.app"
+```
+
+### Links
+
+- Compare: https://github.com/SyncLionPaw/pagent/compare/v0.7.8...v0.7.9
 
 ---
 

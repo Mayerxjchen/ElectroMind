@@ -140,8 +140,9 @@ export function resolvePagentWireInvocation(
   if (options?.yolo) {
     wireArgs.push("--permission-mode", "auto");
   }
+  const pyproject = projectRoot ? join(projectRoot, "pyproject.toml") : "";
   const uv = resolveCliCommand("uv");
-  if (uv) {
+  if (pyproject && existsSync(pyproject) && uv) {
     return {
       command: uv,
       args: ["run", "--project", projectRoot, "pagent", ...wireArgs],

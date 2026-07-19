@@ -272,10 +272,14 @@ function pagentProjectRoot(): string {
 }
 
 function configureAppRuntimePaths(): void {
+  app.disableHardwareAcceleration();
+  // 打包后 .app 内只读，不能用 bundle 里的 .runtime；交给系统默认 Application Support。
+  if (app.isPackaged) {
+    return;
+  }
   const runtimeRoot = path.join(__dirname, "..", ".runtime");
   app.setPath("userData", path.join(runtimeRoot, "user-data"));
   app.setPath("sessionData", path.join(runtimeRoot, "session-data"));
-  app.disableHardwareAcceleration();
 }
 
 function appInfo(): AppInfo {
@@ -1033,6 +1037,18 @@ function createWindow(): BrowserWindow {
   });
 
   window.loadFile(path.join(__dirname, "index.html"));
+  window.webContents.on("did-fail-load", (_event, code, description, url) => {
+    void dialog.showErrorBox(
+      "pagent Desktop",
+      `页面加载失败 (${code}): ${description}\n${url}`,
+    );
+  });
+  window.webContents.on("render-process-gone", (_event, details) => {
+    void dialog.showErrorBox(
+      "pagent Desktop",
+      `界面进程异常退出: ${details.reason}`,
+    );
+  });
   window.webContents.once("did-finish-load", () => {
     notifyRuntimeState();
   });

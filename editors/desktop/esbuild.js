@@ -83,6 +83,9 @@ const rendererOptions = {
   // renderer 复用 ../vscode/src/webview；裸 import 会从 vscode 目录向上找
   // node_modules，这里补上 desktop 自己的依赖目录。
   nodePaths: [path.join(root, "node_modules")],
+  alias: {
+    marked: path.join(root, "node_modules/marked/lib/marked.esm.js"),
+  },
   sourcemap: true,
   logLevel: "info",
   plugins: [ignoreVendorSourceMaps],

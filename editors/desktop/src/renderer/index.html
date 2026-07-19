@@ -13,6 +13,14 @@
 
 <body>
   <div id="app"></div>
+  <script>
+    window.addEventListener("error", (event) => {
+      const root = document.getElementById("app");
+      if (!root || root.childElementCount > 0) return;
+      const msg = event.error?.stack || event.message || "未知错误";
+      root.innerHTML = "<pre style=\"padding:16px;color:#f8fafc;white-space:pre-wrap\">" + msg + "</pre>";
+    });
+  </script>
   <script src="./renderer.js"></script>
 </body>
 

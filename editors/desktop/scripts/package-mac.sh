@@ -16,7 +16,7 @@ npx @electron/packager . "pagent Desktop" \
   --arch=arm64 \
   --out=release \
   --overwrite \
-  --icon=assets/icon \
+  --icon=assets/icon.icns \
   --app-version="$VERSION"
 
 rm -rf "$STAGE" "$ZIP"
