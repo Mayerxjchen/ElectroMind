@@ -28,7 +28,10 @@ def test_emit_error_wire_shape(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_resume_with_no_runner_replays_history_without_sandbox(monkeypatch):
-    fake_thread = SimpleNamespace(id="thread-old")
+    fake_thread = SimpleNamespace(
+        id="thread-old",
+        load_metainfo=lambda: {"title": "old"},
+    )
     emitted: list[str] = []
 
     def fail_open_runner(*_args):
@@ -518,7 +521,9 @@ def test_list_thread_entries_hides_soft_deleted(tmp_path, monkeypatch):
         (deleted, {"title": "已删", "deleted_at": "2026-07-18T12:00:00"}),
     ):
         folder.mkdir()
-        (folder / "thread.toml").write_text("[sandbox]\nbackend = \"local\"\n", encoding="utf-8")
+        (folder / "thread.toml").write_text(
+            '[sandbox]\nbackend = "local"\n', encoding="utf-8"
+        )
         (folder / "metainfo.json").write_text(
             json.dumps(meta, ensure_ascii=False),
             encoding="utf-8",

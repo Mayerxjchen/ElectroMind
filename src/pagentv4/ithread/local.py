@@ -4,7 +4,7 @@
 
     ~/.pagent/threads/<thread_id>/
         thread.toml        # thread 配置（首次冻结；可含 [project] path）
-        metainfo.json      # 面向用户的元信息（标题、时间戳、对话摘要）
+        metainfo.json      # 面向用户的元信息（标题、时间戳、对话摘要、usage 快照）
         workspace/         # agent 沙箱地盘（与用户 project 分离）
 
 ``[project].path`` 是用户侧工作目录：挂到 sandbox 的 host_root（list_host_files /

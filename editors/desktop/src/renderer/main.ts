@@ -1,4 +1,5 @@
 import { ChatRenderer } from "../../../vscode/src/webview/render";
+import { ContextUsageRing } from "../../../vscode/src/webview/context-usage";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
@@ -956,9 +957,12 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                     </button>
                   </div>
                 </div>
-                <button class="composer-btn primary" data-send-message title="发送">
-                  ${renderIcon("arrow-up")}
-                </button>
+                <div class="composer-actions-end">
+                  <span data-context-usage-mount></span>
+                  <button class="composer-btn primary" data-send-message title="发送">
+                    ${renderIcon("arrow-up")}
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -1475,6 +1479,7 @@ async function start(): Promise<void> {
   const historyDockButton = findRequired<HTMLButtonElement>("[data-history-dock]");
   const skillsButton = findRequired<HTMLButtonElement>("[data-skills-open]");
   const yoloButton = findRequired<HTMLButtonElement>("[data-yolo-toggle]");
+  const contextUsageMount = findRequired<HTMLElement>("[data-context-usage-mount]");
   const pinSidebarButton = findRequired<HTMLButtonElement>("[data-pin-sidebar]");
   const projectHost = findRequired<HTMLElement>("[data-project-host]");
   const projectPaneSwitch = findRequired<HTMLElement>("[data-project-pane-switch]");
@@ -1492,6 +1497,7 @@ async function start(): Promise<void> {
     }
     void window.desktop.denyToolCall(toolCallId);
   });
+  const contextUsageRing = new ContextUsageRing(contextUsageMount);
 
   function applyTheme(): void {
     document.documentElement.dataset.theme = uiState.theme;
@@ -2382,6 +2388,7 @@ async function start(): Promise<void> {
   }
 
   function syncWireEvent(event: WireEvent): void {
+    contextUsageRing.handleWireEvent(event);
     if (
       event.method === "RunBegin" ||
       event.method === "ReasoningDelta" ||

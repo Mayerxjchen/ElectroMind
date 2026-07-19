@@ -77,7 +77,9 @@ async def run_synthesis_turn(
             yield emitted
     adapter.run_state.phase = "running"
 
-    final = TurnResult.from_slice(adapter.messages.data, turn_start)
+    final = TurnResult.from_slice(adapter.messages.data, turn_start).with_usage(
+        adapter.agent.last_usage
+    )
     async for event in adapter.emit(final, turn_id=turn_id, turn=turn):
         yield event
 
@@ -133,7 +135,9 @@ async def run_event_loop(
                 yield emitted
         adapter.run_state.phase = "running"
 
-        result = TurnResult.from_slice(adapter.messages.data, turn_start)
+        result = TurnResult.from_slice(adapter.messages.data, turn_start).with_usage(
+            adapter.agent.last_usage
+        )
         async for event in adapter.emit(result, turn_id=turn_id, turn=turn):
             yield event
 

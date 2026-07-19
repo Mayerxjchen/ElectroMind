@@ -89,3 +89,25 @@ def test_to_openai_drops_stray_tool_result():
         {"role": "user", "content": "run"},
         {"role": "user", "content": "next"},
     ]
+
+
+def test_complete_orphan_tool_results_appends_placeholder():
+    messages = Messages()
+    messages += Message.user("go", turn_id=1)
+    messages += Message.assistant(
+        {
+            "type": "function",
+            "id": "call_orphan",
+            "name": "run_command",
+            "arguments": "{}",
+        },
+        turn_id=1,
+    )
+    messages += Message.user("stop", turn_id=2)
+
+    added = messages.complete_orphan_tool_results()
+
+    assert added == 1
+    assert messages.data[-1].role == "tool"
+    assert messages.data[-1].content.tool_call_id == "call_orphan"
+    assert messages.data[-1].turn_id == 1

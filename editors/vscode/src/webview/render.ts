@@ -176,6 +176,10 @@ export class ChatRenderer {
     }
     if (method === "RunEnd") {
       this.removePlaceholder();
+      const stopReason = readString(params, "stop_reason");
+      const pendingToolMessage =
+        stopReason === "cancelled" ? "已取消" : "未完成";
+      this.settlePendingToolCards(pendingToolMessage, false);
       this.finishAssistant();
       const message = stopReasonNotice(readString(params, "stop_reason"));
       if (message) {
@@ -204,6 +208,7 @@ export class ChatRenderer {
     }
     this.hideEmptyState();
     this.removePlaceholder();
+    this.settlePendingToolCards("未完成", false);
     this.finishAssistant();
     const body = this.appendErrorBubble();
     body.textContent = message;
@@ -250,7 +255,11 @@ export class ChatRenderer {
       const record = item as Record<string, unknown>;
       const kind = readString(record, "kind");
       if (kind === "text") {
-        this.replayText(readString(record, "role"), readString(record, "text"));
+        const role = readString(record, "role");
+        if (role === "user") {
+          this.settlePendingToolCards("已中断", false);
+        }
+        this.replayText(role, readString(record, "text"));
       } else if (kind === "thinking") {
         this.replayThinking(readString(record, "text"));
       } else if (kind === "tool_call") {
@@ -267,6 +276,7 @@ export class ChatRenderer {
         );
       }
     }
+    this.settlePendingToolCards("已中断", false);
     if (raw.length === 0) {
       this.showEmptyState();
     }
@@ -516,6 +526,13 @@ export class ChatRenderer {
     }
     if (stick) {
       this.forceScrollToBottom();
+    }
+  }
+
+  /** 结束仍显示「运行中」的工具卡（历史回放缺 result、或 run 被取消时）。 */
+  private settlePendingToolCards(message: string, ok: boolean): void {
+    for (const id of [...this.toolCards.keys()]) {
+      this.fillToolResult(id, message, ok);
     }
   }
 

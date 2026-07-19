@@ -11,6 +11,7 @@ import type {
   ViewToHost,
 } from "../protocol";
 import { ChatRenderer } from "./render";
+import { ContextUsageRing } from "./context-usage";
 
 // acquireVsCodeApi 只能调用一次，返回视图与宿主通信的唯一句柄。
 // 由 VS Code 注入到 webview 全局，类型没有官方声明，这里就近声明其形状。
@@ -362,10 +363,13 @@ if (app) {
             title="自动审批：关闭（点击开启 YOLO 模式）" aria-label="YOLO 模式">
           </button>
         </div>
-        <button id="send" type="button" class="composer-btn primary"
-          title="发送" aria-label="发送">
-          <i class="codicon codicon-arrow-up"></i>
-        </button>
+        <div class="composer-actions-end">
+          <span id="context-usage-mount"></span>
+          <button id="send" type="button" class="composer-btn primary"
+            title="发送" aria-label="发送">
+            <i class="codicon codicon-arrow-up"></i>
+          </button>
+        </div>
       </div>
     </div>
   `;
@@ -378,6 +382,7 @@ if (app) {
   const yoloBtn = document.getElementById("yolo") as HTMLButtonElement;
   const slashMenu = document.getElementById("slash-menu") as HTMLDivElement;
   const modeMenuEl = document.getElementById("mode-menu") as HTMLDivElement;
+  const contextUsageMount = document.getElementById("context-usage-mount") as HTMLSpanElement;
 
   let sandboxMode: SandboxMode = "local";
   let currentSshHost = "";
@@ -411,6 +416,7 @@ if (app) {
       vscodeApi.postMessage({ type: "deny", toolCallId });
     }
   });
+  const contextUsageRing = new ContextUsageRing(contextUsageMount);
 
   const slashMenuController = new SlashMenu(slashMenu, input, () => send());
 
@@ -574,7 +580,9 @@ if (app) {
   window.addEventListener("message", (event: MessageEvent<HostToView>) => {
     const message = event.data;
     if (message.type === "event") {
-      renderer.handleEvent({ method: message.method, params: message.params });
+      const wireEvent = { method: message.method, params: message.params };
+      contextUsageRing.handleWireEvent(wireEvent);
+      renderer.handleEvent(wireEvent);
       return;
     }
     if (message.type === "slashCommands") {
