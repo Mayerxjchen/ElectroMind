@@ -38,6 +38,13 @@ import type {
   WireEvent,
 } from "../shared/protocol";
 import { parseWireLine } from "../shared/wire";
+import {
+  completeOnboarding,
+  getEnvironmentCheck,
+  getOnboardingState,
+  installPagentCli,
+  saveProviderSetup,
+} from "./setup";
 
 type ThreadListEntry = {
   id: string;
@@ -1251,6 +1258,23 @@ ipcMain.handle("desktop:pick-directory", async (_event, defaultPath?: string) =>
 });
 ipcMain.handle("desktop:get-new-session-options", async () => {
   return newSessionOptions();
+});
+ipcMain.handle("desktop:get-onboarding-state", async () => getOnboardingState());
+ipcMain.handle("desktop:refresh-environment-check", async () =>
+  getEnvironmentCheck({ includeDisk: true }),
+);
+ipcMain.handle("desktop:install-pagent-cli", async () => installPagentCli());
+ipcMain.handle("desktop:save-provider-setup", async (_event, setup) => {
+  const saved = saveProviderSetup(setup);
+  // wire 启动时缓存了旧配置；写入 Key 后丢掉进程，下次 ensureBridge 会重新加载。
+  disposeBridge();
+  notifyRuntimeState();
+  return saved;
+});
+ipcMain.handle("desktop:complete-onboarding", async (_event, options) => {
+  completeOnboarding(options);
+  disposeBridge();
+  notifyRuntimeState();
 });
 ipcMain.handle("desktop:select-project", async () => {
   const picked = await pickDirectory(projectPath);

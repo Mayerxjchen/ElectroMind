@@ -11,7 +11,12 @@ from pagentv4 import DeepSeek, Runner
 from pagentv4.tools import HARNESS_WEB_TOOLS
 
 from .clean import clean_pagent, format_clean_report
-from .config import ReplConfig, build_parser, config_from_args
+from .config import (
+    ReplConfig,
+    build_parser,
+    config_from_args,
+    refresh_provider_from_disk,
+)
 from .render import (
     BLUE,
     DIM,
@@ -38,6 +43,8 @@ def read_prompt_line(*, color: bool, user_label: str = "you") -> str:
 
 
 async def open_runner(config: ReplConfig) -> Runner:
+    # Desktop / VS Code 可能在 wire 已启动后再写入 API Key；打开会话前从磁盘刷新。
+    config = refresh_provider_from_disk(config)
     api_key = config.resolved_api_key()
     if not api_key:
         raise SystemExit(

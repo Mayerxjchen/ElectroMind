@@ -8,6 +8,7 @@ from app.config import (
     load_config_file,
     merge_config,
     parse_repl_config,
+    refresh_provider_from_disk,
 )
 
 
@@ -53,6 +54,22 @@ def test_resolved_api_key_falls_back_to_env(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "from-env")
     config = ReplConfig()
     assert config.resolved_api_key() == "from-env"
+
+
+def test_refresh_provider_from_disk_picks_up_new_key(tmp_path, monkeypatch):
+    home = tmp_path / "home" / ".pagent"
+    home.mkdir(parents=True)
+    monkeypatch.setenv("PAGENT_HOME", str(home))
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    stale = ReplConfig()
+    assert stale.resolved_api_key() is None
+    (home / "pagent.toml").write_text(
+        '[provider]\napi_key = "sk-after-setup"\nmodel = "deepseek-v4-flash"\n',
+        encoding="utf-8",
+    )
+    refreshed = refresh_provider_from_disk(stale)
+    assert refreshed.resolved_api_key() == "sk-after-setup"
+    assert refreshed.resolved_model() == "deepseek-v4-flash"
 
 
 def test_resolved_max_turns_default():

@@ -78,6 +78,48 @@ export type SandboxStatus = {
 /** 新建会话可选的 sandbox backend（与 wire / ThreadSpec 对齐）。 */
 export type SandboxBackendOption = "local" | "container" | "docker" | "podman" | "ssh";
 
+export type EnvironmentCheck = {
+    uvInstalled: boolean;
+    uvPath?: string;
+    pagentInstalled: boolean;
+    pagentPath?: string;
+    apiKeyConfigured: boolean;
+    dockerInstalled: boolean;
+    podmanInstalled: boolean;
+    containerRuntime?: "docker" | "podman";
+    sandboxImage: string;
+    sandboxImageExists: boolean;
+    configPath: string;
+    /** ~/.pagent 绝对路径 */
+    dataHomePath: string;
+    /** 展示用，例如 ~/.pagent */
+    dataHomeLabel: string;
+    /** 目录占用字节数；目录不存在时为 0；无法读取时为 undefined */
+    dataHomeBytes?: number;
+    /** 沙箱镜像占用字节数；无运行时或未安装镜像时为 undefined */
+    sandboxImageBytes?: number;
+};
+
+export type OnboardingState = {
+    completed: boolean;
+    skipped: boolean;
+    /** 未完成且未跳过时展示可选向导 */
+    shouldShow: boolean;
+    /**
+     * 硬拦截：缺少 pagent CLI 或 API Key 时为 true。
+     * 为 true 时主界面不可用，设置向导不可关闭/跳过。
+     */
+    blocked: boolean;
+    preferredBackend: "local" | "container" | "ssh";
+    environment: EnvironmentCheck;
+};
+
+export type ProviderSetupInput = {
+    apiKey: string;
+    model: string;
+    baseUrl?: string;
+};
+
 export type ResetSessionOptions = {
     backend?: SandboxBackendOption;
     projectPath?: string;
@@ -135,6 +177,11 @@ export type DesktopApi = {
     selectProject(): Promise<RuntimeState>;
     pickDirectory(defaultPath?: string): Promise<string | null>;
     getNewSessionOptions(): Promise<NewSessionOptions>;
+    getOnboardingState(): Promise<OnboardingState>;
+    refreshEnvironmentCheck(): Promise<EnvironmentCheck>;
+    installPagentCli(): Promise<{ ok: boolean; error?: string; pagentPath?: string }>;
+    saveProviderSetup(setup: ProviderSetupInput): Promise<string>;
+    completeOnboarding(options?: { preferredBackend?: "local" | "container" | "ssh"; skipped?: boolean }): Promise<void>;
     resumeThread(threadId: string): Promise<void>;
     deleteThread(threadId: string): Promise<void>;
     sendUserInput(text: string): Promise<void>;

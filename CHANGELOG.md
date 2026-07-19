@@ -5,9 +5,9 @@
 提取某一版正文用于 GitHub Release：
 
 ```bash
-./scripts/release-notes.sh 0.7.9
+./scripts/release-notes.sh 0.7.10
 # 或管道给 gh：
-./scripts/release-notes.sh 0.7.9 | gh release create v0.7.9 --title v0.7.9 --notes-file -
+./scripts/release-notes.sh 0.7.10 | gh release create v0.7.10 --title v0.7.10 --notes-file -
 ```
 
 ---
@@ -15,6 +15,32 @@
 ## Unreleased
 
 （下次发版前写在这里）
+
+---
+
+## 0.7.10 — 2026-07-19
+
+Desktop 首次设置向导、环境自检，以及 setup 后 API Key 立即生效。
+
+### Highlights
+
+- **首次设置**：环境 → API Key → 沙箱；未就绪时硬拦截，配置完成前无法使用主界面
+- **设置 · 环境自检**：状态灯（uv / CLI / Key / 容器 / 镜像）+ `~/.pagent` 与镜像磁盘占用
+- **API Key**：写入 `~/.pagent/pagent.toml` 后，wire 打开会话前从磁盘刷新；Desktop 保存后重启 bridge
+- **文档**：Desktop 用户指南补充首次设置与自检说明
+
+### Install
+
+```bash
+uv tool install --force pagent
+```
+
+- VS Code：`pagent-vscode-0.7.10.vsix`
+- 桌面端（macOS Apple Silicon）：`pagent-Desktop-0.7.10-arm64.zip`
+
+### Links
+
+- Compare: https://github.com/SyncLionPaw/pagent/compare/v0.7.9...v0.7.10
 
 ---
 

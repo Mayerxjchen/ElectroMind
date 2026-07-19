@@ -44,9 +44,17 @@ Then open the app normally. The zip also includes **`打开说明.txt`** (Chines
 
 ## Before your first message: API key
 
-**Desktop does not walk you through setup on first launch** (the VS Code extension does).
+**On first launch**, if pagent or an API key is missing, a blocking **Setup** wizard opens (environment → API key → sandbox) — the main UI stays locked until those are ready. Reopen the wizard anytime from the user menu → **Setup**. The **environment health check** in Settings is separate: status lights and disk usage, not a wizard.
 
-Configure a provider key **before** chatting, using either method:
+It checks:
+
+- `uv` / `pagent` on PATH (one-click install or copy commands)
+- API key (writes `~/.pagent/pagent.toml`)
+- Optional: `docker` / `podman` and the `pagent:latest` image (for container sandbox only)
+
+Choose **Set up later** to skip; you still need a key before chatting.
+
+Without the wizard, configure a key manually:
 
 **Environment variable:**
 
@@ -64,7 +72,7 @@ model = "deepseek-v4-flash"
 
 More providers: [Providers & API keys](./guide/providers).
 
-If the key is missing, you will see an error after you send a message. Open **Settings** (gear in the title bar) to check whether a config file exists — that panel is **read-only** and does not save changes for you.
+If the key is missing, you will see an error after you send a message. Open **Settings** (gear) for an **environment health check** (status lights + disk usage for `~/.pagent` and the sandbox image) and a read-only overview of `pagent.toml` — edit the file in a text editor to change values.
 
 ## First launch
 
@@ -111,7 +119,7 @@ Drag the edges to resize. Press **⌘K** (or the **?** button) for shortcuts.
 
 | Where | What |
 | --- | --- |
-| **Gear** | View `~/.pagent/pagent.toml` (secrets shown as “configured”) |
+| **Gear** | Environment health check (status lights + disk usage) + view `pagent.toml` |
 | **Book icon** | Open this documentation site in the browser |
 | **User menu → Scan docs** | QR code for the docs on your phone |
 

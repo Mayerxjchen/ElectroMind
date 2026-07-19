@@ -253,6 +253,27 @@ def load_config(
     return merged
 
 
+def refresh_provider_from_disk(
+    config: ReplConfig, *, workdir: str | None = None
+) -> ReplConfig:
+    """从当前 home 的 ``pagent.toml`` 刷新 provider 字段。
+
+    wire 进程启动时会缓存一份 ReplConfig；宿主（Desktop / VS Code）事后写入
+    API Key 时，打开 runner 前调用本函数即可读到新 Key，无需重启进程。
+    """
+    fresh = load_config(workdir=workdir)
+    fields: dict = {}
+    if fresh.api_key:
+        fields["api_key"] = fresh.api_key
+    if fresh.model:
+        fields["model"] = fresh.model
+    if fresh.provider_base_url:
+        fields["provider_base_url"] = fresh.provider_base_url
+    if not fields:
+        return config
+    return replace(config, **fields)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="pagent interactive REPL")
     parser.add_argument(

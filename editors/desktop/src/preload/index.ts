@@ -69,6 +69,21 @@ const desktopApi: DesktopApi = {
   getNewSessionOptions() {
     return ipcRenderer.invoke("desktop:get-new-session-options");
   },
+  getOnboardingState() {
+    return ipcRenderer.invoke("desktop:get-onboarding-state");
+  },
+  refreshEnvironmentCheck() {
+    return ipcRenderer.invoke("desktop:refresh-environment-check");
+  },
+  installPagentCli() {
+    return ipcRenderer.invoke("desktop:install-pagent-cli");
+  },
+  saveProviderSetup(setup) {
+    return ipcRenderer.invoke("desktop:save-provider-setup", setup);
+  },
+  completeOnboarding(options) {
+    return ipcRenderer.invoke("desktop:complete-onboarding", options);
+  },
   resumeThread(threadId: string) {
     return ipcRenderer.invoke("desktop:resume-thread", threadId);
   },

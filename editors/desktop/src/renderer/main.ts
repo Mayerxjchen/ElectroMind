@@ -1,5 +1,7 @@
 import { ChatRenderer } from "../../../vscode/src/webview/render";
 import { ContextUsageRing } from "../../../vscode/src/webview/context-usage";
+import { INSTALL_COMMANDS, bindHealthPanel, renderHealthPanel } from "./environment-health";
+import { mountOnboarding } from "./onboarding";
 import DOMPurify from "dompurify";
 import hljs from "highlight.js/lib/core";
 import bash from "highlight.js/lib/languages/bash";
@@ -24,6 +26,7 @@ import { marked } from "marked";
 import type {
   AppInfo,
   AppSettings,
+  EnvironmentCheck,
   ArtifactPreview,
   ArtifactSummary,
   MentionFile,
@@ -514,9 +517,12 @@ function renderNewSessionForm(
   `;
 }
 
-function renderSettings(settings: AppSettings): string {
+function renderSettings(settings: AppSettings, env: EnvironmentCheck): string {
+  const health = renderHealthPanel(env);
   if (!settings.exists) {
     return `
+      ${health}
+      <div class="settings-section-gap"></div>
       <div class="settings-path">${escapeHtml(settings.path)}</div>
       <div class="settings-empty">还没有配置文件。</div>
     `;
@@ -538,6 +544,8 @@ function renderSettings(settings: AppSettings): string {
       `).join("")
     : `<div class="settings-empty">配置文件还没有可展示的项目。</div>`;
   return `
+    ${health}
+    <div class="settings-section-gap"></div>
     <div class="settings-path">${escapeHtml(settings.path)}</div>
     <div class="settings-overview">${overview}</div>
     <details class="settings-source">
@@ -750,6 +758,7 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
   }
 
   root.innerHTML = `
+    <div class="desktop-root">
     <div class="desktop-shell ${platformClass(appInfo)}" data-shell>
       <div class="desktop-titlebar">
         <div class="titlebar-left">
@@ -814,6 +823,10 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                   <button class="user-menu-item" type="button" role="menuitem" data-user-menu-wechat>
                     <span class="user-menu-item-icon wechat">${renderWechatIcon()}</span>
                     <span>扫码看文档</span>
+                  </button>
+                  <button class="user-menu-item" type="button" role="menuitem" data-user-menu-onboarding>
+                    <span class="user-menu-item-icon">${renderIcon("wrench")}</span>
+                    <span>首次设置</span>
                   </button>
                   <button class="user-menu-item" type="button" role="menuitem" data-user-menu-settings>
                     <span class="user-menu-item-icon">${renderIcon("settings")}</span>
@@ -1064,6 +1077,19 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
             </button>
           </div>
         </aside>
+      </div>
+    </div>
+      <div class="desktop-modal setup-guard-modal" data-onboarding-modal hidden>
+        <div class="desktop-modal-backdrop setup-guard-backdrop" data-onboarding-close aria-hidden="true"></div>
+        <section class="desktop-modal-card onboarding-modal-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
+          <div class="desktop-modal-header">
+            <div id="onboarding-title" class="desktop-modal-title">首次设置</div>
+            <button class="modal-close-button" type="button" data-onboarding-close title="关闭" aria-label="关闭">
+              ${renderIcon("x")}
+            </button>
+          </div>
+          <div class="desktop-modal-body" data-onboarding-body></div>
+        </section>
       </div>
       <div class="desktop-modal" data-new-session-modal hidden>
         <div class="desktop-modal-backdrop" data-new-session-close></div>
@@ -1390,10 +1416,24 @@ function isRoutineWireLog(text: string): boolean {
   );
 }
 
+function finishBootSplash(): void {
+  const html = document.documentElement;
+  html.dataset.boot = "done";
+  const splash = document.getElementById("boot-splash");
+  if (!splash) {
+    return;
+  }
+  window.setTimeout(() => {
+    splash.hidden = true;
+  }, 200);
+}
+
 async function start(): Promise<void> {
-  const [appInfo, initialRuntime] = await Promise.all([
+  // 与壳层数据并行拉挡墙状态，避免主界面先露出来
+  const [appInfo, initialRuntime, onboardingState] = await Promise.all([
     window.desktop.getAppInfo(),
     window.desktop.getRuntimeState(),
+    window.desktop.getOnboardingState(),
   ]);
   renderShell(appInfo, initialRuntime);
   mountToaster();
@@ -1439,6 +1479,30 @@ async function start(): Promise<void> {
   const settingsBody = findRequired<HTMLElement>("[data-settings-body]");
   const docsQrModal = findRequired<HTMLElement>("[data-docs-qr-modal]");
   const docsQrCanvas = findRequired<HTMLCanvasElement>("[data-docs-qr-canvas]");
+  const onboardingModal = findRequired<HTMLElement>("[data-onboarding-modal]");
+  const onboardingBody = findRequired<HTMLElement>("[data-onboarding-body]");
+
+  const shell = findRequired<HTMLElement>("[data-shell]");
+
+  function setSetupGuard(blocked: boolean): void {
+    shell.classList.toggle("is-setup-blocked", blocked);
+  }
+
+  const onboarding = mountOnboarding({
+    modal: onboardingModal,
+    body: onboardingBody,
+    onBlockedChange: setSetupGuard,
+    onDone: () => {
+      setSetupGuard(false);
+      void refreshSessions();
+    },
+  });
+
+  // 在会话列表等慢路径之前立刻上墙，再撤启动遮罩
+  if (onboardingState.blocked || onboardingState.shouldShow) {
+    onboarding.open(onboardingState);
+  }
+  finishBootSplash();
 
   const uiState = {
     theme: readStoredTheme(),
@@ -1669,6 +1733,53 @@ async function start(): Promise<void> {
     });
   }
 
+  function bindSettingsHealthPanel(initialEnv: EnvironmentCheck): void {
+    let currentEnv = initialEnv;
+
+    function attachHandlers(root: HTMLElement): void {
+      bindHealthPanel(root, {
+        onRefresh: async () => {
+          currentEnv = await window.desktop.refreshEnvironmentCheck();
+          replacePanel();
+        },
+        onCopyCommands: async () => {
+          await navigator.clipboard.writeText(INSTALL_COMMANDS);
+          toast("已复制安装命令", { type: "success" });
+        },
+        onInstallPagent: async () => {
+          const result = await window.desktop.installPagentCli();
+          if (!result.ok) {
+            toast(result.error ?? "安装失败", { type: "error" });
+            return;
+          }
+          currentEnv = await window.desktop.refreshEnvironmentCheck();
+          replacePanel();
+          toast("pagent 已安装", { type: "success" });
+        },
+      });
+    }
+
+    function replacePanel(): void {
+      const existing = settingsBody.querySelector<HTMLElement>(".health-panel");
+      if (!existing) {
+        return;
+      }
+      const wrapper = document.createElement("div");
+      wrapper.innerHTML = renderHealthPanel(currentEnv);
+      const next = wrapper.firstElementChild;
+      if (!(next instanceof HTMLElement)) {
+        return;
+      }
+      existing.replaceWith(next);
+      attachHandlers(next);
+    }
+
+    const panel = settingsBody.querySelector<HTMLElement>(".health-panel");
+    if (panel) {
+      attachHandlers(panel);
+    }
+  }
+
   async function openSettingsModal(): Promise<void> {
     const requestId = settingsRequestId + 1;
     settingsRequestId = requestId;
@@ -1681,11 +1792,15 @@ async function start(): Promise<void> {
       }
     });
     try {
-      const settings = await window.desktop.getSettings();
+      const [settings, env] = await Promise.all([
+        window.desktop.getSettings(),
+        window.desktop.refreshEnvironmentCheck(),
+      ]);
       if (settingsModal.hidden || settingsRequestId !== requestId) {
         return;
       }
-      settingsBody.innerHTML = renderSettings(settings);
+      settingsBody.innerHTML = renderSettings(settings, env);
+      bindSettingsHealthPanel(env);
     } catch (error) {
       if (settingsModal.hidden || settingsRequestId !== requestId) {
         return;
@@ -2875,6 +2990,16 @@ async function start(): Promise<void> {
     },
   );
 
+  findRequired<HTMLButtonElement>("[data-user-menu-onboarding]").addEventListener(
+    "click",
+    () => {
+      setUserMenuOpen(false);
+      void window.desktop.getOnboardingState().then((state) => {
+        onboarding.open(state);
+      });
+    },
+  );
+
   findRequired<HTMLButtonElement>("[data-user-menu-docs]").addEventListener(
     "click",
     () => {
@@ -2905,6 +3030,18 @@ async function start(): Promise<void> {
 
   shortcutsOpenButton.addEventListener("click", () => {
     openShortcutsModal();
+  });
+
+  onboardingModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.closest("[data-onboarding-close]")) {
+      if (!onboarding.tryDismiss()) {
+        return;
+      }
+    }
   });
 
   shortcutsModal.addEventListener("click", (event) => {
@@ -3293,6 +3430,7 @@ async function start(): Promise<void> {
 }
 
 start().catch((error: unknown) => {
+  finishBootSplash();
   const root = document.querySelector<HTMLDivElement>("#app");
   if (!root) {
     return;
