@@ -40,6 +40,7 @@ import type {
   WireEvent,
 } from "../shared/protocol";
 import { renderIcon, renderWechatIcon, type DesktopIconName } from "./icons";
+import { paintDocsQr } from "./docs-qr";
 import { mountToaster, toast } from "./toast";
 
 const INPUT_MAX_HEIGHT_PX = 160;
@@ -840,7 +841,7 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                   <div class="user-menu-divider"></div>
                   <button class="user-menu-item" type="button" role="menuitem" data-user-menu-wechat>
                     <span class="user-menu-item-icon wechat">${renderWechatIcon()}</span>
-                    <span>微信登录</span>
+                    <span>扫码看文档</span>
                   </button>
                   <button class="user-menu-item" type="button" role="menuitem" data-user-menu-settings>
                     <span class="user-menu-item-icon">${renderIcon("settings")}</span>
@@ -1126,6 +1127,24 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
             </button>
           </div>
           <div class="desktop-modal-body" data-settings-body></div>
+        </section>
+      </div>
+      <div class="desktop-modal" data-docs-qr-modal hidden>
+        <div class="desktop-modal-backdrop" data-docs-qr-close></div>
+        <section class="desktop-modal-card docs-qr-modal-card" role="dialog" aria-modal="true" aria-labelledby="docs-qr-title">
+          <div class="desktop-modal-header">
+            <div id="docs-qr-title" class="desktop-modal-title">扫码打开文档</div>
+            <button class="modal-close-button" type="button" data-docs-qr-close title="关闭" aria-label="关闭">
+              ${renderIcon("x")}
+            </button>
+          </div>
+          <div class="desktop-modal-body docs-qr-body">
+            <div class="docs-qr-frame">
+              <canvas data-docs-qr-canvas width="220" height="220" aria-label="pagent 文档站二维码"></canvas>
+            </div>
+            <p class="docs-qr-hint">微信扫一扫，在手机上阅读 pagent 文档</p>
+            <button class="new-session-primary docs-qr-open" type="button" data-docs-qr-open>在浏览器中打开</button>
+          </div>
         </section>
       </div>
       <div class="desktop-modal" data-shortcuts-modal hidden>
@@ -1446,6 +1465,8 @@ async function start(): Promise<void> {
   const titlebarSwitchThumb = findRequired<HTMLElement>("[data-titlebar-switch-thumb]");
   const settingsModal = findRequired<HTMLElement>("[data-settings-modal]");
   const settingsBody = findRequired<HTMLElement>("[data-settings-body]");
+  const docsQrModal = findRequired<HTMLElement>("[data-docs-qr-modal]");
+  const docsQrCanvas = findRequired<HTMLCanvasElement>("[data-docs-qr-canvas]");
 
   const uiState = {
     theme: readStoredTheme(),
@@ -1585,6 +1606,7 @@ async function start(): Promise<void> {
   let metaModalRequestId = 0;
   let settingsModalCloseTimer = 0;
   let settingsRequestId = 0;
+  let docsQrModalCloseTimer = 0;
   let newSessionModalCloseTimer = 0;
   let newSessionRequestId = 0;
   let newSessionDraft = {
@@ -1648,6 +1670,31 @@ async function start(): Promise<void> {
       settingsModal.hidden = true;
       settingsBody.innerHTML = "";
     }, 140);
+  }
+
+  function closeDocsQrModal(): void {
+    if (docsQrModal.hidden) {
+      return;
+    }
+    docsQrModal.classList.remove("is-open");
+    window.clearTimeout(docsQrModalCloseTimer);
+    docsQrModalCloseTimer = window.setTimeout(() => {
+      docsQrModal.hidden = true;
+    }, 140);
+  }
+
+  function openDocsQrModal(): void {
+    window.clearTimeout(docsQrModalCloseTimer);
+    docsQrModal.hidden = false;
+    window.requestAnimationFrame(() => {
+      docsQrModal.classList.add("is-open");
+    });
+    void paintDocsQr(docsQrCanvas).catch(() => {
+      const ctx = docsQrCanvas.getContext("2d");
+      if (ctx) {
+        ctx.clearRect(0, 0, docsQrCanvas.width, docsQrCanvas.height);
+      }
+    });
   }
 
   async function openSettingsModal(): Promise<void> {
@@ -2845,9 +2892,7 @@ async function start(): Promise<void> {
     "click",
     () => {
       setUserMenuOpen(false);
-      toast.info("微信登录即将开放", {
-        description: "接入后可在此用微信扫码登录。",
-      });
+      openDocsQrModal();
     },
   );
 
@@ -3053,6 +3098,20 @@ async function start(): Promise<void> {
     }
   });
 
+  docsQrModal.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    if (target.closest("[data-docs-qr-close]")) {
+      closeDocsQrModal();
+      return;
+    }
+    if (target.closest("[data-docs-qr-open]")) {
+      void window.desktop.openDocumentation();
+    }
+  });
+
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
       if (!userMenuDropdown.hidden) {
@@ -3072,6 +3131,9 @@ async function start(): Promise<void> {
       }
       if (!settingsModal.hidden) {
         closeSettingsModal();
+      }
+      if (!docsQrModal.hidden) {
+        closeDocsQrModal();
       }
       if (!shortcutsModal.hidden) {
         closeShortcutsModal();
