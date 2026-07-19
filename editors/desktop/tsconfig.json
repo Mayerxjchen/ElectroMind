@@ -11,7 +11,12 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "noEmit": true
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "dompurify": ["./node_modules/dompurify"],
+      "marked": ["./node_modules/marked"]
+    }
   },
   "include": ["src"]
 }
