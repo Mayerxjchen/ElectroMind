@@ -22,18 +22,54 @@ if TYPE_CHECKING:
 
 DEFAULT_READ_MAX_OUTPUT = 200_000
 
+# 沙箱工具的规范名与固定顺序：注册工具、渲染提示词共用这一份，避免两处漂移。
+SANDBOX_TOOL_NAMES = (
+    "run_command",
+    "read_file",
+    "write_file",
+    "str_replace",
+    "list_dir",
+    "list_host_files",
+    "copy_from_host",
+    "copy_to_host",
+)
+
+
+def resolve_tool_names(allowed: tuple[str, ...] | list[str] | None) -> list[str]:
+    """把白名单解析成实际启用的工具名（按 SANDBOX_TOOL_NAMES 固定顺序）。
+
+    空 → 放开全部（向后兼容）；非空 → 只留白名单内的；未知名报错。
+    """
+    picked = tuple(allowed or ())
+    if not picked:
+        return list(SANDBOX_TOOL_NAMES)
+    unknown = [name for name in picked if name not in SANDBOX_TOOL_NAMES]
+    if unknown:
+        raise ValueError(
+            f"unknown sandbox tools: {unknown}; "
+            f"expected subset of {list(SANDBOX_TOOL_NAMES)}"
+        )
+    return [name for name in SANDBOX_TOOL_NAMES if name in picked]
+
 
 def build_sandbox_tools(sandbox: Sandbox) -> list[FunctionTool]:
-    return [
-        make_run_command(sandbox),
-        make_read_file(sandbox),
-        make_write_file(sandbox),
-        make_str_replace(sandbox),
-        make_list_dir(sandbox),
-        make_list_host_files(sandbox),
-        make_copy_from_host(sandbox),
-        make_copy_to_host(sandbox),
-    ]
+    """把 sandbox 能力包装成 agent 工具。
+
+    实际注册哪些工具由 `sandbox.spec.tools` 白名单决定（见 resolve_tool_names）；
+    工具顺序按 SANDBOX_TOOL_NAMES，与配置书写顺序无关。
+    """
+    builders = {
+        "run_command": make_run_command,
+        "read_file": make_read_file,
+        "write_file": make_write_file,
+        "str_replace": make_str_replace,
+        "list_dir": make_list_dir,
+        "list_host_files": make_list_host_files,
+        "copy_from_host": make_copy_from_host,
+        "copy_to_host": make_copy_to_host,
+    }
+    names = resolve_tool_names(getattr(sandbox.spec, "tools", ()))
+    return [builders[name](sandbox) for name in names]
 
 
 def make_run_command(sandbox: Sandbox) -> FunctionTool:

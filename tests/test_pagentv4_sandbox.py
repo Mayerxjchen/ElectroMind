@@ -7,11 +7,13 @@ import pytest
 
 from pagentv4 import Runner, Sandbox, SandboxLimits
 from pagentv4.sandbox import (
+    SANDBOX_TOOL_NAMES,
     LocalBackend,
     SandboxSpec,
     build_backend,
     build_computer_description,
     build_sandbox_tools,
+    resolve_tool_names,
     resolve_workdir,
 )
 from pagentv4.sandbox.backends.docker import DockerBackend
@@ -630,6 +632,37 @@ async def test_build_sandbox_tools_helper(tmp_path):
         ]
 
 
+@pytest.mark.asyncio
+async def test_build_sandbox_tools_whitelist(tmp_path):
+    async with await Sandbox.create(
+        backend="local",
+        workdir=str(tmp_path),
+        tools=("read_file", "run_command"),
+    ) as box:
+        # 顺序仍按 builders 固定次序，与配置书写顺序无关。
+        assert [t.name for t in build_sandbox_tools(box)] == [
+            "run_command",
+            "read_file",
+        ]
+
+
+@pytest.mark.asyncio
+async def test_build_sandbox_tools_empty_means_all(tmp_path):
+    async with await Sandbox.create(
+        backend="local", workdir=str(tmp_path), tools=()
+    ) as box:
+        assert len(build_sandbox_tools(box)) == 8
+
+
+@pytest.mark.asyncio
+async def test_build_sandbox_tools_unknown_raises(tmp_path):
+    async with await Sandbox.create(
+        backend="local", workdir=str(tmp_path), tools=("read_file", "bogus_tool")
+    ) as box:
+        with pytest.raises(ValueError, match="unknown sandbox tools"):
+            build_sandbox_tools(box)
+
+
 class FakeToolCallDelta:
     def __init__(self, *, index, tool_id=None, name=None, arguments=None):
         self.index = index
@@ -895,6 +928,7 @@ async def test_build_computer_description_appends_uv_when_available():
         host_root="/tmp/host",
         artifacts_dir="artifacts",
         extra="额外说明：foobar\n",
+        tool_names=SANDBOX_TOOL_NAMES,
         run_probe=probe,
     )
     assert "Test 节点" in text
@@ -924,6 +958,7 @@ async def test_build_computer_description_skips_uv_when_missing():
         host_root="/tmp/host",
         artifacts_dir="artifacts",
         extra="",
+        tool_names=SANDBOX_TOOL_NAMES,
         run_probe=probe,
     )
     assert "uv venv" not in text
@@ -944,6 +979,7 @@ async def test_build_computer_description_appends_node_when_available():
         host_root="/tmp/host",
         artifacts_dir="artifacts",
         extra="",
+        tool_names=SANDBOX_TOOL_NAMES,
         run_probe=probe,
     )
     assert "npm init -y" in text
@@ -963,6 +999,7 @@ async def test_build_computer_description_appends_uv_and_node_when_both_availabl
         host_root="/tmp/host",
         artifacts_dir="artifacts",
         extra="",
+        tool_names=SANDBOX_TOOL_NAMES,
         run_probe=probe,
     )
     assert "uv venv .venv" in text
@@ -984,12 +1021,95 @@ async def test_build_computer_description_appends_browser_when_available():
         host_root="/tmp/host",
         artifacts_dir="artifacts",
         extra="",
+        tool_names=SANDBOX_TOOL_NAMES,
         run_probe=probe,
     )
     assert "CHROMIUM_FLAGS" in text
     assert "Noto Sans CJK" in text
     assert "--no-sandbox" in text
     assert "uv venv" not in text
+
+
+@pytest.mark.asyncio
+async def test_build_computer_description_renders_only_whitelisted_tools():
+    async def probe(_: str) -> dict:
+        return {"ok": False, "exit_code": 127}
+
+    text = await build_computer_description(
+        computer_name="Test 节点",
+        os_info="Linux",
+        home="/home/agent",
+        host_root="/tmp/host",
+        artifacts_dir="artifacts",
+        extra="",
+        tool_names=["read_file", "list_dir"],
+        run_probe=probe,
+    )
+    assert "read_file：" in text
+    assert "list_dir：" in text
+    # 未列入白名单的工具不该出现在提示词里。
+    assert "run_command" not in text
+    assert "write_file" not in text
+    assert "copy_to_host" not in text
+
+
+@pytest.mark.asyncio
+async def test_build_computer_description_drops_command_policy_note_without_run_command():
+    async def probe(_: str) -> dict:
+        return {"ok": False, "exit_code": 127}
+
+    text = await build_computer_description(
+        computer_name="Test 节点",
+        os_info="Linux",
+        home="/home/agent",
+        host_root="/tmp/host",
+        artifacts_dir="artifacts",
+        extra="",
+        tool_names=["read_file"],
+        run_probe=probe,
+    )
+    # 只有文件工具时，不该出现 command_policy 与 host 边界注记。
+    assert "command_policy" not in text
+    assert "用户目录工具" not in text
+
+
+@pytest.mark.asyncio
+async def test_build_computer_description_full_set_keeps_all_notes():
+    async def probe(_: str) -> dict:
+        return {"ok": False, "exit_code": 127}
+
+    text = await build_computer_description(
+        computer_name="Test 节点",
+        os_info="Linux",
+        home="/home/agent",
+        host_root="/tmp/host",
+        artifacts_dir="artifacts",
+        extra="",
+        tool_names=SANDBOX_TOOL_NAMES,
+        run_probe=probe,
+    )
+    for name in SANDBOX_TOOL_NAMES:
+        assert f"{name}：" in text
+    assert "command_policy" in text
+    assert "用户目录工具" in text
+
+
+def test_resolve_tool_names_empty_means_all():
+    assert resolve_tool_names(()) == list(SANDBOX_TOOL_NAMES)
+    assert resolve_tool_names(None) == list(SANDBOX_TOOL_NAMES)
+
+
+def test_resolve_tool_names_keeps_canonical_order():
+    # 配置书写顺序被忽略，始终按 SANDBOX_TOOL_NAMES 排列。
+    assert resolve_tool_names(["list_dir", "run_command"]) == [
+        "run_command",
+        "list_dir",
+    ]
+
+
+def test_resolve_tool_names_unknown_raises():
+    with pytest.raises(ValueError, match="unknown sandbox tools"):
+        resolve_tool_names(["read_file", "nope"])
 
 
 @pytest.mark.asyncio

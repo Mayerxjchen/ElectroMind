@@ -30,13 +30,14 @@ from .sandbox import (
     detect_container_cli,
     open_sandbox_for_spec,
 )
-from .tools import build_sandbox_tools
+from .tools import SANDBOX_TOOL_NAMES, build_sandbox_tools, resolve_tool_names
 from .workspace import default_workspaces_root, resolve_workdir
 
 __all__ = [
     "BROWSER_ENVIRONMENT_EXTRA",
     "COMPUTER_DESCRIPTION_TEMPLATE",
     "NODE_ENVIRONMENT_EXTRA",
+    "SANDBOX_TOOL_NAMES",
     "UV_ENVIRONMENT_EXTRA",
     "Backend",
     "BackendGuard",
@@ -62,6 +63,7 @@ __all__ = [
     "environment_extra",
     "node_environment_extra",
     "open_sandbox_for_spec",
+    "resolve_tool_names",
     "resolve_workdir",
     "uv_environment_extra",
 ]

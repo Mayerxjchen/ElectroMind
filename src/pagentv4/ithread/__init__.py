@@ -73,6 +73,8 @@ class ThreadSpec:
         "sandbox", "container_ttl_seconds", None
     )
     command_policy: str = toml_field("sandbox", "command_policy", "workdir")
+    # 沙箱工具白名单：空表示放开全部（向后兼容）；非空则只启用列出的工具。
+    sandbox_tools: tuple[str, ...] = toml_field("sandbox", "tools", ())
 
     project_path: str | None = toml_field("project", "path", None)
 

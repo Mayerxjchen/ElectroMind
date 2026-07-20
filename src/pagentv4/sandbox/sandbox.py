@@ -198,6 +198,7 @@ class Sandbox:
         default_limits: SandboxLimits | None = None,
         container_ttl_seconds: int | None = None,
         command_policy: str = "open",
+        tools: tuple[str, ...] = (),
         auto_restart: bool = True,
         restart_max_attempts: int = 2,
     ) -> Sandbox:
@@ -217,6 +218,7 @@ class Sandbox:
             default_limits=default_limits or SandboxLimits(),
             container_ttl_seconds=container_ttl_seconds,
             command_policy=validate_command_policy(command_policy),
+            tools=tuple(tools),
         )
         instance = build_backend(backend) if isinstance(backend, str) else backend
         if auto_restart:
@@ -484,6 +486,8 @@ class Sandbox:
         """
         os_info = await self.probe_os_info()
         identity = self.backend.describe(self.spec, self.workdir)
+        from .tools import resolve_tool_names
+
         return await build_computer_description(
             computer_name=identity.computer_name,
             os_info=os_info,
@@ -491,6 +495,7 @@ class Sandbox:
             host_root=self.host_root,
             artifacts_dir=self.ARTIFACTS_DIRNAME,
             extra=identity.extra,
+            tool_names=resolve_tool_names(self.spec.tools),
             run_probe=self.run_probe,
         )
 
@@ -573,6 +578,7 @@ class SandboxProfile(Protocol):
     ssh_workdir: str
     command_policy: str
     project_path: str | None
+    sandbox_tools: tuple[str, ...]
 
 
 def profile_host_root(profile: SandboxProfile) -> str | None:
@@ -608,6 +614,7 @@ async def open_sandbox_for_spec(
     prefix = f"{label}: " if label else ""
     backend = profile.backend
     host_root = profile_host_root(profile)
+    tools = tuple(getattr(profile, "sandbox_tools", ()) or ())
 
     if backend == "local":
         return await Sandbox.create(
@@ -615,6 +622,7 @@ async def open_sandbox_for_spec(
             workdir=workdir,
             host_root=host_root,
             command_policy=profile.command_policy,
+            tools=tools,
         )
 
     if backend in ("container", "docker", "podman"):
@@ -627,6 +635,7 @@ async def open_sandbox_for_spec(
             image=profile.image,
             container_ttl_seconds=profile.container_ttl_seconds,
             command_policy=profile.command_policy,
+            tools=tools,
         )
 
     if backend == "ssh":
@@ -645,6 +654,7 @@ async def open_sandbox_for_spec(
             host_root=host_root,
             connection=conn.to_dict(),
             command_policy=profile.command_policy,
+            tools=tools,
         )
 
     raise ValueError(

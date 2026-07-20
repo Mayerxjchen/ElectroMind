@@ -102,6 +102,7 @@ class SandboxSpec:
     default_limits: SandboxLimits = field(default_factory=SandboxLimits)
     container_ttl_seconds: int | None = None
     command_policy: str = "open"
+    tools: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

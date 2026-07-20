@@ -63,6 +63,27 @@ def test_thread_spec_to_dict_roundtrip():
     assert restored.project_path == original.project_path
 
 
+def test_thread_spec_sandbox_tools_toml_roundtrip():
+    import tomllib
+
+    from pagentv4.ithread.local import dump_thread_toml
+
+    original = ThreadSpec(
+        backend="local",
+        sandbox_tools=("run_command", "read_file"),
+    )
+    text = dump_thread_toml(original.to_dict())
+    restored = ThreadSpec.from_dict(tomllib.loads(text))
+    assert list(restored.sandbox_tools) == ["run_command", "read_file"]
+
+
+def test_thread_spec_empty_sandbox_tools_omitted_from_toml():
+    from pagentv4.ithread.local import dump_thread_toml
+
+    text = dump_thread_toml(ThreadSpec(backend="local").to_dict())
+    assert "tools" not in text
+
+
 def test_thread_spec_field_names():
     names = ThreadSpec.field_names()
     assert "backend" in names

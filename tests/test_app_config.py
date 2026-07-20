@@ -1,3 +1,5 @@
+import pytest
+
 from app.config import (
     BUNDLED_CONFIG,
     ReplConfig,
@@ -25,6 +27,27 @@ def test_thread_overrides_container_ttl_zero_means_infinity():
 def test_thread_overrides_includes_command_policy():
     config = ReplConfig(backend="local", command_policy="workdir")
     assert config.thread_overrides()["command_policy"] == "workdir"
+
+
+def test_thread_overrides_includes_sandbox_tools():
+    config = ReplConfig(sandbox_tools=("run_command", "read_file"))
+    assert config.thread_overrides()["sandbox_tools"] == ("run_command", "read_file")
+
+
+def test_thread_overrides_omits_sandbox_tools_when_unset():
+    config = ReplConfig(backend="local")
+    assert "sandbox_tools" not in config.thread_overrides()
+
+
+def test_parse_repl_config_sandbox_tools():
+    config = parse_repl_config({"sandbox": {"tools": ["run_command", "read_file", ""]}})
+    # 空串被过滤，其余保序。
+    assert config.sandbox_tools == ("run_command", "read_file")
+
+
+def test_parse_repl_config_sandbox_tools_rejects_non_list():
+    with pytest.raises(ValueError, match="sandbox.tools"):
+        parse_repl_config({"sandbox": {"tools": "run_command"}})
 
 
 def test_thread_overrides_from_config():

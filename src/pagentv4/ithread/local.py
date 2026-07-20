@@ -51,6 +51,11 @@ def format_toml_value(value: str | int | bool) -> str:
     return f'"{escaped}"'
 
 
+def format_toml_array(values: tuple | list) -> str:
+    items = ", ".join(format_toml_value(item) for item in values)
+    return f"[{items}]"
+
+
 def dump_thread_toml(payload: dict) -> str:
     lines: list[str] = []
     for section, values in payload.items():
@@ -62,6 +67,11 @@ def dump_thread_toml(payload: dict) -> str:
         lines.append(f"[{section}]")
         for name, value in items:
             if isinstance(value, dict):
+                continue
+            if isinstance(value, (tuple, list)):
+                if not value:
+                    continue
+                lines.append(f"{name} = {format_toml_array(value)}")
                 continue
             lines.append(f"{name} = {format_toml_value(value)}")
         lines.append("")

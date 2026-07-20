@@ -26,6 +26,7 @@ class ReplConfig:
     image: str | None = None
     container_ttl: int | None = None
     command_policy: str | None = None
+    sandbox_tools: tuple[str, ...] | None = None
     project_path: str | None = None
     ssh_host: str | None = None
     ssh_config: str | None = None
@@ -77,6 +78,8 @@ class ReplConfig:
             kwargs["container_ttl_seconds"] = self.container_ttl or None
         if self.command_policy is not None:
             kwargs["command_policy"] = self.command_policy
+        if self.sandbox_tools is not None:
+            kwargs["sandbox_tools"] = self.sandbox_tools
         if self.project_path is not None and self.project_path != "":
             kwargs["project_path"] = self.project_path
         if self.ssh_config is not None:
@@ -138,6 +141,17 @@ def parse_repl_config(data: dict) -> ReplConfig:
     if container_ttl is not None and not isinstance(container_ttl, int):
         raise ValueError("sandbox.container_ttl must be an integer")
 
+    tools = sandbox.get("tools")
+    sandbox_tools: tuple[str, ...] | None
+    if tools is None:
+        sandbox_tools = None
+    elif isinstance(tools, list):
+        if not all(isinstance(item, str) for item in tools):
+            raise ValueError("sandbox.tools must be a list of strings")
+        sandbox_tools = tuple(item for item in tools if item.strip())
+    else:
+        raise ValueError("sandbox.tools must be a list of strings")
+
     project_path = project.get("path")
     if project_path is not None and not isinstance(project_path, str):
         raise ValueError("project.path must be a string")
@@ -186,6 +200,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
         image=image,
         container_ttl=container_ttl,
         command_policy=command_policy,
+        sandbox_tools=sandbox_tools,
         project_path=project_path,
         ssh_host=ssh.get("host"),
         ssh_config=ssh.get("config_path"),
