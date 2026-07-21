@@ -43,6 +43,7 @@ import {
   getEnvironmentCheck,
   getOnboardingState,
   installPagentCli,
+  listSandboxImages,
   saveProviderSetup,
 } from "./setup";
 
@@ -239,10 +240,13 @@ function readSshHosts(configPath = "~/.ssh/config"): string[] {
 }
 
 function newSessionOptions(): NewSessionOptions {
+  const images = listSandboxImages();
   return {
     projectPath,
     availableBackends: detectAvailableBackends(),
     sshHosts: readSshHosts(),
+    defaultImage: images.defaultImage,
+    availableImages: images.images,
   };
 }
 

@@ -89,6 +89,7 @@ model = "deepseek-v4-flash"
 | 项 | 建议 |
 | --- | --- |
 | **沙箱类型** | 选 **local**（本机运行，默认即可，无需 Docker） |
+| **镜像** | 选 **容器** 时可选本机 `pagent*` 镜像（如 `pagent:latest` / `pagent:browser`） |
 | **项目目录** | 选要让助手操作的那个文件夹 |
 
 点 **创建会话**，在底部输入框打字，**Enter** 发送（**Shift+Enter** 换行）。

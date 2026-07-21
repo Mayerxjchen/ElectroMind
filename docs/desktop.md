@@ -87,6 +87,7 @@ In the **New task** dialog:
 | Field | What to pick |
 | --- | --- |
 | **Sandbox** | **local** — runs on your Mac, no Docker needed (default) |
+| **Image** | When **container** is selected, pick a local `pagent*` image (e.g. `pagent:latest` / `pagent:browser`) |
 | **Project folder** | The folder on disk you want the agent to work with |
 
 Click **Create session**, type in the box at the bottom, press **Enter** to send (**Shift+Enter** for a new line).

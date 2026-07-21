@@ -61,8 +61,8 @@ npm run check        # 类型检查（tsc --noEmit）
 桌面端启动参数默认 `--backend local`（见 [src/shared/agent.ts](src/shared/agent.ts) 的 `resolvePagentWireInvocation`），
 **不依赖 Docker/Podman**，开箱即用。
 
-新建任务时会弹出配置面板，可按会话选择沙箱类型（local / container / docker / podman / ssh）与项目目录；
-选中的 `backend` 会随 wire `reset` 写入该 thread 的 `thread.toml`，不需要重启进程。
+新建任务时会弹出配置面板，可按会话选择沙箱类型（local / container / ssh）、容器镜像与项目目录；
+选中的 `backend` / `image` 会随 wire `reset` 写入该 thread 的 `thread.toml`，不需要重启进程。
 
 输入框旁的闪电按钮可开启 **YOLO**（自动审批工具调用）：会写入 `~/.pagent/desktop.json`，并重启 wire
 （带 `--permission-mode auto`）后生效。
@@ -101,8 +101,8 @@ image = "pagent:latest"  # 想渲染网页/PDF 就换成 pagent:browser
 container_ttl = 300      # 容器主进程 sleep <ttl> 秒，到期 --rm 自清理；0 或不设则 sleep infinity
 ```
 
-注意：CLI 默认仍是 `--backend local`，但新建任务面板里选中的 backend 会覆盖到该次 `reset`。
-`image` / `container_ttl` 仍从配置读取（面板暂未暴露）。
+注意：CLI 默认仍是 `--backend local`，但新建任务面板里选中的 backend / image 会覆盖到该次 `reset`。
+`container_ttl` 仍从配置读取（面板暂未暴露）。
 
 镜像缺失时不会自动构建或拉取：`docker run` 直接失败并把错误抛回桌面端。上容器 backend 前先确认镜像已 build。
 

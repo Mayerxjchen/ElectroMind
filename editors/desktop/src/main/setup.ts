@@ -84,11 +84,16 @@ function directorySizeBytes(dir: string): number | undefined {
 
 function imageSizeBytes(runtime: "docker" | "podman", image: string): number | undefined {
   try {
-    const out = execFileSync(runtime, ["image", "inspect", image, "--format", "{{.Size}}"], {
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-      timeout: 20_000,
-    }).trim();
+    const out = execFileSync(
+      resolveCliCommand(runtime),
+      ["image", "inspect", image, "--format", "{{.Size}}"],
+      {
+        encoding: "utf8",
+        env: { ...process.env, PATH: enrichedPath() },
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 20_000,
+      },
+    ).trim();
     const bytes = Number.parseInt(out, 10);
     return Number.isFinite(bytes) && bytes >= 0 ? bytes : undefined;
   } catch {
@@ -158,7 +163,8 @@ function readSandboxImageName(): string {
 
 function imageExists(runtime: "docker" | "podman", image: string): boolean {
   try {
-    execFileSync(runtime, ["image", "inspect", image], {
+    execFileSync(resolveCliCommand(runtime), ["image", "inspect", image], {
+      env: { ...process.env, PATH: enrichedPath() },
       stdio: "pipe",
       timeout: 20_000,
     });
@@ -185,6 +191,51 @@ export function hasConfiguredApiKey(): boolean {
   }
 }
 
+function detectContainerRuntime(): "docker" | "podman" | undefined {
+  if (cliOnPath("docker")) {
+    return "docker";
+  }
+  if (cliOnPath("podman")) {
+    return "podman";
+  }
+  return undefined;
+}
+
+function listLocalImageTags(runtime: "docker" | "podman"): string[] {
+  try {
+    const out = execFileSync(
+      resolveCliCommand(runtime),
+      ["images", "--format", "{{.Repository}}:{{.Tag}}"],
+      {
+        encoding: "utf8",
+        env: { ...process.env, PATH: enrichedPath() },
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 20_000,
+      },
+    );
+    const tags: string[] = [];
+    for (const line of out.split("\n")) {
+      const tag = line.trim();
+      if (!tag || tag.includes("<none>") || !tag.startsWith("pagent")) {
+        continue;
+      }
+      tags.push(tag);
+    }
+    return tags;
+  } catch {
+    return [];
+  }
+}
+
+/** 新建会话用的默认镜像 + 本机 pagent* 镜像列表。 */
+export function listSandboxImages(): { defaultImage: string; images: string[] } {
+  const defaultImage = readSandboxImageName();
+  const runtime = detectContainerRuntime();
+  const found = runtime ? listLocalImageTags(runtime) : [];
+  const images = [defaultImage, ...found.filter((tag) => tag !== defaultImage)];
+  return { defaultImage, images: [...new Set(images)] };
+}
+
 export function getEnvironmentCheck(options?: {
   /** 是否统计磁盘占用（偏慢）；设置页自检为 true，启动挡墙为 false */
   includeDisk?: boolean;
@@ -194,7 +245,7 @@ export function getEnvironmentCheck(options?: {
   const pagentInstalled = cliOnPath("pagent");
   const dockerInstalled = cliOnPath("docker");
   const podmanInstalled = cliOnPath("podman");
-  const containerRuntime = dockerInstalled ? "docker" : podmanInstalled ? "podman" : undefined;
+  const containerRuntime = detectContainerRuntime();
   const image = readSandboxImageName();
   const sandboxImageExists = containerRuntime
     ? imageExists(containerRuntime, image)

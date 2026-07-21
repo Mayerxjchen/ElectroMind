@@ -445,6 +445,7 @@ function renderNewSessionForm(
     projectPath: string;
     sshHost: string;
     sshWorkdir: string;
+    image: string;
   },
 ): string {
   const backends = options.availableBackends.length > 0
@@ -452,6 +453,14 @@ function renderNewSessionForm(
     : (["local"] as SandboxBackendOption[]);
   const backend = backends.includes(draft.backend) ? draft.backend : backends[0];
   const sshHosts = options.sshHosts;
+  const images = options.availableImages.length > 0
+    ? options.availableImages
+    : [options.defaultImage || "pagent:latest"];
+  const image = draft.image && images.includes(draft.image)
+    ? draft.image
+    : (images.includes(options.defaultImage) ? options.defaultImage : images[0]);
+  const isContainer =
+    backend === "container" || backend === "docker" || backend === "podman";
   const backendCards = backends
     .map((item) => {
       const active = item === backend ? " active" : "";
@@ -466,6 +475,30 @@ function renderNewSessionForm(
       `;
     })
     .join("");
+  const imageBlock = isContainer
+    ? `
+      <label class="new-session-field">
+        <span class="new-session-label">镜像</span>
+        ${images.length > 1
+          ? `<div class="new-session-dropdown" data-image-dropdown>
+              <button class="new-session-input new-session-dropdown-trigger" type="button" data-image-dropdown-toggle aria-haspopup="listbox" aria-expanded="false">
+                <span class="new-session-dropdown-value" data-image-label>${escapeHtml(image)}</span>
+                <span class="new-session-dropdown-chevron" aria-hidden="true">${renderIcon("chevron-down")}</span>
+              </button>
+              <input type="hidden" data-image value="${escapeHtml(image)}" />
+              <div class="new-session-dropdown-menu" data-image-dropdown-menu hidden role="listbox">
+                ${images.map((item) => {
+                  const active = item === image ? " active" : "";
+                  return `<button class="new-session-dropdown-option${active}" type="button" role="option" data-image-option value="${escapeHtml(item)}" aria-selected="${item === image ? "true" : "false"}">${escapeHtml(item)}</button>`;
+                }).join("")}
+              </div>
+            </div>`
+          : `<input class="new-session-input" data-image type="text" value="${escapeHtml(image)}" placeholder="pagent:latest" spellcheck="false" />`
+        }
+        <div class="new-session-hint">本机 pagent 镜像；browser 可用于渲染 HTML / 导出 PDF。</div>
+      </label>
+    `
+    : "";
   const sshBlock = backend === "ssh"
     ? `
       <label class="new-session-field">
@@ -500,6 +533,7 @@ function renderNewSessionForm(
         <div class="new-session-backends" data-backend-list style="--backend-count: ${backends.length}">${backendCards}</div>
         <div class="new-session-hint" data-backend-hint>${escapeHtml(sandboxBackendOptionHint(backend))}</div>
       </div>
+      ${imageBlock}
       <label class="new-session-field">
         <span class="new-session-label">项目目录</span>
         <div class="new-session-path-row">
@@ -1650,6 +1684,7 @@ async function start(): Promise<void> {
     projectPath: "",
     sshHost: "",
     sshWorkdir: "~/pagent",
+    image: "pagent:latest",
   };
   let newSessionOptionsCache: NewSessionOptions | null = null;
 
@@ -1945,6 +1980,10 @@ async function start(): Promise<void> {
     if (projectInput) {
       newSessionDraft.projectPath = projectInput.value.trim();
     }
+    const imageEl = newSessionBody.querySelector<HTMLInputElement>("[data-image]");
+    if (imageEl) {
+      newSessionDraft.image = imageEl.value.trim() || "pagent:latest";
+    }
     const sshHostEl = newSessionBody.querySelector<HTMLInputElement>("[data-ssh-host]");
     if (sshHostEl) {
       newSessionDraft.sshHost = sshHostEl.value.trim();
@@ -1969,13 +2008,45 @@ async function start(): Promise<void> {
     trigger?.setAttribute("aria-expanded", "false");
   }
 
+  function closeImageDropdown(): void {
+    const dropdown = newSessionBody.querySelector<HTMLElement>("[data-image-dropdown]");
+    if (!dropdown) {
+      return;
+    }
+    const menu = dropdown.querySelector<HTMLElement>("[data-image-dropdown-menu]");
+    const trigger = dropdown.querySelector<HTMLButtonElement>("[data-image-dropdown-toggle]");
+    if (menu) {
+      menu.hidden = true;
+    }
+    dropdown.classList.remove("is-open");
+    trigger?.setAttribute("aria-expanded", "false");
+  }
+
   function toggleSshHostDropdown(): void {
+    closeImageDropdown();
     const dropdown = newSessionBody.querySelector<HTMLElement>("[data-ssh-dropdown]");
     if (!dropdown) {
       return;
     }
     const menu = dropdown.querySelector<HTMLElement>("[data-ssh-dropdown-menu]");
     const trigger = dropdown.querySelector<HTMLButtonElement>("[data-ssh-dropdown-toggle]");
+    if (!menu || !trigger) {
+      return;
+    }
+    const open = menu.hidden;
+    menu.hidden = !open;
+    dropdown.classList.toggle("is-open", open);
+    trigger.setAttribute("aria-expanded", String(open));
+  }
+
+  function toggleImageDropdown(): void {
+    closeSshHostDropdown();
+    const dropdown = newSessionBody.querySelector<HTMLElement>("[data-image-dropdown]");
+    if (!dropdown) {
+      return;
+    }
+    const menu = dropdown.querySelector<HTMLElement>("[data-image-dropdown-menu]");
+    const trigger = dropdown.querySelector<HTMLButtonElement>("[data-image-dropdown-toggle]");
     if (!menu || !trigger) {
       return;
     }
@@ -2002,6 +2073,24 @@ async function start(): Promise<void> {
       option.setAttribute("aria-selected", String(active));
     });
     closeSshHostDropdown();
+  }
+
+  function selectImage(image: string): void {
+    newSessionDraft.image = image;
+    const input = newSessionBody.querySelector<HTMLInputElement>("[data-image]");
+    const label = newSessionBody.querySelector<HTMLElement>("[data-image-label]");
+    if (input) {
+      input.value = image;
+    }
+    if (label) {
+      label.textContent = image;
+    }
+    newSessionBody.querySelectorAll<HTMLElement>("[data-image-option]").forEach((option) => {
+      const active = option.getAttribute("value") === image;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-selected", String(active));
+    });
+    closeImageDropdown();
   }
 
   function paintNewSessionForm(): void {
@@ -2048,6 +2137,12 @@ async function start(): Promise<void> {
       }
       newSessionDraft.projectPath = options.projectPath || uiState.runtime.projectPath;
       if (
+        !newSessionDraft.image ||
+        (options.availableImages.length > 0 && !options.availableImages.includes(newSessionDraft.image))
+      ) {
+        newSessionDraft.image = options.defaultImage || options.availableImages[0] || "pagent:latest";
+      }
+      if (
         newSessionDraft.backend === "ssh" &&
         !newSessionDraft.sshHost &&
         options.sshHosts.length > 0
@@ -2078,6 +2173,13 @@ async function start(): Promise<void> {
       backend: newSessionDraft.backend,
       projectPath: newSessionDraft.projectPath,
     };
+    if (
+      newSessionDraft.backend === "container" ||
+      newSessionDraft.backend === "docker" ||
+      newSessionDraft.backend === "podman"
+    ) {
+      options.image = newSessionDraft.image.trim() || "pagent:latest";
+    }
     if (newSessionDraft.backend === "ssh") {
       options.sshHost = newSessionDraft.sshHost;
       options.sshWorkdir = newSessionDraft.sshWorkdir || "~/pagent";
@@ -2854,6 +2956,15 @@ async function start(): Promise<void> {
       closeNewSessionModal();
       return;
     }
+    const imageOption = target.closest<HTMLElement>("[data-image-option]");
+    if (imageOption) {
+      selectImage(imageOption.getAttribute("value") || "");
+      return;
+    }
+    if (target.closest("[data-image-dropdown-toggle]")) {
+      toggleImageDropdown();
+      return;
+    }
     const hostOption = target.closest<HTMLElement>("[data-ssh-host-option]");
     if (hostOption) {
       selectSshHost(hostOption.getAttribute("value") || "");
@@ -2866,6 +2977,9 @@ async function start(): Promise<void> {
     if (!target.closest("[data-ssh-dropdown]")) {
       closeSshHostDropdown();
     }
+    if (!target.closest("[data-image-dropdown]")) {
+      closeImageDropdown();
+    }
     const backendButton = target.closest<HTMLElement>("[data-backend]");
     if (backendButton?.dataset.backend) {
       syncNewSessionDraftFromDom();
@@ -2877,6 +2991,18 @@ async function start(): Promise<void> {
         newSessionOptionsCache.sshHosts.length > 0
       ) {
         newSessionDraft.sshHost = newSessionOptionsCache.sshHosts[0];
+      }
+      if (
+        (newSessionDraft.backend === "container" ||
+          newSessionDraft.backend === "docker" ||
+          newSessionDraft.backend === "podman") &&
+        newSessionOptionsCache &&
+        !newSessionDraft.image
+      ) {
+        newSessionDraft.image =
+          newSessionOptionsCache.defaultImage ||
+          newSessionOptionsCache.availableImages[0] ||
+          "pagent:latest";
       }
       paintNewSessionForm();
       return;

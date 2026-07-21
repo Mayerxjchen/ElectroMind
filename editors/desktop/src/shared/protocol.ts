@@ -133,6 +133,10 @@ export type NewSessionOptions = {
     projectPath: string;
     availableBackends: SandboxBackendOption[];
     sshHosts: string[];
+    /** 配置默认镜像（[sandbox].image 或 pagent:latest） */
+    defaultImage: string;
+    /** 本机可用的 pagent* 镜像（含 defaultImage） */
+    availableImages: string[];
 };
 
 export type SandboxTreeNode = {
