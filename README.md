@@ -6,6 +6,7 @@
 
 [![CI](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml/badge.svg)](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml)
 [![Coverage](https://codecov.io/gh/SyncLionPaw/pagent/graph/badge.svg)](https://app.codecov.io/gh/SyncLionPaw/pagent)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 Language: [中文](./README.zh-CN.md) | [English](./README.en.md) · [Docs](https://synclionpaw.github.io/pagent/) · [For agents](./AGENTS.md) · [llms.txt](./llms.txt)
 
@@ -200,3 +201,7 @@ See `clock`, `region` in `pagent.defaults`.
 - Requires an **OpenAI Chat Completions**–compatible API.
 - A minimal embeddable loop—not a full coding-agent product with file edit/shell.
 - Development & internals: [docs/development.md](docs/development.md)
+
+## License
+
+[MIT](./LICENSE)

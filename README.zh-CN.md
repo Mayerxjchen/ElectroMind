@@ -6,6 +6,7 @@
 
 [![CI](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml/badge.svg)](https://github.com/SyncLionPaw/pagent/actions/workflows/ruff.yml)
 [![Coverage](https://codecov.io/gh/SyncLionPaw/pagent/graph/badge.svg)](https://app.codecov.io/gh/SyncLionPaw/pagent)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 语言： [中文](./README.zh-CN.md) | [English](./README.en.md) · [文档站](https://synclionpaw.github.io/pagent/) · [给 Agent 看](./AGENTS.md) · [llms.txt](./llms.txt)
 
@@ -200,3 +201,7 @@ agent = Agent(
 - 需要 **OpenAI Chat Completions** 兼容接口。
 - 适合嵌入自己的小循环；不是带文件编辑/终端的完整编程 Agent 产品。
 - 参与开发、内部实现：[docs/development.zh-CN.md](docs/development.zh-CN.md)
+
+## 许可证
+
+[MIT](./LICENSE)
