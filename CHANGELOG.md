@@ -18,6 +18,30 @@
 
 ---
 
+## 0.7.12 — 2026-07-22
+
+沙箱工具白名单，以及 Desktop 新建会话时选择本地容器镜像。
+
+### Highlights
+
+- **沙箱工具白名单**：可配置允许的 sandbox 工具集合
+- **Desktop 新建会话**：按 backend 选择本机已有的 `pagent*` 容器镜像，并补充相关文档与默认镜像选项
+
+### Install
+
+```bash
+uv tool install --force pagent
+```
+
+- VS Code：`pagent-vscode-0.7.12.vsix`
+- 桌面端（macOS Apple Silicon）：`pagent-Desktop-0.7.12-arm64.zip`
+
+### Links
+
+- Compare: https://github.com/SyncLionPaw/pagent/compare/v0.7.10...v0.7.12
+
+---
+
 ## 0.7.10 — 2026-07-19
 
 Desktop 首次设置向导、环境自检，以及 setup 后 API Key 立即生效。
