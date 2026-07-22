@@ -17,7 +17,6 @@ from typing import Literal
 
 USER_PAGENT_HOME = Path("~/.pagent")
 PROJECT_PAGENT_DIRNAME = ".pagent"
-LEGACY_PROJECT_CONFIG = "pagent.toml"
 HOME_CONFIG_NAME = "pagent.toml"
 
 Mode = Literal["prod", "dev"]
@@ -72,18 +71,11 @@ def default_pagent_home() -> Path:
 
 
 def home_config_path(cwd: str | Path | None = None) -> Path:
-    """``{home}/pagent.toml``；开发模式若尚未迁移，见 ``find_home_config``。"""
+    """``{home}/pagent.toml``。"""
     return resolve_pagent_home(cwd) / HOME_CONFIG_NAME
 
 
 def find_home_config(cwd: str | Path | None = None) -> Path | None:
-    """当前 home 下的配置文件；开发模式兼容项目根遗留的 ``pagent.toml``。"""
-    home = resolve_pagent_home(cwd)
-    primary = home / HOME_CONFIG_NAME
-    if primary.is_file():
-        return primary
-    if home.name == PROJECT_PAGENT_DIRNAME and home != user_pagent_home().resolve():
-        legacy = home.parent / LEGACY_PROJECT_CONFIG
-        if legacy.is_file():
-            return legacy
-    return None
+    """当前 home 下的配置文件；只认 ``{home}/pagent.toml`` 这一个位置。"""
+    primary = resolve_pagent_home(cwd) / HOME_CONFIG_NAME
+    return primary if primary.is_file() else None

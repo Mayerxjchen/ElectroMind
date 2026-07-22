@@ -36,13 +36,17 @@ def test_dev_mode_defaults_root_to_cwd(tmp_path, monkeypatch):
     assert resolve_pagent_home() == (tmp_path / ".pagent").resolve()
 
 
-def test_dev_mode_finds_legacy_root_pagent_toml(tmp_path, monkeypatch):
+def test_dev_mode_ignores_root_pagent_toml(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     root = tmp_path / "proj"
     root.mkdir()
     (root / "pagent.toml").write_text("[provider]\nmodel = 'x'\n", encoding="utf-8")
     activate_home("dev", root)
-    assert find_home_config() == root / "pagent.toml"
+    # 只认 <root>/.pagent/pagent.toml；根目录遗留的 pagent.toml 不再被采用。
+    assert find_home_config() is None
+    (root / ".pagent").mkdir()
+    (root / ".pagent" / "pagent.toml").write_text("", encoding="utf-8")
+    assert find_home_config() == root / ".pagent" / "pagent.toml"
 
 
 def test_default_is_user_home_without_activation(tmp_path, monkeypatch):
