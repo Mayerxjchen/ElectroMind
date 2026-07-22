@@ -100,7 +100,9 @@ async def test_runner_loads_prior_conversation(tmp_path, monkeypatch):
     finally:
         await runner.close()
 
-    store = JsonlConversationStore(root=tmp_path / ".pagent" / "threads" / "beta")
+    store = JsonlConversationStore(
+        root=tmp_path / ".pagent" / "threads" / "beta" / "messages"
+    )
     reloaded = store.load("messages")
     assert reloaded.data[-1].content.text == "second"
 
@@ -227,6 +229,8 @@ async def test_runner_persists_conversation(tmp_path, monkeypatch):
     finally:
         await runner.close()
 
-    store = JsonlConversationStore(root=tmp_path / ".pagent" / "threads" / "zeta")
+    store = JsonlConversationStore(
+        root=tmp_path / ".pagent" / "threads" / "zeta" / "messages"
+    )
     reloaded = store.load("messages")
     assert reloaded.data[-1].content.text == "done"

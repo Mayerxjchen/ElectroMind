@@ -141,8 +141,8 @@ async def test_from_spec_opens_thread_sandbox(monkeypatch, tmp_path):
         async def close(self):
             return None
 
-    async def fake_open_sandbox(self):
-        assert self.workspace_path == tmp_path / "with-sandbox" / "workspace"
+    async def fake_open_sandbox(self, name="main"):
+        assert self.workspace_path == tmp_path / "with-sandbox" / "workspaces" / "main"
         return FakeSandbox()
 
     monkeypatch.setattr(Thread, "open_sandbox", fake_open_sandbox)
@@ -173,7 +173,7 @@ async def test_flush_conversation(tmp_path):
     assert any(
         m.content.text == "saved" for m in reloaded.data if m.role == "assistant"
     )
-    assert (tmp_path / "test" / "messages.jsonl").is_file()
+    assert (tmp_path / "test" / "messages" / "messages.jsonl").is_file()
     await runner.close()
 
 

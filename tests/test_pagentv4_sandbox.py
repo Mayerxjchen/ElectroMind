@@ -731,7 +731,13 @@ async def test_runner_open_binds_sandbox_tools(tmp_path, monkeypatch):
         await runner.close()
 
     note_path = (
-        tmp_path / ".pagent" / "threads" / "sandbox-test" / "workspace" / "note.md"
+        tmp_path
+        / ".pagent"
+        / "threads"
+        / "sandbox-test"
+        / "workspaces"
+        / "main"
+        / "note.md"
     )
     assert note_path.read_text() == "hello via session"
     assert "ToolCallBegin" in events
@@ -808,7 +814,9 @@ async def test_runner_open_closes_sandbox_on_exception(tmp_path, monkeypatch):
             pass
     await runner.close()
 
-    assert (tmp_path / ".pagent" / "threads" / "boom-test" / "workspace").exists()
+    assert (
+        tmp_path / ".pagent" / "threads" / "boom-test" / "workspaces" / "main"
+    ).exists()
 
 
 def make_spec(**overrides) -> SandboxSpec:

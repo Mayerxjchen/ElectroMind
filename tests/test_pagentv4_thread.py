@@ -40,7 +40,7 @@ def test_thread_open_creates_spec_and_workspace(tmp_path):
     assert thread.ignored_overrides == ()
     assert thread.root == tmp_path / "demo"
     assert (tmp_path / "demo" / "thread.toml").exists()
-    assert (tmp_path / "demo" / "workspace").is_dir()
+    assert (tmp_path / "demo" / "workspaces" / "main").is_dir()
 
     payload = tomllib.loads((tmp_path / "demo" / "thread.toml").read_text())
     assert payload["sandbox"]["backend"] == "podman"

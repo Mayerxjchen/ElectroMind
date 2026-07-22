@@ -23,7 +23,9 @@ from ..sandbox import Sandbox
 THREAD_ID_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.\-]{0,127}$")
 SPEC_FILENAME = "thread.toml"
 METAINFO_FILENAME = "metainfo.json"
-WORKSPACE_DIRNAME = "workspace"
+WORKSPACES_DIRNAME = "workspaces"
+MAIN_WORKSPACE_NAME = "main"
+MESSAGES_DIRNAME = "messages"
 MESSAGES_CONVERSATION_ID = "messages"
 
 
@@ -50,6 +52,56 @@ def toml_field(section: str, key: str, default):
     return field(default=default, metadata={"section": section, "key": key})
 
 
+SUB_SECTION = "sub"
+
+
+@dataclass
+class SubAgentSpec:
+    """一个命名子 agent 的配置；对应 thread.toml 里的 ``[sub.<name>]``。
+
+    子 agent 由主 agent 通过 delegate 工具启动，跑在同一 thread、同一 Runner 上。
+    这些字段决定子 agent 起来时用什么 model、要不要自己的沙箱与 workspace：
+
+    - ``system``：子 agent 的系统提示词。
+    - ``model``：模型；空表示继承主 agent 的 model。
+    - ``backend``：沙箱后端；空表示继承 thread 的 backend，``"none"`` 表示不开沙箱。
+    - ``sandbox_tools``：沙箱工具白名单；空表示放开全部。
+    - ``max_turns``：子 agent 的循环上限。
+    - ``workspace``：独立 workspace 名；空表示复用主 agent 的 ``main`` workspace，
+      非空则在 ``workspaces/<name>/`` 下开自己的地盘。
+    """
+
+    system: str = ""
+    model: str = ""
+    backend: str = ""
+    sandbox_tools: tuple[str, ...] = ()
+    max_turns: int = 8
+    workspace: str = ""
+
+    def to_dict(self) -> dict:
+        data: dict = {
+            "system": self.system,
+            "model": self.model,
+            "backend": self.backend,
+            "sandbox_tools": list(self.sandbox_tools),
+            "max_turns": self.max_turns,
+            "workspace": self.workspace,
+        }
+        return {key: value for key, value in data.items() if value not in ("", [])}
+
+    @classmethod
+    def from_dict(cls, payload: dict) -> SubAgentSpec:
+        tools = payload.get("sandbox_tools", ())
+        return cls(
+            system=payload.get("system", ""),
+            model=payload.get("model", ""),
+            backend=payload.get("backend", ""),
+            sandbox_tools=tuple(tools),
+            max_turns=payload.get("max_turns", 8),
+            workspace=payload.get("workspace", ""),
+        )
+
+
 @dataclass
 class ThreadSpec:
     """一个 thread 的长期配置；首次冻结、写进 thread.toml。
@@ -59,7 +111,7 @@ class ThreadSpec:
     """
 
     conversation_backend: str = toml_field("conversation", "backend", "jsonl")
-    conversation_root: str = toml_field("conversation", "root", ".")
+    conversation_root: str = toml_field("conversation", "root", MESSAGES_DIRNAME)
     conversation_db_path: str = toml_field(
         "conversation", "db_path", "conversations.sqlite"
     )
@@ -85,7 +137,19 @@ class ThreadSpec:
     model: str = toml_field("agent", "model", "deepseek-v4-flash")
     system: str = toml_field("agent", "system", "")
 
+    # 命名子 agent：name -> SubAgentSpec，对应 thread.toml 里的 [sub.<name>] 表。
+    # 不走 toml_field（那套只表达单层 [section] key），由 to_dict/from_dict 专门处理。
+    subs: dict[str, SubAgentSpec] = field(default_factory=dict)
+
     extra: dict = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        # subs 可能由 asdict(spec) 之类的路径传进来（值是普通 dict），统一收敛成
+        # SubAgentSpec，让下游只面对一种类型。
+        self.subs = {
+            name: sub if isinstance(sub, SubAgentSpec) else SubAgentSpec.from_dict(sub)
+            for name, sub in self.subs.items()
+        }
 
     @classmethod
     def section_bindings(cls) -> list[tuple[str, str, str]]:
@@ -100,6 +164,10 @@ class ThreadSpec:
         sections: dict[str, dict] = {}
         for name, section, key in self.section_bindings():
             sections.setdefault(section, {})[key] = getattr(self, name)
+        if self.subs:
+            sections[SUB_SECTION] = {
+                name: sub.to_dict() for name, sub in self.subs.items()
+            }
         sections["extra"] = dict(self.extra)
         return sections
 
@@ -113,12 +181,20 @@ class ThreadSpec:
             elif name in payload:  # 兼容顶层扁平写法（旧格式）
                 known[name] = payload[name]
 
+        sub_block = payload.get(SUB_SECTION, {})
+        if isinstance(sub_block, dict) and sub_block:
+            known["subs"] = {
+                name: SubAgentSpec.from_dict(spec)
+                for name, spec in sub_block.items()
+                if isinstance(spec, dict)
+            }
+
         section_keys: dict[str, set[str]] = {}
         for _, section, key in cls.section_bindings():
             section_keys.setdefault(section, set()).add(key)
 
         extra = dict(payload.get("extra", {}))
-        top_level_skip = set(section_keys) | {"extra"} | cls.field_names()
+        top_level_skip = set(section_keys) | {"extra", SUB_SECTION} | cls.field_names()
         for name, value in payload.items():
             if name not in top_level_skip:
                 extra[name] = value
@@ -152,6 +228,8 @@ class IThread(Protocol):
     @property
     def workspace_path(self) -> Path: ...
 
+    def workspace_path_for(self, name: str) -> Path: ...
+
     @property
     def metainfo_path(self) -> Path: ...
 
@@ -166,4 +244,4 @@ class IThread(Protocol):
 
     def load_messages(self) -> Messages: ...
 
-    async def open_sandbox(self) -> Sandbox: ...
+    async def open_sandbox(self, name: str = MAIN_WORKSPACE_NAME) -> Sandbox: ...

@@ -77,7 +77,7 @@ class FakeSandbox:
 def fake_sandbox(monkeypatch):
     opened: list[FakeSandbox] = []
 
-    async def open_sandbox(self):
+    async def open_sandbox(self, name="main"):
         sandbox = FakeSandbox(self.workspace_path)
         opened.append(sandbox)
         return sandbox
@@ -131,8 +131,10 @@ async def test_code_runner_create_opens_thread_and_sandbox(
     assert runner.thread.id == "code-test"
     assert runner.thread.root == tmp_path / "code-test"
     assert (tmp_path / "code-test" / "thread.toml").is_file()
-    assert (tmp_path / "code-test" / "workspace").is_dir()
-    assert fake_sandbox[0].workdir == str(tmp_path / "code-test" / "workspace")
+    assert (tmp_path / "code-test" / "workspaces" / "main").is_dir()
+    assert fake_sandbox[0].workdir == str(
+        tmp_path / "code-test" / "workspaces" / "main"
+    )
     assert runner.sandbox is fake_sandbox[0]
 
     assert tool_names(runner.agent) == {
@@ -188,7 +190,7 @@ async def test_code_runner_lazy_init_before_run(tmp_path, fake_sandbox, monkeypa
 async def test_run_state_waking_sandbox_on_lazy_init(tmp_path, monkeypatch):
     import asyncio
 
-    async def slow_open_sandbox(self):
+    async def slow_open_sandbox(self, name="main"):
         await asyncio.sleep(0.05)
         sandbox = FakeSandbox(self.workspace_path)
         return sandbox
@@ -279,7 +281,9 @@ async def test_code_runner_from_toml_uses_thread_workspace(
 
     assert runner.thread.id == "toml-code"
     assert runner.conversation_id == "main"
-    assert fake_sandbox[0].workdir == str(tmp_path / "toml-code" / "workspace")
+    assert fake_sandbox[0].workdir == str(
+        tmp_path / "toml-code" / "workspaces" / "main"
+    )
     assert "spec system" in (runner.agent.system or "")
     assert "agent system" not in (runner.agent.system or "")
     assert tool_names(runner.agent) == {
