@@ -17,19 +17,17 @@ export type ProviderSetup = {
 };
 
 /** @deprecated 用 homeConfigPath() */
-export function userConfigPath(workspaceRoot?: string): string {
-  return homeConfigPath(workspaceRoot);
+export function userConfigPath(): string {
+  return homeConfigPath();
 }
 
 /** 环境变量 / 当前 home 的 pagent.toml 是否已有可用 Key。 */
-export async function hasConfiguredApiKey(
-  workspaceRoot?: string,
-): Promise<boolean> {
+export async function hasConfiguredApiKey(): Promise<boolean> {
   const fromEnv = process.env.DEEPSEEK_API_KEY?.trim();
   if (fromEnv) {
     return true;
   }
-  const path = homeConfigPath(workspaceRoot);
+  const path = homeConfigPath();
   try {
     const text = await readFile(path, "utf8");
     if (providerFieldFromToml(text, "api_key").length > 0) {
@@ -93,10 +91,7 @@ export function upsertProviderApiKey(text: string, apiKey: string): string {
 }
 
 /** 写入当前 pagent home 的 pagent.toml provider 段。 */
-export async function writeUserProvider(
-  setup: ProviderSetup,
-  workspaceRoot?: string,
-): Promise<string> {
+export async function writeUserProvider(setup: ProviderSetup): Promise<string> {
   const apiKey = setup.apiKey.trim();
   if (!apiKey) {
     throw new Error("api_key 不能为空");
@@ -104,7 +99,7 @@ export async function writeUserProvider(
   const model = setup.model.trim() || DEFAULT_MODEL;
   const baseUrl = setup.baseUrl?.trim() ?? "";
 
-  const path = homeConfigPath(workspaceRoot);
+  const path = homeConfigPath();
   await mkdir(dirname(path), { recursive: true });
   let text: string;
   try {
@@ -130,19 +125,15 @@ export async function writeUserProvider(
   return path;
 }
 
-export async function writeUserApiKey(
-  apiKey: string,
-  workspaceRoot?: string,
-): Promise<string> {
-  return writeUserProvider({ apiKey, model: DEFAULT_MODEL }, workspaceRoot);
+export async function writeUserApiKey(apiKey: string): Promise<string> {
+  return writeUserProvider({ apiKey, model: DEFAULT_MODEL });
 }
 
 /** 逐步弹出 api_key / model / base_url；取消任一步返回 false。 */
 export async function promptAndSaveProvider(
   output?: vscode.OutputChannel,
-  workspaceRoot?: string,
 ): Promise<boolean> {
-  const target = homeConfigPath(workspaceRoot);
+  const target = homeConfigPath();
   const apiKey = await vscode.window.showInputBox({
     title: "pagent setup (1/3)",
     prompt: `API Key（必填），将保存到 ${target}`,
@@ -182,14 +173,11 @@ export async function promptAndSaveProvider(
     return false;
   }
 
-  const path = await writeUserProvider(
-    {
-      apiKey,
-      model: model.trim() || DEFAULT_MODEL,
-      baseUrl: baseUrl.trim() || undefined,
-    },
-    workspaceRoot,
-  );
+  const path = await writeUserProvider({
+    apiKey,
+    model: model.trim() || DEFAULT_MODEL,
+    baseUrl: baseUrl.trim() || undefined,
+  });
   output?.appendLine(`[setup] 已写入 ${path}`);
   void vscode.window.showInformationMessage(`pagent：配置已保存到 ${path}`);
   return true;
@@ -209,10 +197,9 @@ export async function promptAndSaveApiKey(
  */
 export async function ensureApiKeySetup(
   output?: vscode.OutputChannel,
-  workspaceRoot?: string,
 ): Promise<boolean> {
-  if (await hasConfiguredApiKey(workspaceRoot)) {
+  if (await hasConfiguredApiKey()) {
     return true;
   }
-  return promptAndSaveProvider(output, workspaceRoot);
+  return promptAndSaveProvider(output);
 }

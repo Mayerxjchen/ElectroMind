@@ -3279,11 +3279,14 @@ async function start(): Promise<void> {
       }
       const deletingCurrent = threadId === uiState.runtime.currentThreadId;
       void (async () => {
+        const deleted = await window.desktop.deleteThread(threadId);
+        if (!deleted) {
+          return;
+        }
         if (deletingCurrent) {
           chatRenderer.showHistorySkeleton();
           clearSandboxPanel();
         }
-        await window.desktop.deleteThread(threadId);
         await refreshSessions();
         if (deletingCurrent) {
           chatRenderer.clear();

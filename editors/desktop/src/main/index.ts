@@ -1184,11 +1184,26 @@ ipcMain.handle("desktop:resume-thread", async (_event, threadId: string) => {
 });
 ipcMain.handle("desktop:delete-thread", async (_event, threadId: string) => {
   if (!threadId || typeof threadId !== "string") {
-    return;
+    return false;
   }
   const activeBridge = ensureBridge();
   if (!activeBridge) {
-    return;
+    return false;
+  }
+  const confirmOptions = {
+    type: "warning" as const,
+    buttons: ["删除", "取消"],
+    defaultId: 1,
+    cancelId: 1,
+    title: "删除会话",
+    message: "删除后无法恢复，确认删除这个会话吗？",
+  };
+  const confirm =
+    mainWindow && !mainWindow.isDestroyed()
+      ? await dialog.showMessageBox(mainWindow, confirmOptions)
+      : await dialog.showMessageBox(confirmOptions);
+  if (confirm.response !== 0) {
+    return false;
   }
   const deletingCurrent = threadId === currentThreadId;
   activeBridge.send({
@@ -1201,6 +1216,7 @@ ipcMain.handle("desktop:delete-thread", async (_event, threadId: string) => {
     clearLastError(false);
     notifyRuntimeState();
   }
+  return true;
 });
 ipcMain.handle("desktop:send-user-input", async (_event, text: string) => {
   clearLastError();
