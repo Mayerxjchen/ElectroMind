@@ -184,6 +184,9 @@ async def test_list_threads_uses_project_home(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.chdir(project)
+    from pagentv4.paths import activate_home
+
+    activate_home("dev", project)
 
     lines: list[str] = []
     monkeypatch.setattr(wire, "emit_line", lambda line: lines.append(line))

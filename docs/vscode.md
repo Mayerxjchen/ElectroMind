@@ -122,7 +122,7 @@ model = "deepseek-v4-flash"
 backend = "local" # local | docker | podman | ssh
 command_policy = "workdir"
 
-[ssh]
+[sandbox.ssh] # read when backend = ssh
 config_path = "~/.ssh/config"
 host = "my-remote"
 workdir = "~/pagent"

@@ -1,46 +1,61 @@
-# pagent 配置项：provider / sandbox / ssh / skills / max_turns
+# pagent 配置项：runner / provider / sandbox（含 sandbox.container / sandbox.ssh）/ project / skills / repl / permission
+# 这是运行时加载的包内默认层（BUNDLED_CONFIG）。全字段参考模板见 src/template/pagent.toml，
+# 后续 breaking change 会把运行时默认迁去那里统一——两份的解析结果由测试锁死必须一致。
 # 生效 home 二选一（配置 / threads / skills 同根）：
 #   A ./.pagent/pagent.toml   B ~/.pagent/pagent.toml
 
-max_turns = 12
+[runner]
+location = "local" # runner 进程跑在哪：local = 用户电脑（默认，当前唯一支持）；cloud = 云端 pod（保留，未实现）
+max_turns = 12 # 单轮对话最大工具调用轮数
+
+[provider]
+# api_key 请写到当前 home 的 pagent.toml，勿提交进仓库；也可 export DEEPSEEK_API_KEY。
+api_key = ""
+model = "deepseek-v4-flash"
+# base_url = ""  # 可选，覆盖 DeepSeek 默认 endpoint
+
+[sandbox]
+backend = "local" # local | container（自动探测 docker/podman）| docker | podman | ssh
+command_policy = "workdir" # open | workdir — workdir 拦截 run_command 里的越界路径；所有后端通用
+# 工具白名单：不设或空 = 放开全部 8 个；设了就只启用列出的（所有后端通用）。
+# 下面即全集 8 个，删去不想启用的即可。
+tools = [
+  "run_command",
+  "read_file",
+  "write_file",
+  "str_replace",
+  "list_dir",
+  "list_host_files",
+  "copy_from_host",
+  "copy_to_host",
+]
+
+# backend = container / docker / podman 时读此块。
+# headless 浏览器（截图 / 渲染 HTML / PDF）：先构建 src/app/Dockerfile.browser
+#     docker build -t pagent:browser -f src/app/Dockerfile.browser src/app
+# 再把 image 改成 pagent:browser。
+[sandbox.container]
+container_ttl = 300 # 秒；容器主进程 sleep <ttl>，到期 --rm 自清理；0 或不设则用 sleep infinity
+image = "pagent:latest" 
+
+# backend = ssh 时读此块。
+[sandbox.ssh]
+config_path = "~/.ssh/config" 
+host = "machine_root" # ~/.ssh/config 里的 Host 别名
+# 远端工作目录：在登录家目录下建 pagent/，agent 只能操作该目录（会自动 mkdir）
+workdir = "~/pagent"
+
+# ── [project] 绑定项目目录 ────────────────────────────
+[project]
+# path = ""  # 把 sandbox workdir 直接指向该项目路径（等同 --project）
+
+[skills]
+# 额外扫描路径；还会自动加载当前 home 下的 skills/
+roots = []
 
 [repl]
 assistant_label = "pagent" # 输出区助手回复前缀：{label}>
 user_label = "you" # 输出区 / 输入行用户前缀：{label}>
 
-# [permission]
-# mode = "auto"  # prompt（默认，终端审批）| auto（自动批准 run_command / copy_from_host）
-
-[provider]
-# api_key 请写到当前 home 的 pagent.toml，勿提交进仓库。
-# 也可 export DEEPSEEK_API_KEY。
-api_key = ""
-model = "deepseek-v4-flash"
-# base_url = ""  # 可选，覆盖 DeepSeek 默认 endpoint
-
-# backend = "container" 时运行时自动探测 docker / podman（按此顺序取 PATH 里第一个可用的）。
-# 想锁定某个 CLI 就写 backend = "docker" 或 backend = "podman"。
-#
-# headless 浏览器（截图 / 渲染 HTML / PDF）：先构建 src/app/Dockerfile.browser
-#     docker build -t pagent:browser -f src/app/Dockerfile.browser src/app
-# image = "pagent:browser"
-
-[sandbox]
-backend = "container" # local | container（自动探测 docker/podman）| docker | podman | ssh
-command_policy = "workdir" # open | workdir — workdir 拦截 run_command 里的越界路径
-container_ttl = 300 # 秒；容器主进程 sleep <ttl>，到期 --rm 自清理；0 或不设则用 sleep infinity
-image = "pagent:latest"
-# 工具白名单：不设或空 = 放开全部 8 个；设了就只启用列出的。
-# 全集：run_command / read_file / write_file / str_replace / list_dir
-#       list_host_files / copy_from_host / copy_to_host
-# tools = ["run_command", "read_file", "write_file", "str_replace", "list_dir"]
-
-[ssh]
-config_path = "~/.ssh/config"
-host = "machine_root" # ~/.ssh/config 里的 Host 别名
-# 远端工作目录：在登录家目录下建 pagent/，agent 只能操作该目录（会自动 mkdir）
-workdir = "~/pagent"
-
-[skills]
-# 额外扫描路径；还会自动加载当前 home 下的 skills/
-roots = []
+[permission]
+mode = "prompt" # prompt（默认，终端逐个审批）| auto（自动批准 run_command / copy_from_host）

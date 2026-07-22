@@ -257,15 +257,18 @@ def test_use_skill_tool_description_when_empty():
 
 
 def test_default_skill_roots_follow_pagent_home(monkeypatch, tmp_path):
+    from pagentv4.paths import activate_home
+
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("HOME", str(home))
 
+    activate_home("prod")
     roots = default_skill_roots()
     assert roots == [home / ".pagent" / "skills"]
 
-    (tmp_path / ".pagent").mkdir()
+    activate_home("dev", tmp_path)
     roots = default_skill_roots()
     assert roots == [tmp_path / ".pagent" / "skills"]
 

@@ -1,0 +1,75 @@
+# pagent 全局配置模板（全字段参考）
+#
+# 这是「全局」配置：管 REPL 启动时的缺省。对话级配置见每个 thread 目录下的
+# thread.toml（含 subagent 的 [sub.<name>]），与本文件 schema 不同。
+#
+# 生效 home（配置 / threads / skills 同根，二选一）：
+#   uv run pagent --dev  → ./.pagent/pagent.toml
+#   uv run pagent        → ~/.pagent/pagent.toml
+#
+# 分层覆盖（后覆盖前）：包内默认 → 生效 home 的本文件 → --config <file> → CLI flag。
+# 因此实际使用时只需写想覆盖的字段，其余继承包内默认。
+#
+# 注：运行时真正加载的包内默认层当前是 src/app/pagent.toml；本文件是收拢中的
+# 全字段模板，后续 breaking change 会把运行时默认迁到 src/template/ 下统一。
+
+# ── [runner] 循环控制 ─────────────────────────────────
+[runner]
+location = "local" # runner 进程跑在哪：local = 用户电脑（默认，当前唯一支持）
+max_turns = 12 # 单轮对话最大工具调用轮数。默认 12
+# cloud = 云端 pod（保留，未实现；设了会报错）
+
+# ── [provider] LLM 接入 ───────────────────────────────
+[provider]
+model = "deepseek-v4-flash" # 模型 id。默认 deepseek-v4-flash
+# api_key 请写到生效 home 的 pagent.toml，勿提交进仓库；也可 export DEEPSEEK_API_KEY。
+api_key = "" # 空串按未设处理，回退环境变量 DEEPSEEK_API_KEY
+# base_url = ""                   # 可选，覆盖 DeepSeek 默认 endpoint
+
+# ── [sandbox] 工具执行环境 ────────────────────────────
+[sandbox]
+backend = "local" # 标签：local | container（自动探测 docker/podman）| docker | podman | ssh
+command_policy = "workdir" # open（不限）| workdir（拦截 run_command 越界路径）；所有后端通用
+# tools 工具白名单：不设或空 = 放开全部 8 个；设了就只启用列出的（所有后端通用）。
+# 下面即全集 8 个，删去不想启用的即可。
+tools = [
+  "run_command",
+  "read_file",
+  "write_file",
+  "str_replace",
+  "list_dir",
+  "list_host_files",
+  "copy_from_host",
+  "copy_to_host",
+]
+
+# backend = container / docker / podman 时读此块。
+# headless 浏览器（截图 / 渲染 HTML / PDF）：先构建 src/app/Dockerfile.browser
+#     docker build -t pagent:browser -f src/app/Dockerfile.browser src/app
+# 再把 image 改成 pagent:browser。
+[sandbox.container]
+container_ttl = 300 # 秒；容器 sleep <ttl> 后 --rm 自清理；0 或不设 = sleep infinity
+image = "pagent:latest" # 容器镜像
+
+# backend = ssh 时读此块。
+[sandbox.ssh]
+config_path = "~/.ssh/config" # SSH config 路径
+host = "machine_root" # ~/.ssh/config 里的 Host 别名
+workdir = "~/pagent" # 远端工作目录，agent 只能操作此目录（自动 mkdir）
+
+# ── [project] 绑定项目目录 ────────────────────────────
+[project]
+# path = ""                       # 把 sandbox workdir 直接指向该项目路径（等同 --project）
+
+# ── [skills] 技能扫描 ─────────────────────────────────
+[skills]
+roots = [] # 额外扫描路径（字符串或字符串数组）；总会附加生效 home 下的 skills/
+
+# ── [repl] 终端显示 ───────────────────────────────────
+[repl]
+assistant_label = "pagent" # 助手回复前缀 {label}>
+user_label = "you" # 用户输入前缀 {label}>
+
+# ── [permission] 工具审批 ─────────────────────────────
+[permission]
+mode = "prompt" # prompt（默认，终端逐个审批）| auto（自动批准危险工具）
