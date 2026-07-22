@@ -106,6 +106,21 @@ def box_line_width() -> int:
     return INNER + 2
 
 
+# pagent 字符画 logo（standard figlet 风格），最宽 34 列，放在 banner box 上方。
+LOGO_LINES = (
+    r" _ __   __ _  __ _  ___ _ __ | |_ ",
+    r"| '_ \ / _` |/ _` |/ _ \ '_ \| __|",
+    r"| |_) | (_| | (_| |  __/ | | | |_ ",
+    r"| .__/ \__,_|\__, |\___|_| |_|\__|",
+    r"|_|          |___/               ",
+)
+
+
+def format_logo(*, color: bool) -> str:
+    """pagent 字符画 logo，青色，与 banner box 同色系。"""
+    return "\n".join(c(line, CYAN, on=color) for line in LOGO_LINES)
+
+
 def box_top(*, color: bool) -> str:
     prefix = "╭─ pagent "
     bar = "─" * (box_line_width() - display_width(prefix) - 1)
@@ -272,6 +287,7 @@ def format_banner(runner: Runner, *, color: bool) -> str:
     model = thread.spec.model or "deepseek-v4-flash"
     sandbox = format_sandbox_line(runner)
     workdir = runner.sandbox.workdir
+    project = str(thread.project_path) if thread.project_path else "—"
     turns = sum(1 for m in runner.messages.data if m.role == "user")
     skills = ", ".join(runner.skills.names()) or "—"
 
@@ -279,12 +295,14 @@ def format_banner(runner: Runner, *, color: bool) -> str:
     bottom = box_bottom(color=color)
 
     lines = [
+        format_logo(color=color),
         top,
         row("thread", f"{thread.id} · {status}", color=color, value_code=status_color),
         row("state", runner.run_state.label, color=color),
         row("model", model, color=color),
         row("sandbox", sandbox, color=color),
         row("workdir", workdir, color=color),
+        row("project", project, color=color),
         row("turns", f"{turns} prior · max {runner.agent.max_turns}", color=color),
         row("skills", skills, color=color),
         bottom,

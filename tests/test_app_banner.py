@@ -1,5 +1,22 @@
-from app.render import box_line_width, display_width, format_banner, row
+from app.render import (
+    LOGO_LINES,
+    box_line_width,
+    display_width,
+    format_banner,
+    format_logo,
+    row,
+)
 from pagentv4 import RunState
+
+
+def test_logo_fits_in_box_width():
+    for line in LOGO_LINES:
+        assert display_width(line) <= box_line_width()
+
+
+def test_format_logo_renders_all_lines():
+    text = format_logo(color=False)
+    assert text.splitlines() == list(LOGO_LINES)
 
 
 def test_row_aligns_with_cjk_status():
@@ -25,6 +42,7 @@ def test_banner_contains_key_fields():
         created = True
         id = "thread-demo"
         ignored_overrides = ()
+        project_path = "/work/repo"
         spec = type("Spec", (), {"model": "deepseek-v4-flash", "backend": "local"})()
 
     class FakeSandbox:
@@ -49,4 +67,5 @@ def test_banner_contains_key_fields():
     assert "空闲" in text
     assert "deepseek-v4-flash" in text
     assert "local" in text
+    assert "/work/repo" in text
     assert "/exit" in text
