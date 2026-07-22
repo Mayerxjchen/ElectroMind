@@ -1,3 +1,5 @@
+import os
+
 import pytest
 
 from app.config import (
@@ -67,6 +69,8 @@ def test_thread_overrides_from_config():
         "ssh_config": "~/.ssh/config",
         "ssh_workdir": "~/pagent",
         "model": "deepseek-v4-flash",
+        # project_path 留空 → 冻结成启动时的 cwd 绝对路径（thread.toml 写具体值）。
+        "project_path": os.path.abspath(os.getcwd()),
     }
 
 
@@ -343,13 +347,34 @@ def test_merge_config():
 def test_load_project_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     activate_home("dev", tmp_path)
-    (tmp_path / "pagent.toml").write_text(
+    project_home = tmp_path / ".pagent"
+    project_home.mkdir()
+    (project_home / "pagent.toml").write_text(
         '[runner]\nmax_turns = 8\n\n[provider]\nmodel = "custom-model"\n',
         encoding="utf-8",
     )
     config = load_config(workdir=str(tmp_path))
     assert config.model == "custom-model"
     assert config.max_turns == 8
+
+
+def test_project_local_path_parses():
+    config = parse_repl_config({"project": {"local": {"path": "/work/repo"}}})
+    assert config.project_path == "/work/repo"
+
+
+def test_project_local_empty_path_is_none():
+    config = parse_repl_config({"project": {"local": {"path": ""}}})
+    assert config.project_path is None
+
+
+def test_project_defaults_to_none_without_local():
+    assert parse_repl_config({}).project_path is None
+
+
+def test_flat_project_path_is_rejected():
+    with pytest.raises(ValueError, match="project.local"):
+        parse_repl_config({"project": {"path": "/work/repo"}})
 
 
 def test_find_user_config(tmp_path, monkeypatch):

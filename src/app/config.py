@@ -86,8 +86,15 @@ class ReplConfig:
             kwargs["command_policy"] = self.command_policy
         if self.sandbox_tools is not None:
             kwargs["sandbox_tools"] = self.sandbox_tools
+        # project_path 是本次会话冻结进 thread.toml 的 host_root：留空时在这里
+        # 解析成启动时的 cwd 绝对路径，让 thread.toml 写具体值（resume 不漂移）。
+        # 全局 pagent.toml 里留空的语义仍是"用 cwd"，只是解析点前置到冻结时。
         if self.project_path is not None and self.project_path != "":
-            kwargs["project_path"] = self.project_path
+            kwargs["project_path"] = os.path.abspath(
+                os.path.expanduser(self.project_path)
+            )
+        else:
+            kwargs["project_path"] = os.path.abspath(os.getcwd())
         if self.ssh_config is not None:
             kwargs["ssh_config"] = self.ssh_config
         if self.ssh_host is not None and self.ssh_host != "":
@@ -173,9 +180,19 @@ def parse_repl_config(data: dict) -> ReplConfig:
     else:
         raise ValueError("sandbox.tools must be a list of strings")
 
-    project_path = project.get("path")
+    # [project] 按 runner.location 分子表：local 绑用户目录(host_root)，
+    # cloud 绑云端资源。location=cloud 已在上面 NotImplementedError 挡住，
+    # 故这里只解析 [project.local]；[project.cloud] 是模板里的语义锚点。
+    if "path" in project:
+        raise ValueError(
+            "顶层 [project] path 已废弃；改用 [project.local] path（按 runner.location 分模式）"
+        )
+    project_local = project.get("local", {})
+    if not isinstance(project_local, dict):
+        raise ValueError("[project.local] must be a table")
+    project_path = project_local.get("path")
     if project_path is not None and not isinstance(project_path, str):
-        raise ValueError("project.path must be a string")
+        raise ValueError("project.local.path must be a string")
     if project_path == "":
         project_path = None
 
@@ -336,8 +353,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--auto",
+        "--yolo",
         action="store_true",
-        help="危险工具自动审批（等同 [permission] mode=auto）",
+        help="危险工具自动审批（等同 [permission] mode=auto）；--yolo 为别名",
     )
     parser.add_argument(
         "--permission-mode",
@@ -356,7 +374,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="覆盖 sandbox backend",
     )
-    parser.add_argument("--project", default=None, help="绑定本次会话的项目目录")
+    parser.add_argument(
+        "--project",
+        default=None,
+        help="绑定本次会话的用户目录（host_root）；存为绝对路径，避免 resume 漂移",
+    )
     parser.add_argument(
         "--dev",
         nargs="?",
@@ -388,7 +410,8 @@ def config_from_args(args: argparse.Namespace) -> ReplConfig:
     if args.backend:
         fields["backend"] = args.backend
     if args.project:
-        fields["project_path"] = args.project
+        # 归一化成绝对路径：thread.toml 存字面量，相对路径 resume 时会随 cwd 漂移。
+        fields["project_path"] = os.path.abspath(os.path.expanduser(args.project))
     if args.ssh_host:
         fields["ssh_host"] = args.ssh_host
     if args.ssh_config:

@@ -3,6 +3,8 @@
 # 后续 breaking change 会把运行时默认迁去那里统一——两份的解析结果由测试锁死必须一致。
 # 生效 home 二选一（配置 / threads / skills 同根）：
 #   A ./.pagent/pagent.toml   B ~/.pagent/pagent.toml
+# host_root（list_host_files / copy_from_host 的用户目录根）默认 = 启动时的 cwd；
+# 用 [project.local] path 或 --project 显式绑定。它与生效 home 无关，--dev 不改 host_root。
 
 [runner]
 location = "local" # runner 进程跑在哪：local = 用户电脑（默认，当前唯一支持）；cloud = 云端 pod（保留，未实现）
@@ -45,9 +47,14 @@ host = "machine_root" # ~/.ssh/config 里的 Host 别名
 # 远端工作目录：在登录家目录下建 pagent/，agent 只能操作该目录（会自动 mkdir）
 workdir = "~/pagent"
 
-# ── [project] 绑定项目目录 ────────────────────────────
-[project]
-# path = ""  # 把 sandbox workdir 直接指向该项目路径（等同 --project）
+# ── [project] 绑定资源，按 runner.location 分模式 ──────
+# location=local：绑本地用户目录 → host_root（list_host_files / copy_from_host 的根）。
+#   留空（默认）时 host_root 回退到启动 pagent 时的当前工作目录（cwd）。
+# location=cloud：绑云端资源（仓库 / bucket…），cloud runner 未实现，选到即报错。
+[project.local]
+# path = ""  # 用户目录绝对/相对路径（等同 --project）
+[project.cloud]
+# repo = ""  # 云端资源标识（保留，未实现）
 
 [skills]
 # 额外扫描路径；还会自动加载当前 home 下的 skills/
