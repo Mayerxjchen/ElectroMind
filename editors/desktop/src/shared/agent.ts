@@ -1,7 +1,10 @@
 import { execFileSync, spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync } from "node:fs";
+import { request as httpRequest, type IncomingMessage } from "node:http";
+import { request as httpsRequest } from "node:https";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { URL } from "node:url";
 
 /** 事件/日志/生命周期回调，wire 与 http 两种 transport 共用。 */
 export type BridgeCallbacks = {
@@ -118,11 +121,15 @@ export type HttpBridgeOptions = {
  * http transport：连远程 `pagent --http` 后端。命令走 POST /command，
  * 事件走 GET /events 的 SSE 流，与 wire 的 stdin/stdout 一一对应。
  *
- * 就绪判定：等收到 SSE 首帧（服务端已 subscribe），再冲刷排队的命令，
+ * 用 node 核心 http/https 而非全局 fetch：Electron 主进程的 fetch 对无限
+ * 响应体会缓冲到连接关闭才吐数据，导致 SSE 首帧读不到；核心模块的
+ * ``res.on("data")`` 保证增量，与 AgentBridge 增量读 stdout 一致。
+ *
+ * 就绪判定：收到 SSE 首帧（服务端已 subscribe）再冲刷排队命令，
  * 避免命令产生的事件早于订阅而丢失（FanoutSink 只投递给当前订阅者）。
  */
 export class HttpBridge implements AgentTransport {
-  private controller: AbortController | undefined;
+  private eventStream: IncomingMessage | undefined;
   private stopping = false;
   private ready = false;
   private pending: object[] = [];
@@ -135,15 +142,7 @@ export class HttpBridge implements AgentTransport {
     this.ready = false;
     this.pending = [];
     this.sseBuffer = "";
-    const controller = new AbortController();
-    this.controller = controller;
-    this.consumeEvents(controller).catch((error) => {
-      if (this.stopping || this.controller !== controller) {
-        return;
-      }
-      this.controller = undefined;
-      this.options.onError(toError(error));
-    });
+    this.openEventStream();
   }
 
   send(command: object): void {
@@ -158,12 +157,9 @@ export class HttpBridge implements AgentTransport {
   }
 
   stop(): void {
-    if (!this.controller) {
-      return;
-    }
     this.stopping = true;
-    this.controller.abort();
-    this.controller = undefined;
+    this.eventStream?.destroy();
+    this.eventStream = undefined;
     this.pending = [];
     this.sseBuffer = "";
   }
@@ -173,50 +169,85 @@ export class HttpBridge implements AgentTransport {
     return token ? { Authorization: `Bearer ${token}` } : {};
   }
 
-  private post(command: object): void {
-    fetch(`${this.options.baseUrl}/command`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", ...this.authHeaders() },
-      body: JSON.stringify(command),
-      signal: this.controller?.signal,
-    })
-      .then((response) => {
-        if (!response.ok) {
-          this.options.onStderr(
-            `[http] POST /command -> ${response.status}\n`,
-          );
-        }
-      })
-      .catch((error) => {
-        if (this.stopping) {
-          return;
-        }
-        this.options.onError(toError(error));
-      });
+  private requestFn(url: URL): typeof httpRequest {
+    return url.protocol === "https:" ? httpsRequest : httpRequest;
   }
 
-  private async consumeEvents(controller: AbortController): Promise<void> {
-    const response = await fetch(`${this.options.baseUrl}/events`, {
-      headers: { Accept: "text/event-stream", ...this.authHeaders() },
-      signal: controller.signal,
-    });
-    if (!response.ok || !response.body) {
-      throw new Error(`GET /events -> ${response.status}`);
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    while (true) {
-      const { value, done } = await reader.read();
-      if (done) {
-        break;
+  private post(command: object): void {
+    const url = new URL(`${this.options.baseUrl}/command`);
+    const body = JSON.stringify(command);
+    const req = this.requestFn(url)(
+      url,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Content-Length": Buffer.byteLength(body),
+          ...this.authHeaders(),
+        },
+      },
+      (res) => {
+        if ((res.statusCode ?? 0) >= 400) {
+          this.options.onStderr(`[http] POST /command -> ${res.statusCode}\n`);
+        }
+        res.resume(); // 丢弃响应体，释放 socket
+      },
+    );
+    req.on("error", (error) => {
+      if (!this.stopping) {
+        this.options.onError(toError(error));
       }
-      this.sseBuffer += decoder.decode(value, { stream: true });
+    });
+    req.end(body);
+  }
+
+  private openEventStream(): void {
+    const url = new URL(`${this.options.baseUrl}/events`);
+    const req = this.requestFn(url)(
+      url,
+      {
+        method: "GET",
+        headers: { Accept: "text/event-stream", ...this.authHeaders() },
+      },
+      (res) => this.onEventResponse(res),
+    );
+    req.on("error", (error) => {
+      if (!this.stopping) {
+        this.options.onError(toError(error));
+      }
+    });
+    req.end();
+  }
+
+  private onEventResponse(res: IncomingMessage): void {
+    if ((res.statusCode ?? 0) >= 400) {
+      res.resume();
+      if (!this.stopping) {
+        this.options.onError(new Error(`GET /events -> ${res.statusCode}`));
+      }
+      return;
+    }
+    this.eventStream = res;
+    res.setEncoding("utf8");
+    res.on("data", (chunk: string) => {
+      this.sseBuffer += chunk;
       this.drainSseBuffer();
+    });
+    res.on("end", () => this.onStreamClosed());
+    res.on("close", () => this.onStreamClosed());
+    res.on("error", (error) => {
+      if (!this.stopping) {
+        this.options.onError(toError(error));
+      }
+    });
+  }
+
+  private onStreamClosed(): void {
+    if (this.stopping || this.eventStream === undefined) {
+      return;
     }
-    if (!this.stopping && this.controller === controller) {
-      this.controller = undefined;
-      this.options.onExit(null);
-    }
+    this.eventStream = undefined;
+    this.options.onExit(null);
   }
 
   /** 按 SSE 帧（空行分隔）切分，取每帧的 data: 行交给 onLine。 */
