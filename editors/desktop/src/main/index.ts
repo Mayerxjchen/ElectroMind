@@ -1262,21 +1262,7 @@ ipcMain.handle("desktop:delete-thread", async (_event, threadId: string) => {
   if (!activeBridge) {
     return false;
   }
-  const confirmOptions = {
-    type: "warning" as const,
-    buttons: ["删除", "取消"],
-    defaultId: 1,
-    cancelId: 1,
-    title: "删除会话",
-    message: "删除后无法恢复，确认删除这个会话吗？",
-  };
-  const confirm =
-    mainWindow && !mainWindow.isDestroyed()
-      ? await dialog.showMessageBox(mainWindow, confirmOptions)
-      : await dialog.showMessageBox(confirmOptions);
-  if (confirm.response !== 0) {
-    return false;
-  }
+  // 二次确认在渲染进程用自定义对话框完成，这里直接执行删除。
   const deletingCurrent = threadId === currentThreadId;
   activeBridge.send({
     cmd: "delete_thread",
