@@ -9,7 +9,7 @@
         "compile": "node esbuild.js",
         "check": "tsc --noEmit",
         "start": "npm run compile && electron --no-sandbox --disable-gpu .",
-        "package": "bash scripts/package-mac.sh"
+        "package": "node scripts/package.js"
     },
     "devDependencies": {
         "@electron/packager": "^18.3.6",

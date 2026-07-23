@@ -61,7 +61,20 @@ jobs:
         uses: pypa/gh-action-pypi-publish@release/v1
 
   desktop:
-    runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            platform: darwin
+            arch: arm64
+          - os: windows-latest
+            platform: win32
+            arch: x64
+          - os: ubuntu-latest
+            platform: linux
+            arch: x64
+    runs-on: ${{ matrix.os }}
     permissions:
       contents: write
 
@@ -87,11 +100,13 @@ jobs:
         working-directory: editors/desktop
         run: npm run check
 
-      - name: Package Desktop (macOS arm64)
+      - name: Package Desktop (${{ matrix.platform }} ${{ matrix.arch }})
         working-directory: editors/desktop
-        run: npm run package
+        run: node scripts/package.js --platform ${{ matrix.platform }} --arch ${{ matrix.arch }}
 
       - name: Upload Desktop app to release
         uses: softprops/action-gh-release@v2
         with:
-          files: editors/desktop/release/*.zip
+          files: |
+            editors/desktop/release/*.zip
+            editors/desktop/release/*.tar.gz
