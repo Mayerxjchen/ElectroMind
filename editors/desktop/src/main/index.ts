@@ -20,7 +20,13 @@ import type { Dirent } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { AgentBridge, resolvePagentWireInvocation } from "../shared/agent";
+import {
+  AgentBridge,
+  type AgentTransport,
+  HttpBridge,
+  normalizeBaseUrl,
+  resolvePagentWireInvocation,
+} from "../shared/agent";
 import type {
   AppInfo,
   AppSettings,
@@ -79,7 +85,8 @@ type SandboxStatusWaiter = {
 };
 
 let mainWindow: BrowserWindow | undefined;
-let bridge: AgentBridge | undefined;
+let bridge: AgentTransport | undefined;
+let activeTransport: "wire" | "http" = "wire";
 let projectPath: string = defaultProjectPath();
 let currentThreadId = "";
 let bridgeStatus: RuntimeState["status"] = "idle";
@@ -144,14 +151,7 @@ function desktopSettingsPath(): string {
 
 /** 从 ~/.pagent/desktop.json 读取 YOLO；缺省或损坏时为 false。 */
 function loadYoloMode(): boolean {
-  try {
-    const data = JSON.parse(readFileSync(desktopSettingsPath(), "utf8")) as {
-      yoloMode?: unknown;
-    };
-    return data.yoloMode === true;
-  } catch {
-    return false;
-  }
+  return readDesktopSettings().yoloMode === true;
 }
 
 function saveYoloMode(enabled: boolean): void {
@@ -165,6 +165,51 @@ function saveYoloMode(enabled: boolean): void {
   }
   existing.yoloMode = enabled;
   writeFileSync(filePath, `${JSON.stringify(existing, null, 2)}\n`, "utf8");
+}
+
+/**
+ * 后端传输配置。默认 wire（本地 spawn 子进程）；设为 http 则连远程
+ * `pagent --http` server，前端行为不变。
+ *
+ * 优先级：环境变量 > desktop.json，方便开发期用 flag 临时切换：
+ *   PAGENT_TRANSPORT=http PAGENT_SERVER_URL=127.0.0.1:8899 \
+ *   PAGENT_SERVER_TOKEN=secret npm start
+ * desktop.json 里对应 { "transport": "http", "serverUrl": "...", "serverToken": "..." }
+ */
+type TransportConfig = {
+  mode: "wire" | "http";
+  serverUrl: string;
+  serverToken: string;
+};
+
+function loadTransportConfig(): TransportConfig {
+  const settings = readDesktopSettings();
+  const envMode = process.env.PAGENT_TRANSPORT?.trim().toLowerCase();
+  const settingMode =
+    typeof settings.transport === "string"
+      ? settings.transport.trim().toLowerCase()
+      : "";
+  const mode = (envMode || settingMode) === "http" ? "http" : "wire";
+  const serverUrl =
+    process.env.PAGENT_SERVER_URL?.trim() ||
+    (typeof settings.serverUrl === "string" ? settings.serverUrl : "") ||
+    "127.0.0.1:8848";
+  const serverToken =
+    process.env.PAGENT_SERVER_TOKEN?.trim() ||
+    (typeof settings.serverToken === "string" ? settings.serverToken : "");
+  return { mode, serverUrl, serverToken };
+}
+
+/** 读整份 desktop.json（损坏或缺失时返回空对象）。 */
+function readDesktopSettings(): Record<string, unknown> {
+  try {
+    return JSON.parse(readFileSync(desktopSettingsPath(), "utf8")) as Record<
+      string,
+      unknown
+    >;
+  } catch {
+    return {};
+  }
 }
 
 /** 桌面默认用户 project（host_root）；agent 沙箱仍是 thread/workspace。 */
@@ -334,6 +379,7 @@ function runtimeState(): RuntimeState {
       sandboxStatus.thread_id === currentThreadId ? sandboxStatus.alive : undefined,
     yoloMode,
     bridgeActive: bridge !== undefined,
+    transport: activeTransport,
     status: bridgeStatus,
     lastError: lastError || undefined,
   };
@@ -861,7 +907,7 @@ function disposeBridge(): void {
   sandboxStatus = { thread_id: "", backend: "", alive: false, workdir: "" };
 }
 
-function ensureBridge(): AgentBridge | undefined {
+function ensureBridge(): AgentTransport | undefined {
   if (bridge) {
     return bridge;
   }
@@ -869,30 +915,19 @@ function ensureBridge(): AgentBridge | undefined {
   bridgeStatus = "starting";
   lastError = "";
   ensureProjectDirectory();
+
+  const transport = loadTransportConfig();
+  activeTransport = transport.mode;
   notifyRuntimeState();
 
-  const wireInvocation = resolvePagentWireInvocation(pagentProjectRoot(), {
-    yolo: yoloMode,
-  });
-  const nextBridge = new AgentBridge({
-    command: wireInvocation.command,
-    args: wireInvocation.args,
-    cwd: bridgeWorkingDirectory(),
-    env: { PAGENT_HOME: userPagentHome() },
-    onLine: handleWireLine,
-    onStderr: (text) => {
-      recentStderr = (recentStderr + text).slice(-4000);
-      postDesktopEvent({ type: "log", text });
-    },
-    onExit: (code) => {
-      const detail = code === null ? "子进程已退出。" : `子进程已退出，code=${code}。`;
-      const extra = recentStderr.trim();
-      reportBridgeFailure(extra ? `${detail}\n${extra}` : detail, "bridge");
-    },
-    onError: (error) => {
-      reportBridgeFailure(error.message, "spawn");
-    },
-  });
+  const nextBridge =
+    transport.mode === "http"
+      ? new HttpBridge({
+        baseUrl: normalizeBaseUrl(transport.serverUrl),
+        token: transport.serverToken || undefined,
+        ...bridgeCallbacks("http"),
+      })
+      : buildWireBridge();
 
   bridge = nextBridge;
   bridgeStatus = "ready";
@@ -900,6 +935,43 @@ function ensureBridge(): AgentBridge | undefined {
   nextBridge.start();
   nextBridge.send({ cmd: "commands" });
   return nextBridge;
+}
+
+function buildWireBridge(): AgentBridge {
+  const wireInvocation = resolvePagentWireInvocation(pagentProjectRoot(), {
+    yolo: yoloMode,
+  });
+  return new AgentBridge({
+    command: wireInvocation.command,
+    args: wireInvocation.args,
+    cwd: bridgeWorkingDirectory(),
+    env: { PAGENT_HOME: userPagentHome() },
+    ...bridgeCallbacks("wire"),
+  });
+}
+
+/** wire / http 共用的事件、日志、生命周期回调；退出文案随传输区分。 */
+function bridgeCallbacks(mode: "wire" | "http") {
+  return {
+    onLine: handleWireLine,
+    onStderr: (text: string) => {
+      recentStderr = (recentStderr + text).slice(-4000);
+      postDesktopEvent({ type: "log", text });
+    },
+    onExit: (code: number | null) => {
+      const base =
+        mode === "http"
+          ? "与服务端的事件流已断开。"
+          : code === null
+            ? "子进程已退出。"
+            : `子进程已退出，code=${code}。`;
+      const extra = recentStderr.trim();
+      reportBridgeFailure(extra ? `${base}\n${extra}` : base, "bridge");
+    },
+    onError: (error: Error) => {
+      reportBridgeFailure(error.message, mode === "http" ? "bridge" : "spawn");
+    },
+  };
 }
 
 function requestThreadList(): Promise<ThreadListPayload> {

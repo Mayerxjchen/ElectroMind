@@ -14,6 +14,8 @@ export type RuntimeState = {
     sandboxAlive?: boolean;
     yoloMode: boolean;
     bridgeActive: boolean;
+    /** 当前后端传输：wire=本地 spawn 子进程，http=连远程 server。 */
+    transport: "wire" | "http";
     status: "idle" | "starting" | "ready" | "error";
     lastError?: string;
 };
