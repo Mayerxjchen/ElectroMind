@@ -71,6 +71,9 @@ def test_thread_overrides_from_config():
         "model": "deepseek-v4-flash",
         # project_path 留空 → 冻结成启动时的 cwd 绝对路径（thread.toml 写具体值）。
         "project_path": os.path.abspath(os.getcwd()),
+        # SSOT：harness 工具白名单与 skills 目录冻结进 thread.toml。
+        "agent_tools": ("web_search", "fetch_url"),
+        "skills": config.resolved_skill_dirs(),
     }
 
 

@@ -35,7 +35,7 @@ class WireHttpSession:
         self.config = config
         self.sink = sink
         self.runner = None
-        self.state: dict = {"turn": None}
+        self.state: dict = {"turn": None, "client_features": {}}
         self.had_user_turn = False
         self._lock = asyncio.Lock()
 

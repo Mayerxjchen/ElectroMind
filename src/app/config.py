@@ -6,7 +6,13 @@ import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from pagentv4.paths import activate_home, find_home_config, home_config_path
+from pagentv4.paths import (
+    activate_home,
+    default_pagent_home,
+    find_home_config,
+    home_config_path,
+)
+from pagentv4.tools import HARNESS_WEB_TOOL_NAMES
 
 BUNDLED_CONFIG = Path(__file__).with_name("pagent.toml")
 CONFIG_FILENAMES = ("pagent.toml",)
@@ -35,6 +41,9 @@ class ReplConfig:
     ssh_config: str | None = None
     ssh_workdir: str | None = None
     skill_roots: tuple[str, ...] | None = None
+    # 主 agent 的进程内（harness）工具白名单，冻结进新 thread.toml 的 [agent] tools。
+    # None 表示未在 pagent.toml 显式配置，回退到默认（web 工具）。
+    agent_tools: tuple[str, ...] | None = None
     user_label: str | None = None
     assistant_label: str | None = None
     permission_mode: str | None = None
@@ -58,6 +67,28 @@ class ReplConfig:
 
     def resolved_skill_roots(self) -> tuple[str, ...]:
         return self.skill_roots or ()
+
+    def resolved_agent_tools(self) -> tuple[str, ...]:
+        """冻结进 thread.toml 的 [agent] tools 白名单。
+
+        未在 pagent.toml 显式配置时默认给全套 web 工具（保持既有行为，只是从静默
+        挂载改成显式冻结）。显式配了（含空表）就照配置来。
+        """
+        if self.agent_tools is None:
+            return HARNESS_WEB_TOOL_NAMES
+        return self.agent_tools
+
+    def resolved_skill_dirs(self) -> tuple[str, ...]:
+        """把 ``[skills] roots`` 展开成冻结进 thread.toml 的 ``[agent] skills``。
+
+        ``roots`` 就是完整扫描列表，不隐式追加任何目录：写了才扫，删了就没有。
+        其中 ``{home}`` 占位符展开成当前生效的 pagent home（prod/dev/PAGENT_HOME
+        由 home 激活决定），让模板不必写死绝对路径。
+        """
+        home = str(default_pagent_home())
+        return tuple(
+            root.replace("{home}", home) for root in self.resolved_skill_roots()
+        )
 
     def resolved_user_label(self) -> str:
         label = (self.user_label or "you").strip()
@@ -103,6 +134,10 @@ class ReplConfig:
             kwargs["ssh_workdir"] = self.ssh_workdir
         if self.model is not None:
             kwargs["model"] = self.model
+        # SSOT：把 harness 工具白名单与 skills 目录冻结进新 thread.toml，
+        # 让 [agent] tools / [agent] skills 成为运行时唯一事实来源。
+        kwargs["agent_tools"] = self.resolved_agent_tools()
+        kwargs["skills"] = self.resolved_skill_dirs()
         return kwargs
 
 
@@ -118,6 +153,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
     sandbox_ssh = sandbox.get("ssh", {})
     project = data.get("project", {})
     skills = data.get("skills", {})
+    agent = data.get("agent", {})
     repl = data.get("repl", {})
     runner = data.get("runner", {})
     permission = data.get("permission", {})
@@ -209,6 +245,17 @@ def parse_repl_config(data: dict) -> ReplConfig:
     else:
         raise ValueError("skills.roots must be a string or list of strings")
 
+    agent_tools_cfg = agent.get("tools")
+    agent_tools: tuple[str, ...] | None
+    if agent_tools_cfg is None:
+        agent_tools = None
+    elif isinstance(agent_tools_cfg, list):
+        if not all(isinstance(item, str) for item in agent_tools_cfg):
+            raise ValueError("agent.tools must be a list of strings")
+        agent_tools = tuple(item for item in agent_tools_cfg if item.strip())
+    else:
+        raise ValueError("agent.tools must be a list of strings")
+
     user_label = repl.get("user_label")
     if user_label is not None and not isinstance(user_label, str):
         raise ValueError("repl.user_label must be a string")
@@ -245,6 +292,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
         ssh_config=sandbox_ssh.get("config_path"),
         ssh_workdir=sandbox_ssh.get("workdir"),
         skill_roots=skill_roots,
+        agent_tools=agent_tools,
         user_label=user_label,
         assistant_label=assistant_label,
         permission_mode=permission_mode,

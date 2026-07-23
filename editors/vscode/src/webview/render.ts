@@ -30,6 +30,13 @@ export type WireEventMessage = {
   params: Record<string, unknown>;
 };
 
+type SubagentPanel = {
+  root: HTMLElement;
+  icon: HTMLElement;
+  preview: HTMLElement;
+  status: HTMLElement;
+};
+
 // 贴底判定阈值（px）：与底部距离小于它就算“在底部”，继续自动跟随。
 const STICK_THRESHOLD_PX = 80;
 // Markdown 增量渲染节流间隔（ms）：降低 marked + DOMPurify 高频重跑造成的布局抖动。
@@ -66,6 +73,8 @@ export class ChatRenderer {
   private toolCards = new Map<string, HTMLElement>();
   // tool_call_id → 该工具卡片的审批区元素，供决定落定后禁用按钮 / 撤下。
   private permitPrompts = new Map<string, HTMLElement>();
+  // sub conversation id → desktop 实验用的子 agent 面板。
+  private subagentPanels = new Map<string, SubagentPanel>();
 
   // onPermit 由入口注入：用户点“批准/拒绝”时回传决定给宿主（视图层不碰 vscode API）。
   constructor(
@@ -116,6 +125,7 @@ export class ChatRenderer {
     this.root.classList.remove("history-entering");
     this.toolCards.clear();
     this.permitPrompts.clear();
+    this.subagentPanels.clear();
     this.root.replaceChildren();
     this.showEmptyState();
   }
@@ -155,6 +165,11 @@ export class ChatRenderer {
         readString(params, "tool_call_id"),
         readString(params, "summary"),
       );
+      return;
+    }
+    if (method === "SubagentEvent") {
+      this.removePlaceholder();
+      this.handleSubagentEvent(params);
       return;
     }
     if (method === "SlashResult") {
@@ -489,7 +504,17 @@ export class ChatRenderer {
   /** 新建一张工具卡片（折叠，默认展开）：标题工具名，展开区显示参数，末尾留结果占位。 */
   private addToolCard(id: string, name: string, args: string): void {
     this.sealAssistantBubble();
+    this.hideEmptyState();
+    this.appendToolCard(this.root, this.toolCards, id, name, args);
+  }
 
+  private appendToolCard(
+    parent: HTMLElement,
+    cards: Map<string, HTMLElement>,
+    id: string,
+    name: string,
+    args: string,
+  ): void {
     const details = document.createElement("details");
     details.className = "tool-card call";
     details.open = false;
@@ -520,9 +545,9 @@ export class ChatRenderer {
 
     details.append(summary, body);
     const stick = this.isNearBottom();
-    this.root.appendChild(details);
+    parent.appendChild(details);
     if (id) {
-      this.toolCards.set(id, resultSlot);
+      cards.set(id, resultSlot);
     }
     if (stick) {
       this.forceScrollToBottom();
@@ -538,11 +563,20 @@ export class ChatRenderer {
 
   /** 按 tool_call_id 回填结果，更新卡片配色与状态标签。找不到卡片则忽略。 */
   private fillToolResult(id: string, content: string, ok: boolean): void {
-    const slot = this.toolCards.get(id);
+    this.resolveToolCard(this.toolCards, id, content, ok);
+  }
+
+  private resolveToolCard(
+    cards: Map<string, HTMLElement>,
+    id: string,
+    content: string,
+    ok: boolean,
+  ): void {
+    const slot = cards.get(id);
     if (!slot) {
       return;
     }
-    this.toolCards.delete(id);
+    cards.delete(id);
     slot.appendChild(makeToolSection("结果", content || "(空)"));
 
     const details = slot.closest(".tool-card");
@@ -561,6 +595,96 @@ export class ChatRenderer {
     if (this.isNearBottom()) {
       this.forceScrollToBottom();
     }
+  }
+
+  private handleSubagentEvent(params: Record<string, unknown>): void {
+    const conversationId = readString(params, "conversation_id");
+    const name = readString(params, "name") || "subagent";
+    const wrapped = readRecord(params, "event");
+    if (!conversationId || !wrapped) {
+      return;
+    }
+    const method = readString(wrapped, "method");
+    const inner = readRecord(wrapped, "params") ?? {};
+    if (!method) {
+      return;
+    }
+
+    const panel = this.ensureSubagentPanel(conversationId, name);
+    if (method === "RunBegin") {
+      panel.preview.textContent = "思考";
+      setSubagentState(panel, "running", "运行中");
+      return;
+    }
+    if (method === "ReasoningDelta") {
+      panel.preview.textContent = "思考";
+      return;
+    }
+    if (method === "TextDelta") {
+      panel.preview.textContent = "思考";
+      return;
+    }
+    if (method === "ToolCallBegin") {
+      panel.preview.textContent = "工具";
+      return;
+    }
+    if (method === "ToolResult") {
+      panel.preview.textContent = "工具";
+      return;
+    }
+    if (method === "RunEnd") {
+      setSubagentState(
+        panel,
+        readString(inner, "stop_reason") === "cancelled" ? "cancelled" : "done",
+        readString(inner, "stop_reason") === "cancelled" ? "已取消" : "完成",
+      );
+      return;
+    }
+  }
+
+  private ensureSubagentPanel(
+    conversationId: string,
+    name: string,
+  ): SubagentPanel {
+    const existing = this.subagentPanels.get(conversationId);
+    if (existing) {
+      return existing;
+    }
+    this.sealAssistantBubble();
+    this.hideEmptyState();
+
+    const row = document.createElement("div");
+    row.className = "subagent-panel";
+    row.dataset.state = "running";
+
+    const leadIcon = document.createElement("i");
+    leadIcon.className = "codicon codicon-hubot";
+    const icon = document.createElement("i");
+    icon.className = "codicon codicon-loading codicon-modifier-spin";
+    const label = document.createElement("code");
+    label.className = "subagent-name";
+    label.textContent = name;
+    const preview = document.createElement("span");
+    preview.className = "subagent-preview";
+    preview.textContent = "启动中";
+    const status = document.createElement("span");
+    status.className = "subagent-status";
+    status.append(icon);
+    row.append(leadIcon, label, preview, status);
+    const stick = this.isNearBottom();
+    this.root.appendChild(row);
+    if (stick) {
+      this.forceScrollToBottom();
+    }
+
+    const panel: SubagentPanel = {
+      root: row,
+      icon,
+      preview,
+      status,
+    };
+    this.subagentPanels.set(conversationId, panel);
+    return panel;
   }
 
   /** 渲染一条 slash 命令结果：折叠卡（斜杠图标 + /命令名 + 内联摘要），展开看完整输出。
@@ -874,6 +998,16 @@ function readString(params: Record<string, unknown>, key: string): string {
   return typeof value === "string" ? value : "";
 }
 
+function readRecord(
+  params: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | undefined {
+  const value = params[key];
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
 function stopReasonNotice(stopReason: string): string {
   if (stopReason === "max_turns") {
     return "本轮已达到最大工具调用轮数，先停止在这里。可以补充更明确的指令后继续。";
@@ -918,6 +1052,24 @@ function makeRoleLabel(role: "user" | "assistant"): HTMLElement {
   label.className = "role-label";
   label.textContent = role === "user" ? "you" : "pagent";
   return label;
+}
+
+function setSubagentState(
+  panel: SubagentPanel,
+  state: "running" | "done" | "cancelled",
+  text: string,
+): void {
+  void text;
+  panel.root.dataset.state = state;
+  if (state === "running") {
+    panel.icon.className = "codicon codicon-loading codicon-modifier-spin";
+    return;
+  }
+  if (state === "cancelled") {
+    panel.icon.className = "codicon codicon-circle-slash";
+    return;
+  }
+  panel.icon.className = "codicon codicon-pass-filled";
 }
 
 // 大脑图标（Lucide brain）：codicons 无脑形字形，这里内联 SVG。

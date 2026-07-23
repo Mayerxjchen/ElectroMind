@@ -237,15 +237,23 @@ class Thread:
         if spec_path.exists():
             payload = load_thread_toml(spec_path)
             existing = ThreadSpec.from_dict(payload)
+            # resume 时补写迟到的自描述字段：老 thread.toml 没有 [lock] 段，或
+            # project_path 首次绑定，都在这里回填一次并落盘（唯一事实来源随之补全）。
+            backfilled = False
             if existing.project_path is None and isinstance(
                 provided.get("project_path"), str
             ):
                 existing.project_path = provided["project_path"]
+                provided.pop("project_path")
+                backfilled = True
+            if not existing.file_self_fs_pos:
+                existing.file_self_fs_pos = str(spec_path.resolve())
+                backfilled = True
+            if backfilled:
                 spec_path.write_text(
                     dump_thread_toml(existing.to_dict()),
                     encoding="utf-8",
                 )
-                provided.pop("project_path")
             ignored = cls.diff_overrides(existing, provided)
             thread_dir.mkdir(parents=True, exist_ok=True)
             (thread_dir / WORKSPACES_DIRNAME / MAIN_WORKSPACE_NAME).mkdir(
@@ -261,6 +269,8 @@ class Thread:
             )
 
         spec = ThreadSpec(**provided) if provided else ThreadSpec()
+        # 冻结时把 thread.toml 自身的绝对路径写进 [lock]（自指锚点，单一事实来源）。
+        spec.file_self_fs_pos = str(spec_path.resolve())
         thread_dir.mkdir(parents=True, exist_ok=True)
         (thread_dir / WORKSPACES_DIRNAME / MAIN_WORKSPACE_NAME).mkdir(
             parents=True, exist_ok=True
@@ -279,6 +289,12 @@ class Thread:
         for name, value in overrides.items():
             if name not in ThreadSpec.field_names() or name == "extra":
                 continue
-            if value != getattr(existing, name):
+            current = getattr(existing, name)
+            # TOML 数组回读成 list，覆盖项常是 tuple；同序列内容不算冲突。
+            if isinstance(value, (tuple, list)) and isinstance(current, (tuple, list)):
+                if list(value) != list(current):
+                    ignored.append(name)
+                continue
+            if value != current:
                 ignored.append(name)
         return ignored

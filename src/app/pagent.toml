@@ -57,8 +57,16 @@ workdir = "~/pagent"
 # repo = ""  # 云端资源标识（保留，未实现）
 
 [skills]
-# 额外扫描路径；还会自动加载当前 home 下的 skills/
-roots = []
+# skill 扫描目录白名单。这里列的就是全部扫描位置，写了才扫、删了就没有。
+# {home} 展开成当前生效的 pagent home（~/.pagent 或 --dev 下的 ./.pagent）。
+# 新建对话时展开成绝对路径，冻结进 thread.toml 的 [agent] skills，运行时只读那份。
+roots = ["{home}/skills"]
+
+[agent]
+# 主 agent 的进程内（harness）工具白名单，冻结进新建 thread.toml 的 [agent] tools。
+# 可选：web_search、fetch_url、delegate_to_subagent（后者还需 thread.toml 配 [sub.*]）。
+# 删去不想启用的即可；给空表 = 不挂任何进程内工具。
+tools = ["web_search", "fetch_url"]
 
 [repl]
 assistant_label = "pagent" # 输出区助手回复前缀：{label}>

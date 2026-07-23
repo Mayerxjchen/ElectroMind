@@ -5,10 +5,13 @@ import types
 import pytest
 
 from pagentv4 import Agent, Runner
-from pagentv4.ithread import SubAgentSpec
+from pagentv4.ithread import SubAgentSpec, ThreadSpec
+from pagentv4.runtime.base_runner import assemble_harness_tools
 from pagentv4.tools.delegate import (
+    SUBAGENT_TOOL_NAME,
     make_delegate_tool,
     make_delegate_tools,
+    make_subagent_tool,
     next_sub_conversation_id,
     provider_with_model,
 )
@@ -166,7 +169,142 @@ async def test_delegate_isolates_messages(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_delegate_can_observe_subagent_events(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    provider = FakeProvider(
+        {
+            "main-model": [
+                [tool_call_chunk("c1", "delegate_to_helper", '{"task":"子任务"}')],
+                [FakeStreamChunk(content="done")],
+            ],
+            "helper-model": [
+                [FakeStreamChunk(content="子答复")],
+            ],
+        }
+    )
+    subs = {"helper": SubAgentSpec(model="helper-model")}
+    runner = await make_runner(provider, subs=subs)
+    observed: list[tuple[str, str, str]] = []
+
+    def observe_subagent_event(*, name: str, conversation_id: str, event) -> None:
+        observed.append((name, conversation_id, type(event).__name__))
+
+    runner.observe_subagent_event = observe_subagent_event
+    async for _ in runner.run("go", return_type="event"):
+        pass
+
+    assert observed == [
+        ("helper", "messages.sub.helper.0", "RunBegin"),
+        ("helper", "messages.sub.helper.0", "TurnBegin"),
+        ("helper", "messages.sub.helper.0", "TextDelta"),
+        ("helper", "messages.sub.helper.0", "TurnResult"),
+        ("helper", "messages.sub.helper.0", "TurnEnd"),
+        ("helper", "messages.sub.helper.0", "RunEnd"),
+    ]
+    await runner.close()
+
+
+@pytest.mark.asyncio
 async def test_delegate_without_context_fails_gracefully():
     tool = make_delegate_tool("x", SubAgentSpec())
     out = await tool.acall('{"task":"t"}', context=None)
     assert out.ok is False
+
+
+def test_subagent_tool_enum_covers_configured_subs():
+    subs = {
+        "researcher": SubAgentSpec(system="调研员"),
+        "writer": SubAgentSpec(system="作者"),
+    }
+    tool = make_subagent_tool(subs)
+    assert tool.name == SUBAGENT_TOOL_NAME
+    props = tool.parameters["properties"]
+    assert set(props["type"]["enum"]) == {"researcher", "writer"}
+    assert tool.parameters["required"] == ["type", "task"]
+
+
+@pytest.mark.asyncio
+async def test_subagent_tool_unknown_type_fails():
+    tool = make_subagent_tool({"coder": SubAgentSpec()})
+
+    class FakeCtx:
+        thread = object()
+
+        def push_frame(self, frame):
+            pass
+
+    out = await tool.acall('{"type":"ghost","task":"t"}', context=FakeCtx())
+    assert out.ok is False
+    assert "ghost" in out.content
+
+
+def test_assemble_harness_tools_gated_by_whitelist():
+    subs = {"coder": SubAgentSpec(system="程序员")}
+
+    # 列出白名单 + 配了 subs：挂统一委派工具。
+    on = ThreadSpec(agent_tools=(SUBAGENT_TOOL_NAME,), subs=subs)
+    tools = assemble_harness_tools(on)
+    assert [t.name for t in tools] == [SUBAGENT_TOOL_NAME]
+
+    # 没列白名单：不挂（即便配了 subs）。
+    off = ThreadSpec(subs=subs)
+    assert assemble_harness_tools(off) == []
+
+    # 列了 delegate 但没配 subs：显式报错（空 enum 的委派工具无意义）。
+    with pytest.raises(ValueError, match="sub"):
+        assemble_harness_tools(ThreadSpec(agent_tools=(SUBAGENT_TOOL_NAME,)))
+
+
+def test_assemble_harness_tools_resolves_web_tools():
+    spec = ThreadSpec(agent_tools=("web_search", "fetch_url"))
+    names = [t.name for t in assemble_harness_tools(spec)]
+    assert names == ["web_search", "fetch_url"]
+
+    # 未配置就没有 harness 工具。
+    assert assemble_harness_tools(ThreadSpec()) == []
+
+
+def test_assemble_harness_tools_rejects_unknown_name():
+    with pytest.raises(ValueError, match="不是已知的 harness 工具"):
+        assemble_harness_tools(ThreadSpec(agent_tools=("bogus_tool",)))
+
+
+@pytest.mark.asyncio
+async def test_subagent_tool_delegates_by_type(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    provider = FakeProvider(
+        {
+            "main-model": [
+                [
+                    tool_call_chunk(
+                        "c1",
+                        "delegate_to_subagent",
+                        '{"type":"coder","task":"写快排"}',
+                    )
+                ],
+                [FakeStreamChunk(content="主 agent 汇总")],
+                [FakeStreamChunk(content="子 agent 的答复")],  # coder 继承 main-model
+            ],
+        }
+    )
+    subs = {"coder": SubAgentSpec(system="你是程序员")}
+    runner = await Runner.create(
+        "subagent-cfg",
+        provider,
+        overrides={
+            "backend": "none",
+            "agent_tools": (SUBAGENT_TOOL_NAME,),
+            "subs": subs,
+        },
+    )
+
+    tool_names = [t.name for t in runner.agent.tools]
+    assert tool_names.count(SUBAGENT_TOOL_NAME) == 1
+
+    async for _ in runner.run("帮我写快排", return_type="event"):
+        pass
+
+    assert len(runner.frames) == 1
+    sub_ids = [cid for cid in runner.store.list() if ".sub.coder." in cid]
+    assert sub_ids, "子对话应已落盘"
+    await runner.close()

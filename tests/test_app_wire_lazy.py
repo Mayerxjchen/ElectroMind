@@ -10,6 +10,9 @@ import pytest
 
 from app import wire
 from app.config import ReplConfig
+from pagentv4.core.events import TextDelta
+from pagentv4.core.message import ToolCall
+from pagentv4.core.turn_result import TurnResult
 
 
 def test_format_exc_system_exit_message():
@@ -24,6 +27,66 @@ def test_emit_error_wire_shape(monkeypatch):
     assert payload["method"] == "Error"
     assert payload["params"]["message"] == "boom"
     assert payload["params"]["where"] == "turn"
+
+
+def test_emit_subagent_event_wire_shape(monkeypatch):
+    lines: list[str] = []
+    monkeypatch.setattr(wire, "emit_line", lambda line: lines.append(line))
+    wire.emit_subagent_event("coder", "messages.sub.coder.0", TextDelta("hello"))
+    payload = json.loads(lines[0])
+    assert payload["method"] == "SubagentEvent"
+    assert payload["params"]["name"] == "coder"
+    assert payload["params"]["conversation_id"] == "messages.sub.coder.0"
+    assert payload["params"]["event"]["method"] == "TextDelta"
+    assert payload["params"]["event"]["params"]["text"] == "hello"
+
+
+def test_emit_subagent_event_serializes_turn_result_tool_calls(monkeypatch):
+    lines: list[str] = []
+    monkeypatch.setattr(wire, "emit_line", lambda line: lines.append(line))
+    event = TurnResult(
+        content="done",
+        tool_calls=[
+            ToolCall(
+                type="function",
+                id="call_1",
+                name="delegate_to_subagent",
+                arguments='{"type":"coder","task":"hello"}',
+            )
+        ],
+        reasoning_content="thinking",
+    )
+    wire.emit_subagent_event("coder", "messages.sub.coder.0", event)
+    payload = json.loads(lines[0])
+    assert payload["params"]["event"]["method"] == "TurnResult"
+    tool_calls = payload["params"]["event"]["params"]["tool_calls"]
+    assert tool_calls == [
+        {
+            "type": "function",
+            "id": "call_1",
+            "name": "delegate_to_subagent",
+            "arguments": '{"type":"coder","task":"hello"}',
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_client_features_without_runner_does_not_open(monkeypatch):
+    monkeypatch.setattr(
+        wire,
+        "open_fresh_runner",
+        AsyncMock(side_effect=AssertionError("should not open")),
+    )
+
+    state = {"turn": None}
+    result = await wire.handle_command(
+        {"cmd": "client_features", "features": {"subagent_events": True}},
+        None,
+        ReplConfig(),
+        state,
+    )
+    assert result is None
+    assert state["client_features"] == {"subagent_events": True}
 
 
 @pytest.mark.asyncio

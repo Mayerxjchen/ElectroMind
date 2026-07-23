@@ -8,7 +8,6 @@ from datetime import datetime
 from prompt_toolkit.formatted_text import ANSI
 
 from pagentv4 import DeepSeek, Runner
-from pagentv4.tools import HARNESS_WEB_TOOLS
 
 from .clean import clean_pagent, format_clean_report
 from .config import (
@@ -57,14 +56,14 @@ async def open_runner(config: ReplConfig) -> Runner:
     if config.provider_base_url:
         provider_kwargs["base_url"] = config.provider_base_url
     provider = DeepSeek(config.resolved_model(), **provider_kwargs)
+    # 工具与 skills 不再从这里旁路注入：它们由 thread_overrides 冻结进 thread.toml 的
+    # [agent] tools / [agent] skills，assemble_run_resources 从 spec 单一来源读取。
     return await Runner.create(
         thread_id,
         provider,
         overrides=config.thread_overrides(),
         extra_system=EXTRA_SYSTEM,
         max_turns=config.resolved_max_turns(),
-        skill_roots=config.resolved_skill_roots(),
-        tools=HARNESS_WEB_TOOLS,
         tool_hooks=build_app_tool_hooks(auto=config.permission_auto()),
     )
 

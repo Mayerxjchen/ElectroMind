@@ -54,6 +54,9 @@ def toml_field(section: str, key: str, default):
 
 SUB_SECTION = "sub"
 
+# thread.toml 结构版本；随 spec 落盘到 [lock] schema_version，供后续迁移识别。
+THREAD_SCHEMA_VERSION = 1
+
 
 @dataclass
 class SubAgentSpec:
@@ -136,6 +139,20 @@ class ThreadSpec:
 
     model: str = toml_field("agent", "model", "deepseek-v4-flash")
     system: str = toml_field("agent", "system", "")
+    # 主 agent 的进程内（harness）工具白名单：thread.toml 里 [agent] tools 列了哪些，
+    # 主 agent 就挂哪些。识别的名字：web_search / fetch_url / delegate_to_subagent。
+    # 这是唯一事实来源——不列就没有，不再从别处静默挂载。列了 delegate_to_subagent
+    # 还需配 [sub.*] 才真正启用委派。空表示不挂任何 harness 工具。
+    agent_tools: tuple[str, ...] = toml_field("agent", "tools", ())
+    # skill 搜索目录白名单：thread.toml 里 [agent] skills 写了哪些目录就扫哪些，
+    # 这是唯一事实来源——不写就没有 skills，不再隐式追加 pagent home 下的 skills/。
+    skills: tuple[str, ...] = toml_field("agent", "skills", ())
+
+    # [lock]：thread.toml 冻结时写入的自描述信息，首次创建落盘。
+    # - schema_version：本 thread.toml 的结构版本，供后续迁移识别。
+    # - file_self_fs_pos：thread.toml 自身的绝对路径，创建时注入（自指锚点）。
+    schema_version: int = toml_field("lock", "schema_version", THREAD_SCHEMA_VERSION)
+    file_self_fs_pos: str = toml_field("lock", "file_self_fs_pos", "")
 
     # 命名子 agent：name -> SubAgentSpec，对应 thread.toml 里的 [sub.<name>] 表。
     # 不走 toml_field（那套只表达单层 [section] key），由 to_dict/from_dict 专门处理。

@@ -933,6 +933,10 @@ function ensureBridge(): AgentTransport | undefined {
   bridgeStatus = "ready";
   notifyRuntimeState();
   nextBridge.start();
+  nextBridge.send({
+    cmd: "client_features",
+    features: { subagent_events: true },
+  });
   nextBridge.send({ cmd: "commands" });
   return nextBridge;
 }

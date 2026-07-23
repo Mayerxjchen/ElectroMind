@@ -82,6 +82,44 @@ function escapeHtml(text: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function readStringField(params: Record<string, unknown>, key: string): string {
+  const value = params[key];
+  return typeof value === "string" ? value : "";
+}
+
+function readRecordField(
+  params: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | undefined {
+  const value = params[key];
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function unwrapSubagentEvent(
+  event: WireEvent,
+): { name: string; inner: WireEvent } | undefined {
+  if (event.method !== "SubagentEvent") {
+    return undefined;
+  }
+  const wrapped = readRecordField(event.params, "event");
+  if (!wrapped) {
+    return undefined;
+  }
+  const method = readStringField(wrapped, "method");
+  if (!method) {
+    return undefined;
+  }
+  return {
+    name: readStringField(event.params, "name"),
+    inner: {
+      method,
+      params: readRecordField(wrapped, "params") ?? {},
+    },
+  };
+}
+
 function summarize(text: string, maxLength = 72): string {
   const compact = text.replace(/\s+/g, " ").trim();
   if (!compact) {
@@ -2706,6 +2744,45 @@ async function start(): Promise<void> {
   }
 
   function syncWireEvent(event: WireEvent): void {
+    const subagent = unwrapSubagentEvent(event);
+    if (subagent) {
+      const label = subagent.name || "subagent";
+      if (subagent.inner.method === "RunBegin") {
+        appendTerminalEntry(
+          "status",
+          `[subagent:${label}] 开始：${String(subagent.inner.params.user_input ?? "")}`,
+        );
+      } else if (subagent.inner.method === "ReasoningDelta") {
+        const text = String(subagent.inner.params.text ?? "").trim();
+        if (text) {
+          appendTerminalEntry("status", `[subagent:${label}] thinking: ${text}`);
+        }
+      } else if (subagent.inner.method === "TextDelta") {
+        const text = String(subagent.inner.params.text ?? "").trim();
+        if (text) {
+          appendTerminalEntry("stdout", `[subagent:${label}] ${text}`);
+        }
+      } else if (subagent.inner.method === "ToolCallBegin") {
+        appendTerminalEntry(
+          "command",
+          `[subagent:${label}] ${buildToolPreview(
+            String(subagent.inner.params.name ?? ""),
+            String(subagent.inner.params.arguments ?? ""),
+          )}`,
+        );
+      } else if (subagent.inner.method === "ToolResult") {
+        appendTerminalEntry(
+          "stdout",
+          `[subagent:${label}] ${String(subagent.inner.params.content ?? "")}`,
+        );
+      } else if (subagent.inner.method === "RunEnd") {
+        appendTerminalEntry("status", `[subagent:${label}] 已结束。`);
+      }
+      applyActivityState();
+      syncComposerDock();
+      return;
+    }
+
     contextUsageRing.handleWireEvent(event);
     if (
       event.method === "RunBegin" ||

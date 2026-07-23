@@ -33,6 +33,22 @@ from ..sandbox import Sandbox, open_sandbox_for_spec
 from ..skills import SkillRegistry
 
 
+def observe_subagent_event(context, name: str, event) -> None:
+    """把子 agent 的内部事件交给可选观察者；未启用时静默跳过。
+
+    这是给 desktop 实验用的旁路观察口，不改变主事件流语义：主 agent 侧仍只把
+    delegate 视作一次普通工具调用。
+    """
+    observer = getattr(context, "observe_subagent_event", None)
+    if not callable(observer):
+        return
+    observer(
+        name=name,
+        conversation_id=str(getattr(context, "conversation_id", "") or ""),
+        event=event,
+    )
+
+
 def provider_with_model(provider: ProviderProtocol, model: str) -> ProviderProtocol:
     """按子 agent 指定的 model 派生 provider；未指定或 provider 无 model_id 则原样复用。
 
@@ -127,14 +143,15 @@ async def build_sub_frame(context, name: str, sub_spec: SubAgentSpec) -> RunFram
     )
 
 
-async def run_sub_agent(context, task: str) -> str:
+async def run_sub_agent(context, name: str, task: str) -> str:
     """在当前栈顶帧（子帧）上把 task 跑到结束，返回子 agent 的最终文本答复。
 
     复用 Runner 自己的 ``run``：它读写的 ``agent`` / ``messages`` / ``store`` 等都经
-    property 指向栈顶帧，因而落到子帧上——包括子对话的落盘。事件在此处丢弃，只取结果。
+    property 指向栈顶帧，因而落到子帧上——包括子对话的落盘。默认仍在此处丢弃事件，
+    只取结果；若 runner 安装了观察者，会旁路上报给前端实验展示。
     """
-    async for _ in context.run(task):
-        pass
+    async for event in context.run(task):
+        observe_subagent_event(context, name, event)
     return reply_text(context.messages.data)
 
 
@@ -166,7 +183,7 @@ def make_delegate_tool(
         frame = await build_sub_frame(context, name, sub_spec)
         context.push_frame(frame)
         try:
-            answer = await run_sub_agent(context, task)
+            answer = await run_sub_agent(context, name, task)
         finally:
             await context.pop_frame()
         return ToolOutput.succeed(answer or f"子 agent {name!r} 未产出文本答复")
@@ -200,3 +217,66 @@ def make_delegate_tools(subs: dict[str, SubAgentSpec]) -> list[FunctionTool]:
     通常传 ``thread.spec.subs``，把 thread.toml 里声明的子 agent 全部挂成工具。
     """
     return [make_delegate_tool(name, spec) for name, spec in subs.items()]
+
+
+SUBAGENT_TOOL_NAME = "delegate_to_subagent"
+
+
+def make_subagent_tool(subs: dict[str, SubAgentSpec]) -> FunctionTool:
+    """产出统一的 ``delegate_to_subagent`` 工具：一个工具按 ``type`` 委派给某个子 agent。
+
+    与 ``make_delegate_tools``（一个子 agent 一个工具名）相对，这里所有子 agent 共用
+    一个工具，``type`` 用 JSON schema 的 ``enum`` 约束为已配置的子 agent 名。主流程用
+    这个，thread.toml 的 ``[agent] tools`` 列出 ``delegate_to_subagent`` 才挂载。
+
+    Args:
+        subs: 命名子 agent 表，通常是 ``thread.spec.subs``。
+    """
+    names = list(subs)
+
+    async def delegate(type: str, task: str, context=None) -> ToolOutput:
+        if context is None or not hasattr(context, "push_frame"):
+            return ToolOutput.fail("delegate 需要运行在支持帧栈的 Runner 上")
+        if getattr(context, "thread", None) is None:
+            return ToolOutput.fail("delegate 需要绑定 thread 的 Runner")
+        sub_spec = subs.get(type)
+        if sub_spec is None:
+            available = ", ".join(names) or "（无）"
+            return ToolOutput.fail(f"未知子 agent type={type!r}；可用：{available}")
+
+        frame = await build_sub_frame(context, type, sub_spec)
+        context.push_frame(frame)
+        try:
+            answer = await run_sub_agent(context, type, task)
+        finally:
+            await context.pop_frame()
+        return ToolOutput.succeed(answer or f"子 agent {type!r} 未产出文本答复")
+
+    catalog = "\n".join(
+        f"- {name}: {(spec.system or '').strip() or '（无描述）'}"
+        for name, spec in subs.items()
+    )
+    return FunctionTool(
+        name=SUBAGENT_TOOL_NAME,
+        description=(
+            "把一段可隔离的子任务委派给一个子 agent 独立完成，并拿回它的最终答复。"
+            "子 agent 有自己的对话上下文。按 type 选择子 agent，可用：\n" + catalog
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "type": {
+                    "type": "string",
+                    "enum": names,
+                    "description": "要委派给哪个子 agent（取值为已配置的子 agent 名）。",
+                },
+                "task": {
+                    "type": "string",
+                    "description": "交给子 agent 的任务描述。",
+                },
+            },
+            "required": ["type", "task"],
+            "additionalProperties": False,
+        },
+        func=delegate,
+    )

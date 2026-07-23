@@ -45,11 +45,11 @@ import json
 import posixpath
 import sys
 import tomllib
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import datetime
 
 from pagentv4 import ToolCallBegin
-from pagentv4.adapters.acp import encode_event_line
+from pagentv4.adapters.acp import encode_event_line, json_value
 from pagentv4.core.context_limit import DEFAULT_CONTEXT_LIMIT, resolve_context_limit
 from pagentv4.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
 from pagentv4.core.turn_result import TurnResult
@@ -743,6 +743,58 @@ def emit_error(message: str, *, where: str = "") -> None:
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
+def client_feature_enabled(state: dict, name: str) -> bool:
+    """当前连接是否显式打开了某个前端实验能力。"""
+    features = state.get("client_features")
+    if not isinstance(features, dict):
+        return False
+    return bool(features.get(name))
+
+
+def emit_subagent_event(name: str, conversation_id: str, event) -> None:
+    """把子 agent 内部事件包成 wire 控制事件，供 desktop 实验消费。"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "SubagentEvent",
+        "params": {
+            "name": name,
+            "conversation_id": conversation_id,
+            "event": {
+                "method": type(event).__name__,
+                "params": {
+                    field.name: json_value(getattr(event, field.name))
+                    for field in fields(event)
+                },
+            },
+        },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def install_subagent_observer(runner, state: dict):
+    """按客户端能力开关给 runner 临时装上子 agent 事件旁路。"""
+    if not client_feature_enabled(state, "subagent_events"):
+        return lambda: None
+
+    previous = getattr(runner, "observe_subagent_event", None)
+
+    def observer(*, name: str, conversation_id: str, event) -> None:
+        emit_subagent_event(name, conversation_id, event)
+
+    runner.observe_subagent_event = observer
+
+    def restore() -> None:
+        if previous is None:
+            try:
+                delattr(runner, "observe_subagent_event")
+            except AttributeError:
+                pass
+            return
+        runner.observe_subagent_event = previous
+
+    return restore
+
+
 def format_exc(exc: BaseException, *, phase: str = "start") -> str:
     """把异常收成可读信息；沙箱启动失败走 format_fatal_error（含 SSH 提示）。"""
     if isinstance(exc, SystemExit):
@@ -759,6 +811,7 @@ async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> N
     """跑一轮 Agent，事件逐行透传 stdout；需审批工具补发 PermitRequest。"""
     ask_permit = not config.permission_auto()
     last_usage: dict | None = None
+    restore_subagent_observer = install_subagent_observer(runner, state)
     try:
         async for event in runner.run(text, return_type="event"):
             emit_line(encode_event_line(event))
@@ -776,6 +829,7 @@ async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> N
         log(f"[wire] turn failed: {exc}")
         emit_error(format_exc(exc), where="turn")
     finally:
+        restore_subagent_observer()
         if last_usage is not None:
             touch_thread_usage(
                 runner.thread,
@@ -857,6 +911,17 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
 
     if cmd == "commands":
         emit_slash_commands()
+        return runner
+
+    if cmd == "client_features":
+        features = command.get("features")
+        state["client_features"] = {
+            "subagent_events": bool(
+                features.get("subagent_events", False)
+                if isinstance(features, dict)
+                else False
+            )
+        }
         return runner
 
     if cmd == "get_config":
@@ -1134,7 +1199,7 @@ async def run_wire(config: ReplConfig) -> int:
     启动时直接打开该 thread 并回放历史（给非插件调用方用）。
     """
     runner = None
-    state: dict = {"turn": None}
+    state: dict = {"turn": None, "client_features": {}}
     had_user_turn = False
     # 启动即下发 slash 命令清单，前端无需显式请求就能填充斜杠菜单。
     emit_slash_commands()
