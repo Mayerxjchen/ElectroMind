@@ -279,8 +279,8 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     config = config_from_args(args)
-    if not config.resolved_api_key() and not args.wire:
-        # 交互 REPL：缺 Key 时引导写入 ~/.pagent；--wire 由宿主（插件）先做 setup。
+    if not config.resolved_api_key() and not args.wire and not args.http:
+        # 交互 REPL：缺 Key 时引导写入 ~/.pagent；--wire/--http 由宿主先做 setup。
         from .setup import interactive_setup
 
         interactive_setup()
@@ -289,6 +289,10 @@ def main(argv: list[str] | None = None) -> None:
         from .wire import run_wire
 
         raise SystemExit(asyncio.run(run_wire(config)))
+    if args.http:
+        from .http_server import run_http
+
+        raise SystemExit(run_http(config, host=args.host, port=args.port))
     try:
         code = asyncio.run(run_repl(config))
     except KeyboardInterrupt:

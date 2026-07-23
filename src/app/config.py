@@ -369,6 +369,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="stdio NDJSON 后端模式：stdin 收 JSON 命令，stdout 出事件流（供插件/前端驱动）",
     )
     parser.add_argument(
+        "--http",
+        action="store_true",
+        help="HTTP 后端模式：POST /command 收命令，GET /events 出 SSE 事件流（对齐 wire）",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="--http 监听地址（默认 127.0.0.1）",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8848,
+        help="--http 监听端口（默认 8848）",
+    )
+    parser.add_argument(
         "--backend",
         choices=("local", "container", "docker", "podman", "ssh"),
         default=None,
