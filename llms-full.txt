@@ -1,0 +1,2290 @@
+# pagent — full documentation (English)
+
+> Auto-generated for LLM and coding agents. Do not edit by hand.
+> Regenerate: `cd docs && npm run build:llms`
+> Index: https://github.com/SyncLionPaw/pagent/blob/main/llms.txt
+> Site: https://synclionpaw.github.io/pagent/
+
+
+
+---
+
+<!-- source: docs/agent-reference.md -->
+
+# pagent — agent reference
+
+Dense API reference for **coding agents** and LLM tools. Human docs: <https://synclionpaw.github.io/pagent/>.
+
+**Machine indexes:** [llms.txt](https://synclionpaw.github.io/pagent/llms.txt) (page list) · [llms-full.txt](https://synclionpaw.github.io/pagent/llms-full.txt) (single-file bundle) · [raw llms.txt](https://raw.githubusercontent.com/SyncLionPaw/pagent/main/llms.txt) · repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md)
+
+## What it is
+
+- **Python 3.11+** async library: `Agent` + `Session` + `@tool` functions over **OpenAI-compatible** `POST /v1/chat/completions`.
+- **Not included:** file edit, shell, MCP, RAG, parallel tools, checkpoints — you implement those in your app.
+- **Package:** `pip install pagent` · optional `pagent[search]`, `pagent[tokens]`, `pagent[ssh]`.
+
+## Core types
+
+| Symbol | Role |
+|--------|------|
+| `Session(system_prompt)` | OpenAI-shaped message list; `session += {"role":"user","content":"..."}` |
+| `SlidingWindowSession` | Trim by **token** budget (not message count) |
+| `CompactingSession` | LLM summarization when context grows |
+| `LLM`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang` | Provider clients; model name in constructor |
+| `Agent(llm, session, tools=None, max_turns=8)` | Runs the tool loop |
+| `RunEnd` | Final model step: `.content`, `.tool_calls`, `.reasoning_content`, `.usage` |
+| `@tool()` | Decorator; schema from type hints + docstring |
+
+## Agent.run APIs
+
+| Method | Returns | When |
+|--------|---------|------|
+| `await agent.run(user_input, **run_kwargs)` | `RunEnd` | Blocking; no stream |
+| `agent.arun(user_input, **run_kwargs)` | `AsyncIterator[str]` | Answer text chunks only (`TextDelta`) |
+| `agent.arun_events(user_input, **run_kwargs)` | `AsyncIterator[Event]` | Full timeline for Python UI |
+| `agent.arun_wire(user_input, **run_kwargs)` | `AsyncIterator[str]` | NDJSON lines (JSON-RPC notifications) |
+
+`run_kwargs` are forwarded to the provider (e.g. `reasoning_effort="medium"` for DeepSeek).
+
+## Event types (`arun_events`)
+
+All are frozen dataclasses; import from `pagent`.
+
+| Event | Fields (summary) | When |
+|-------|------------------|------|
+| `RunBegin` | `user_input` | Run starts |
+| `TurnBegin` | `turn` | One LLM call starts (0-based) |
+| `TextDelta` | `text` | Assistant content chunk |
+| `ReasoningDelta` | `text` | Reasoning chunk (provider-specific) |
+| `StepEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` | One LLM step done |
+| `ToolCallBegin` | `tool_call_id`, `name`, `arguments` | Before tool execution |
+| `ToolResult` | `tool_call_id`, `name`, `content` | After tool; written to session |
+| `TurnEnd` | `turn`, `stopped` | Turn done; `stopped=True` if no more model calls this run |
+| `RunEnd` | same as `StepEnd` | Entire run finished |
+
+Typical sequence (tools): `RunBegin` → `TurnBegin` → `TextDelta*` → `StepEnd` → `ToolCallBegin` → `ToolResult` → `TurnEnd(stopped=False)` → next turn → … → `RunEnd`.
+
+## Wire protocol (`arun_wire`)
+
+One **JSON-RPC 2.0 notification** per NDJSON line (no `id`):
+
+```json
+{"jsonrpc":"2.0","method":"TextDelta","params":{"text":"hi"}}
+```
+
+`method` equals the Python event class name. Same ordering as `arun_events()`.
+
+Python helpers: `encode_event_line`, `decode_event_line`, `event_to_rpc`, `rpc_to_event`.
+
+Inbound control (cancel, tool approval, steer) is **not** in Wire — use your own HTTP/API.
+
+## Minimal example
+
+```python
+import asyncio
+from pagent import Agent, LLM, Session, tool
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for the city."""
+    return f"Sunny in {city}."
+
+async def main():
+    agent = Agent(
+        llm=LLM("gpt-4o-mini"),
+        session=Session("You are helpful."),
+        tools=[get_weather],
+        max_turns=8,
+    )
+    end = await agent.run("Weather in Xiamen?")
+    print(end.content)
+
+asyncio.run(main())
+```
+
+## Streaming example
+
+```python
+from pagent import TextDelta, ToolCallBegin, RunEnd
+
+async for event in agent.arun_events("Hello"):
+    match event:
+        case TextDelta(text=t):
+            print(t, end="", flush=True)
+        case ToolCallBegin(name=n):
+            print(f"\n[tool {n}]")
+        case RunEnd(content=c):
+            print(f"\n[done]")
+```
+
+## Environment variables
+
+| Provider | Variable |
+|----------|----------|
+| OpenAI | `OPENAI_API_KEY` |
+| DeepSeek | `DEEPSEEK_API_KEY` |
+| Ollama | optional `OLLAMA_API_KEY`; default `http://127.0.0.1:11434/v1` |
+
+## Repo map
+
+```text
+src/pagent/agent.py      Agent loop
+src/pagent/session.py    Session, SlidingWindowSession, CompactingSession
+src/pagent/llm.py        LLM providers, RunEnd
+src/pagent/tool.py       @tool, FunctionTool
+src/pagent/events.py     Event dataclasses
+src/pagent/wire.py       JSON-RPC encode/decode
+examples/wire_browser/      FastAPI + browser NDJSON consumer
+tests/                   pytest
+```
+
+## Extended docs (English)
+
+| Topic | Path |
+|-------|------|
+| Quick start | `docs/guide/quick-start.md` |
+| Providers | `docs/guide/providers.md` |
+| Prompt & session | `docs/guide/prompt.md` |
+| Tools | `docs/guide/tools.md` |
+| Built-in tools | `docs/guide/defaults.md` |
+| Memory helper | `docs/guide/memory.md` |
+| Events (full) | `docs/events.md` |
+| Wire (full) | `docs/wire.md` |
+| Reasoning streams | `docs/reasoning.md` |
+| Development | `docs/development.md` |
+
+Raw URLs: prefix `https://raw.githubusercontent.com/SyncLionPaw/pagent/main/`.
+
+
+---
+
+<!-- source: docs/guide/quick-start.md -->
+
+# Quick start
+
+Prerequisites: [Install](./install) (Python 3.11+, pip / uv / conda).
+
+## Minimal agent
+
+```python
+import asyncio
+import os
+
+from pagent import Agent, LLM, Session, tool
+
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for the city."""
+    return f"Sunny in {city} today."
+
+
+async def main():
+    if not os.getenv("OPENAI_API_KEY"):
+        raise SystemExit("Set OPENAI_API_KEY first.")
+
+    agent = Agent(
+        llm=LLM("gpt-4o-mini"),
+        session=Session("You are helpful. Use tools when needed."),
+        tools=[get_weather],
+        max_turns=8,
+    )
+
+    result = await agent.run("What's the weather in Xiamen?")
+    print(result.content)
+
+
+asyncio.run(main())
+```
+
+`run()` returns **`RunEnd`** — use `.content` for the answer.
+
+## Streaming APIs
+
+| API | Returns | Use when |
+|-----|---------|----------|
+| `agent.run()` | `RunEnd` | No streaming |
+| `agent.arun()` | `str` chunks | Typing effect, text only |
+| `agent.arun_events()` | `Event` objects | Python UI, tests |
+| `agent.arun_wire()` | NDJSON lines | Browser, VS Code plugin, any JSON consumer |
+
+Next: [Providers & API keys](./providers) · [Events](/events) · [Wire protocol](/wire)
+
+## Examples (clone repo)
+
+```bash
+git clone https://github.com/SyncLionPaw/pagent.git
+cd pagent
+export DEEPSEEK_API_KEY="your-key"   # for DeepSeek examples
+
+uv run pagent
+uv run python -m examples.pagentv4.thread_based.conversation_only
+uv run python -m examples.pagentv4.thread_based.code_runner
+uv run --with fastapi --with uvicorn python examples/wire_browser/server.py
+```
+
+| Example | Description |
+|---------|-------------|
+| [`examples/README.md`](https://github.com/SyncLionPaw/pagent/blob/main/examples/README.md) | Classified examples index |
+| [`examples/pagentv4/thread_based`](https://github.com/SyncLionPaw/pagent/tree/main/examples/pagentv4/thread_based) | ChatRunner / CodeRunner examples |
+| [`examples/pagentv4/runner`](https://github.com/SyncLionPaw/pagent/tree/main/examples/pagentv4/runner) | Runner.create examples |
+| [`wire_browser`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser) | FastAPI + browser UI |
+
+
+---
+
+<!-- source: docs/guide/providers.md -->
+
+# Providers & API keys
+
+pagent talks to any server that implements **OpenAI Chat Completions** (`/v1/chat/completions`).
+
+## Built-in classes
+
+| Class | Default model (examples) | Environment variable |
+|-------|------------------------|----------------------|
+| `LLM("gpt-4o-mini")` | as passed | `OPENAI_API_KEY` |
+| `DeepSeek("deepseek-v4-flash")` | as passed | `DEEPSEEK_API_KEY` |
+| `Ollama("llama3.2")` | as passed | optional `OLLAMA_API_KEY` |
+| `Vllm`, `Sglang` | as passed | provider-specific |
+
+```python
+from pagent import DeepSeek, LLM, Ollama
+
+llm = LLM("gpt-4o-mini")
+llm = DeepSeek("deepseek-v4-flash")
+llm = Ollama("llama3.2")   # http://127.0.0.1:11434/v1
+```
+
+## Reasoning models
+
+Some providers expose **`reasoning_content`** (e.g. DeepSeek). Use `reasoning_effort` in `run_kwargs` and handle `ReasoningDelta` when streaming. See [Reasoning streams](/reasoning).
+
+## Optional extras
+
+```bash
+pip install "pagent[search]"    # web_search tool (ddgs)
+pip install "pagent[tokens]"    # HuggingFace tokenizers for some models
+```
+
+
+---
+
+<!-- source: docs/guide/prompt.md -->
+
+# Prompt
+
+Use `Session` for the system prompt and chat history, then pass it to `Agent`.
+
+## System prompt
+
+```python
+from pagent import Session
+
+session = Session("You are a concise assistant.")
+```
+
+## User message
+
+```python
+session += {"role": "user", "content": "What's 2+2?"}
+```
+
+## Run
+
+```python
+from pagent import Agent, LLM
+
+agent = Agent(llm=LLM("gpt-4o-mini"), session=session, tools=[], max_turns=8)
+await agent.run("What's 2+2?")
+```
+
+Each `run()` appends the user turn and the reply to `session`.
+
+## Long chats
+
+Too many tokens? Use `SlidingWindowSession` to drop old turns, or `CompactingSession` and `await session.compact()` to summarize.
+
+```python
+from pagent import SlidingWindowSession, CompactingSession, LLM
+
+session = SlidingWindowSession("You are helpful.", max_tokens=8000)
+
+llm = LLM("gpt-4o-mini")
+session = CompactingSession("You are helpful.", llm=llm, compact_at_tokens=6000)
+if session.should_compact:
+    await session.compact()
+```
+
+## Save
+
+```python
+session.save_to_file("chat.json")
+```
+
+## See also
+
+- [Tools](./tools) · [Memory](./memory) · [Quick start](./quick-start)
+
+
+---
+
+<!-- source: docs/guide/tools.md -->
+
+# Tools
+
+Write a Python function, add `@tool()`, pass it in `tools=[...]`.
+
+## Define a tool
+
+Docstring = what the model sees. Type hints = argument schema.
+
+```python
+from pagent import tool
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for a city."""
+    return f"Sunny in {city} today."
+```
+
+## Use with Agent
+
+```python
+from pagent import Agent, LLM, Session
+
+agent = Agent(
+    llm=LLM("gpt-4o-mini"),
+    session=Session("Use get_weather for weather."),
+    tools=[get_weather],
+    max_turns=8,
+)
+await agent.run("Weather in Xiamen?")
+```
+
+Multiple tools: `tools=[a, b]`. Custom name: `@tool(name="weather", description="...")`.
+
+Built-in: [defaults](./defaults) (`clock`, `region`, `readfile`, `web_search`, `bash`).
+
+## See also
+
+- [Prompt](./prompt) · [Memory](./memory) · [Defaults](./defaults) · [Events](/events)
+
+
+---
+
+<!-- source: docs/guide/defaults.md -->
+
+# Built-in tools
+
+Optional tools in `pagent.defaults`: `clock`, `region`, `readfile`, `web_search`, `bash`.
+
+```python
+from pagent import Agent, LLM, Session, DEFAULT_TOOLS, bash, clock, readfile, region, web_search
+
+agent = Agent(
+    llm=LLM("gpt-4o-mini"),
+    session=Session("You are helpful."),
+    tools=[*DEFAULT_TOOLS],  # clock + region
+    max_turns=8,
+)
+```
+
+`DEFAULT_TOOLS` is `[clock, region]`. Add `web_search` yourself (needs extra install).
+
+## clock {#clock}
+
+Current time as ISO 8601.
+
+```python
+tools=[clock]
+# utc=True (default) or utc=False for local time
+```
+
+## region {#region}
+
+OS locale and timezone hint (no GPS).
+
+```python
+tools=[region]
+```
+
+## readfile {#readfile}
+
+Read a UTF-8 text file under process `cwd` (absolute or relative path; `~` expanded). Up to **500 code points** per call (`max_chars`). Use **`offset`** to read the next window when the header says `continues at offset N`.
+
+```python
+tools=[readfile]
+# readfile("src/pagent/defaults.py", max_chars=500, offset=0)
+# readfile("src/pagent/defaults.py", max_chars=500, offset=500)
+```
+
+## bash {#bash}
+
+Run a **whitelisted** command in process `cwd` (no shell). Currently only **`ls`** is allowed; path arguments must resolve under the workspace (same rules as `readfile`).
+
+```python
+tools=[bash]
+# bash("ls")
+# bash("ls -la src")
+```
+
+## web_search {#web-search}
+
+Web search via DuckDuckGo.
+
+```bash
+pip install 'pagent[search]'
+```
+
+```python
+tools=[web_search]
+```
+
+## See also
+
+- [Tools](./tools) (write your own `@tool`)
+
+
+---
+
+<!-- source: docs/guide/memory.md -->
+
+# Memory
+
+Not chat history — a simple note list you paste into the prompt yourself (`pagent.memory`, experimental).
+
+```python
+from pagent.memory import Memory
+from pagent import Session
+
+notes = Memory()
+notes.add("User prefers metric units.")
+
+session = Session(f"You are helpful.\n\nNotes:\n{notes.as_text()}")
+```
+
+Not wired into `Agent` automatically. Save/load: `notes.save_to_file("notes.json")`, `Memory.load_from_file(...)`.
+
+## See also
+
+- [Prompt](./prompt) · [Tools](./tools)
+
+
+---
+
+<!-- source: docs/events.md -->
+
+# Agent events
+
+For developers building custom UIs. New users: [Quick start](./guide/quick-start); internals: [development.md](./development.md).
+
+Structured events for observing the **Agent loop** without coupling to a specific UI (terminal, web, IDE). Inspired by the *Soul / Wire* split in products like Kimi Code: the loop **emits** facts; consumers **subscribe** and render.
+
+**Status:** `Agent.arun_events()` emits these events. `Agent.arun()` is a thin wrapper that yields only `TextDelta.text` for backward compatibility.
+
+## Native Event vs Wire (JSON-RPC)
+
+**Same timeline, two shapes** — not two different event systems.
+
+| Layer | What you get | Typical use |
+|-------|----------------|-------------|
+| **Native `Event`** | Frozen Python dataclasses (`TextDelta`, `RunEnd`, …) | Python services, CLI, tests, notebooks — `match` / `isinstance`, IDE types |
+| **Wire (JSON-RPC)** | One NDJSON line per event: `{"jsonrpc":"2.0","method":"TextDelta","params":{...}}` | Browser/mobile, other languages, SSE/WebSocket, log files (`wire.jsonl`) |
+
+| API | Returns |
+|-----|---------|
+| `agent.run()` | Final `RunEnd` only (blocking, no stream) |
+| `agent.arun()` | `str` text chunks only |
+| `agent.arun_events()` | **`Event`** objects (full stream) |
+| `agent.arun_wire()` | **`str`** NDJSON lines (same stream, serialized) |
+
+Wire is a thin serializer over `arun_events()`; see [wire.md](./wire.md). In Python you can also `encode_event_line(event)` when bridging to a socket yourself.
+
+**Choose native** when the consumer is Python and you want type checking and pattern matching.
+
+**Choose wire** when the consumer is not Python, or you need a stable on-the-wire format for HTTP/SSE/WebSocket.
+
+## Import
+
+```python
+from pagent import (
+    Event,
+    RunBegin,
+    TurnBegin,
+    TextDelta,
+    ReasoningDelta,
+    StepEnd,
+    ToolCallBegin,
+    ToolResult,
+    TurnEnd,
+    RunEnd,
+)
+```
+
+`Event` is a union of all concrete event classes (for `match` / `isinstance`).
+
+## Event reference
+
+### Lifecycle
+
+| Event | Fields | When (intended) |
+|-------|--------|-----------------|
+| `RunBegin` | `user_input: str` | User message appended to `session`; loop starts |
+| `TurnBegin` | `turn: int` | Start of one LLM call inside `max_turns` (0-based) |
+| `TurnEnd` | `turn: int`, `stopped: bool` | Assistant message written; `stopped=True` if loop will not call the model again this run |
+| `RunEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` | Entire `run` / `arun` finished (same type as `LLM.invoke` return) |
+
+### Streaming
+
+| Event | Fields | When (intended) |
+|-------|--------|-----------------|
+| `TextDelta` | `text: str` | Chunk of assistant `content` from `invoke_stream` |
+| `ReasoningDelta` | `text: str` | Chunk of `reasoning_content` (provider-specific) |
+
+### Step boundary
+
+| Event | Fields | When (intended) |
+|-------|--------|-----------------|
+| `StepEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` | One LLM step finished (stream assembled or single `invoke`) |
+
+Same fields as `RunEnd` for that step. `tool_calls` uses the OpenAI shape: `[{ "id", "type", "function": { "name", "arguments" } }, ...]`.
+
+### Tools
+
+| Event | Fields | When (intended) |
+|-------|--------|-----------------|
+| `ToolCallBegin` | `tool_call_id`, `name`, `arguments` | About to execute one tool |
+| `ToolResult` | `tool_call_id`, `name`, `content` | Tool output appended to `session` as `role: tool` |
+
+## Typical sequences
+
+### Single turn, text only
+
+```text
+RunBegin
+  TurnBegin(0)
+    TextDelta …
+    StepEnd(content=…, tool_calls=[])
+  TurnEnd(0, stopped=True)
+RunEnd
+```
+
+### One turn with tools, then final answer
+
+```text
+RunBegin
+  TurnBegin(0)
+    TextDelta …
+    StepEnd(…, tool_calls=[…])
+    ToolCallBegin(…)
+    ToolResult(…)
+  TurnEnd(0, stopped=False)
+  TurnBegin(1)
+    TextDelta …
+    StepEnd(…, tool_calls=[])
+  TurnEnd(1, stopped=True)
+RunEnd
+```
+
+### Hit `max_turns` with tools still pending
+
+Last `TurnEnd` may have `stopped=False`; the final `RunEnd` event reflects the last assistant message (may still include `tool_calls`).
+
+```mermaid
+sequenceDiagram
+  participant UI
+  participant Agent
+  participant LLM
+  participant Tools
+
+  UI->>Agent: user_input
+  Agent-->>UI: RunBegin
+  loop each turn
+    Agent-->>UI: TurnBegin
+    Agent->>LLM: invoke_stream
+    LLM-->>Agent: chunks
+    Agent-->>UI: TextDelta
+    Agent-->>UI: StepEnd
+    opt tool_calls
+      Agent-->>UI: ToolCallBegin
+      Agent->>Tools: call
+      Agent-->>UI: ToolResult
+    end
+    Agent-->>UI: TurnEnd
+  end
+  Agent-->>UI: RunEnd
+```
+
+## Consumer example
+
+```python
+async for event in agent.arun_events("Hello"):
+    match event:
+        case TextDelta(text=t):
+            print(t, end="", flush=True)
+        case ToolCallBegin(name=n):
+            print(f"\n[tool {n}]")
+        case RunEnd(content=c):
+            print(f"\n[done: {c!r}]")
+```
+
+Keep `arun()` for callers that only need text:
+
+```python
+async for chunk in agent.arun("Hello"):
+    print(chunk, end="")  # str, not Event
+```
+
+## Design notes
+
+- **Frozen dataclasses** — events are immutable snapshots; safe to queue or log.
+- **Wire protocol** — JSON-RPC 2.0 notifications + NDJSON: [wire.md](./wire.md). Use `Agent.arun_wire()` or `encode_event_line()`.
+- **Inbound control** (approval, external tools, `steer`) — not modeled; would be separate request types, not `Event`.
+- **Session vs events** — `session.messages` remains the LLM API history; events are a parallel UI timeline (compare Kimi `context.jsonl` vs `wire.jsonl`).
+
+## Source
+
+Definitions: [`src/pagent/events.py`](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/events.py)
+
+**reasoning_content examples** (run vs stream, `--zh` 鸡兔同笼): [reasoning.md](./reasoning.md)
+
+
+---
+
+<!-- source: docs/wire.md -->
+
+# Wire protocol (JSON-RPC 2.0)
+
+For **web / mobile frontends** and any transport that speaks JSON lines (HTTP chunked, SSE `data:` payloads, WebSocket text frames).
+
+This is **not** a second event system. `arun_wire()` serializes the same stream as `arun_events()`; semantics and ordering match [events.md](./events.md).
+
+## How Wire fits (diagrams)
+
+### Stack: one timeline, two layers
+
+```mermaid
+flowchart LR
+  A[Agent arun_events]
+  W[Wire NDJSON]
+  T[HTTP SSE WS]
+  U[Client UI]
+
+  A --> W --> T --> U
+```
+
+Inbound control (cancel, tool approval, steer) is **not** on this arrow — use your own HTTP/API beside the stream.
+
+### One Python event → one line
+
+```mermaid
+flowchart LR
+  E[TextDelta]
+  R[JSON-RPC]
+  L[NDJSON line]
+
+  E --> R --> L
+```
+
+### Typical stream (single turn, text only)
+
+```mermaid
+sequenceDiagram
+  participant App as Server
+  participant Agent
+  participant Client
+
+  App->>Agent: arun_wire
+  Agent-->>Client: RunBegin
+  Agent-->>Client: TurnBegin
+  loop stream
+    Agent-->>Client: TextDelta
+  end
+  Agent-->>Client: StepEnd
+  Agent-->>Client: TurnEnd
+  Agent-->>Client: RunEnd
+```
+
+Client: parse each NDJSON line; append `TextDelta` to the answer pane.
+
+### With tools (two turns)
+
+```mermaid
+sequenceDiagram
+  participant Client as Client UI
+  participant Agent as Agent
+
+  Agent-->>Client: RunBegin
+  Agent-->>Client: TurnBegin turn=0
+  Agent-->>Client: TextDelta
+  Agent-->>Client: StepEnd tool_calls set
+  Agent-->>Client: ToolCallBegin
+  Agent-->>Client: ToolResult
+  Agent-->>Client: TurnEnd stopped=false
+  Agent-->>Client: TurnBegin turn=1
+  Agent-->>Client: TextDelta
+  Agent-->>Client: StepEnd
+  Agent-->>Client: TurnEnd stopped=true
+  Agent-->>Client: RunEnd
+```
+
+Full event list and ordering: [events.md](./events.md).
+
+### When to use Wire vs native Event
+
+| Use **Wire** (`arun_wire`, NDJSON) | Use **native Event** (`arun_events`) |
+|-------------------------------------|--------------------------------------|
+| TypeScript / Swift / Kotlin client | Python CLI, FastAPI handler, tests |
+| SSE or WebSocket to the browser | `match event:` / `isinstance` in-process |
+| Persist or replay `wire.jsonl` | Rich objects (e.g. OpenAI `usage` before encode) |
+
+| Use **`arun()`** only when you need printed answer text and nothing else (e.g. simple scripts).
+
+Python backends that talk to a browser often: `arun_events()` in the server loop, `encode_event_line(event)` per chunk to the socket — or `arun_wire()` directly if you only forward lines.
+
+Python events from `Agent.arun_events()` map 1:1 to **JSON-RPC 2.0 notifications** (no `id` — they are pushed, not request/response pairs).
+
+## Message shape
+
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "TextDelta",
+  "params": { "text": "Hello" }
+}
+```
+
+| Field | Value |
+|-------|--------|
+| `jsonrpc` | Always `"2.0"` |
+| `method` | Event class name: `RunBegin`, `TextDelta`, `ToolCallBegin`, `RunEnd`, … |
+| `params` | Dataclass fields as a JSON object (see [events.md](./events.md)) |
+
+There is **no** `id` field. Inbound control (approve tool, cancel) is out of scope; use your own API for that.
+
+## NDJSON stream
+
+One notification per line (newline-delimited JSON):
+
+```text
+{"jsonrpc":"2.0","method":"RunBegin","params":{"user_input":"Hi"}}
+{"jsonrpc":"2.0","method":"TextDelta","params":{"text":"4"}}
+{"jsonrpc":"2.0","method":"RunEnd","params":{"content":"4","tool_calls":[],"reasoning_content":"","usage":null}}
+```
+
+## Python
+
+```python
+from pagent import Agent, LLM, Session, encode_event_line, decode_event_line
+
+async for line in agent.arun_wire("2+2?"):
+  # line is already NDJSON (ends with \n)
+  send_to_websocket(line)
+
+# Or encode/decode manually:
+from pagent import event_to_rpc, rpc_to_event
+
+msg = event_to_rpc(TextDelta("x"))
+event = rpc_to_event(msg)
+```
+
+Exports: `event_to_rpc`, `rpc_to_event`, `encode_event`, `decode_event`, `encode_event_line`, `decode_event_line`, `JSONRPC_VERSION`.
+
+## TypeScript consumer (sketch)
+
+```typescript
+type WireMsg = { jsonrpc: "2.0"; method: string; params: Record<string, unknown> };
+
+function onLine(line: string) {
+  const msg: WireMsg = JSON.parse(line);
+  switch (msg.method) {
+    case "TextDelta":
+      appendAnswer(String(msg.params.text ?? ""));
+      break;
+    case "ReasoningDelta":
+      appendThinking(String(msg.params.text ?? ""));
+      break;
+    case "ToolCallBegin":
+      showTool(msg.params.name as string, msg.params.arguments as string);
+      break;
+    case "RunEnd":
+      finish(msg.params.content as string);
+      break;
+  }
+}
+```
+
+## `usage` in `StepEnd` / `RunEnd`
+
+When present, `params.usage` is a plain object:
+
+```json
+{ "prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15 }
+```
+
+## Methods reference
+
+Same semantics as [events.md](./events.md); `method` equals the Python event class name.
+
+| `method` | `params` keys |
+|----------|----------------|
+| `RunBegin` | `user_input` |
+| `TurnBegin` | `turn` |
+| `TurnEnd` | `turn`, `stopped` |
+| `TextDelta` | `text` |
+| `ReasoningDelta` | `text` |
+| `StepEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` |
+| `ToolCallBegin` | `tool_call_id`, `name`, `arguments` |
+| `ToolResult` | `tool_call_id`, `name`, `content` |
+| `RunEnd` | `content`, `tool_calls`, `reasoning_content`, `usage` |
+
+## Runnable demo
+
+[`examples/wire_browser/`](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser) — FastAPI server + single-page UI. See [Wire demo](./wire-demo) on this site.
+
+## Source
+
+[`src/pagent/wire.py`](https://github.com/SyncLionPaw/pagent/blob/main/src/pagent/wire.py)
+
+
+---
+
+<!-- source: docs/reasoning.md -->
+
+# reasoning_content examples
+
+Models such as DeepSeek may return **`reasoning_content`** (chain-of-thought) alongside **`content`** (user-facing answer). pagent carries both on **`RunEnd`**; in streaming mode **`ReasoningDelta`** and **`TextDelta`** events deliver them separately.
+
+Event reference: [events.md](./events.md)
+
+## Usage
+
+The examples below show the direct API shape. Runnable examples are grouped in
+[`examples/README.md`](https://github.com/SyncLionPaw/pagent/blob/main/examples/README.md).
+
+## Non-streaming: RunEnd
+
+```python
+end = await agent.run(question, reasoning_effort="medium")
+
+print(end.reasoning_content)
+print(end.content)
+```
+
+Use **`end.content`**, not `print(end)`, to avoid dumping the full `RunEnd` repr.
+
+## Streaming: arun_events
+
+```python
+answer_started = False
+async for event in agent.arun_events(question, reasoning_effort="medium"):
+    match event:
+        case ReasoningDelta(text=t):
+            print(t, end="", flush=True)
+        case TextDelta(text=t):
+            if not answer_started:
+                print("\nanswer: ", end="", flush=True)
+                answer_started = True
+            print(t, end="", flush=True)
+        case RunEnd():
+            print()
+```
+
+`agent.arun()` still yields answer text only (filters `TextDelta` internally).
+
+## Questions
+
+- **English (default):** three mislabeled boxes puzzle.
+- **Chinese (`--zh`):** 鸡兔同笼 — 35 heads, 94 legs (answer: 23 chickens, 12 rabbits).
+
+Edit `QUESTION_EN` / `QUESTION_ZH` in `reasoning_common.py`.
+
+## reasoning_effort
+
+Pass through `run_kwargs`, e.g. `reasoning_effort="medium"`. Whether `reasoning_content` appears depends on the provider and model.
+
+
+---
+
+<!-- source: docs/wire-demo.md -->
+
+# Wire demo (local browser UI)
+
+Full-stack example: **FastAPI** serves a chat UI; the browser consumes **`Agent.arun_wire()`** as `application/x-ndjson`.
+
+::: tip GitHub Pages cannot host the live demo
+The docs site is static only. Run the server locally to try streaming chat.
+:::
+
+## Preview
+
+![pagent wire demo — chat UI with reasoning and Wire log](/wire-demo.png)
+
+Streaming reply, optional **reasoning** block, and **Wire log** drawer (JSON-RPC lines from `arun_wire()`).
+
+## Architecture
+
+### Components
+
+#### Browser and server
+
+```mermaid
+flowchart TB
+  B[Browser]
+  S[FastAPI]
+
+  B -->|POST /api/chat| S
+  S -->|NDJSON stream| B
+```
+
+#### Inside FastAPI
+
+`Agent.arun_wire`, tools, session **小帕**:
+
+```mermaid
+flowchart LR
+  A[Agent]
+  L[DeepSeek]
+
+  A <-->|chat API| L
+```
+
+`GET /` serves `index.html`. The browser parses each Wire line (`method` + `params`) for the UI and drawer.
+
+| Piece | File | Role |
+|-------|------|------|
+| SPA | `static/index.html` | `fetch("/api/chat")`, read NDJSON lines, render bubbles / tools / reasoning |
+| API | `server.py` | `StreamingResponse` from `agent.arun_wire(message)` |
+| Library | `pagent` | Agent loop, events → JSON-RPC Wire ([protocol](./wire)) |
+
+Each chat request creates a **new** `Agent` (demo simplicity; a real app would reuse session per user).
+
+### Request flow
+
+```mermaid
+sequenceDiagram
+  participant U as User
+  participant UI
+  participant API
+  participant A as Agent
+  participant LLM
+
+  U->>UI: send
+  UI->>API: POST /api/chat
+  API->>A: arun_wire
+  A->>LLM: completions
+  LLM-->>A: deltas
+  A-->>UI: Wire events
+  UI->>U: bubble + drawer
+```
+
+Turns, `TextDelta` / `ToolResult`, and `RunEnd` are more events on the same `A-->>UI` arrow (see [events](./events)). **Stop** uses `AbortController` on fetch — not a Wire `method`.
+
+### Cancel / stop
+
+```mermaid
+flowchart LR
+  S[Stop] --> A[AbortController]
+  A --> H[HTTP closed]
+  H --> E[Stream ends]
+```
+
+Wire has **no** cancel `method` — stopping generation closes the HTTP stream. Tool approval is also out of scope in this demo.
+
+## Run
+
+Examples use `uv run`. New to **uv**? See the [official docs](https://docs.astral.sh/uv/).
+
+```bash
+git clone https://github.com/SyncLionPaw/pagent.git
+cd pagent
+export DEEPSEEK_API_KEY="your-key"
+
+uv run --with fastapi --with uvicorn python examples/wire_browser/server.py
+```
+
+Open **http://127.0.0.1:8765**
+
+## Stop
+
+- **Server:** `Ctrl+C` in the terminal
+- **While streaming:** click **停止** in the UI (aborts the HTTP request)
+
+## What it shows
+
+- Chat UI with tool cards and optional reasoning block
+- Side drawer with raw Wire NDJSON lines
+- Same protocol as [Wire protocol](./wire) — not a separate message system
+
+Source: [examples/wire_browser/](https://github.com/SyncLionPaw/pagent/tree/main/examples/wire_browser) on GitHub.
+
+
+---
+
+<!-- source: docs/vscode.md -->
+
+# VS Code Extension
+
+The pagent VS Code extension adds a chat panel to VS Code. After installing the
+extension, you can talk to pagent from the sidebar and let it read files, run
+commands, call tools, and resume previous conversations in the current workspace.
+
+## Install
+
+Download the VS Code extension package from
+[pagent GitHub Releases](https://github.com/SyncLionPaw/pagent/releases):
+
+Download the file ending in `.vsix`.
+
+Install it in VS Code:
+
+1. Open the **Extensions** panel.
+2. Click the `...` menu in the upper-right corner of the Extensions panel.
+3. Select **Install from VSIX...**.
+4. Pick the `.vsix` file you downloaded.
+5. Reload the VS Code window after installation. The pagent icon appears in the
+   activity bar.
+
+You can also open the command palette and run:
+
+```text
+Extensions: Install from VSIX...
+```
+
+The extension also needs the `pagent` command on your machine. Install the CLI
+first:
+
+```bash
+uv tool install pagent
+```
+
+If VS Code cannot find `pagent`, set `pagent.command` to the absolute path of
+the executable.
+
+## First Run
+
+Click the pagent icon in the activity bar and open **Chat**.
+
+If no API key has been configured yet, the extension asks for:
+
+- API key
+- model name, default: `deepseek-v4-flash`
+- base URL, optional
+
+After saving the config, the extension writes `pagent.toml` and you can start
+chatting.
+
+The [Desktop app](/desktop) does **not** include this guided setup — configure
+`pagent.toml` or `DEEPSEEK_API_KEY` before chatting.
+
+## Files Created by the Extension
+
+The extension uses a pagent home directory for config, conversation history, and
+local skills.
+
+If the current workspace already has `.pagent/`, the extension uses:
+
+```text
+<workspace>/.pagent/
+```
+
+If the workspace does not have `.pagent/`, the extension uses:
+
+```text
+~/.pagent/
+```
+
+If you want a project to have its own config and conversation history, create
+`.pagent/` in the project root:
+
+```bash
+mkdir .pagent
+```
+
+After that, the extension uses the project-local `.pagent/`.
+
+Common files:
+
+```text
+.pagent/
+├── pagent.toml          # Config: model, API key, sandbox, permissions
+├── threads/             # Conversation history
+│   └── thread-.../
+│       ├── metainfo.json
+│       └── messages.jsonl
+└── skills/              # Optional local skills
+```
+
+What these files mean:
+
+| Path | Contents |
+| --- | --- |
+| `pagent.toml` | Model, API key, base URL, runtime mode, SSH, approval mode |
+| `threads/` | Conversation history; each thread is a resumable conversation |
+| `metainfo.json` | Thread title, created time, updated time, message count |
+| `messages.jsonl` | Messages in that thread |
+| `skills/` | Optional local skills |
+
+Empty threads with no messages are cleaned up when the backend exits normally.
+
+If `.pagent/` is inside a project that you commit to Git, avoid committing a
+`pagent.toml` that contains an API key.
+
+## Config File
+
+The extension writes `pagent.toml` after the first API key setup. You can also
+edit it manually:
+
+```toml
+[provider]
+api_key = "sk-..."
+model = "deepseek-v4-flash"
+# base_url = "https://..."
+
+[sandbox]
+backend = "local" # local | docker | podman | ssh
+command_policy = "workdir"
+
+[ssh]
+config_path = "~/.ssh/config"
+host = "my-remote"
+workdir = "~/pagent"
+
+[permission]
+mode = "prompt" # prompt | auto
+```
+
+You can also provide the API key with an environment variable:
+
+```bash
+export DEEPSEEK_API_KEY=sk-...
+```
+
+## Use the Chat
+
+Open Chat, type in the composer, and press Enter to send. Use Shift+Enter for a
+new line.
+
+The extension streams the answer as it arrives. Reasoning appears in a
+collapsible `thinking` panel. Tool calls appear as tool cards, which can be
+expanded for details.
+
+## Title Bar Buttons
+
+The Chat title bar has three buttons:
+
+| Button | Meaning |
+| --- | --- |
+| Open in editor | Open a wider chat panel in the editor area |
+| Resume session | Pick a previous conversation and continue it |
+| New session | Start a new empty conversation |
+
+## Composer Buttons
+
+The composer footer has:
+
+| Button | Meaning |
+| --- | --- |
+| `/` | Open the slash command menu |
+| Runtime mode | Choose where tools run |
+| Stamp | Toggle YOLO mode |
+| Send | Send the current message |
+
+YOLO mode automatically approves dangerous tool calls such as running commands.
+Use it only when you trust the current workspace and request.
+
+## Runtime Modes
+
+The runtime mode controls where pagent tools run.
+
+| Mode | Meaning |
+| --- | --- |
+| Local | Run tools on the current machine |
+| Docker | Run tools in a Docker container |
+| Podman | Run tools in a Podman container |
+| SSH | Run tools on a remote machine |
+
+Docker and Podman appear only when the corresponding CLI exists in the VS Code
+host environment.
+
+SSH mode reads `~/.ssh/config` and shows explicit `Host` aliases. Wildcard
+entries such as `Host *` are hidden.
+
+## Slash Commands
+
+Click `/`, or type `/` in the composer, to open the command menu.
+
+Current commands:
+
+| Command | Meaning |
+| --- | --- |
+| `/help` | Show available commands |
+| `/skills` | Show loaded skills |
+| `/history` | Show conversation information |
+| `/pwd` | Show the active pagent home / workspace context |
+| `/ls` | List files in the current context |
+
+Slash commands do not start a model turn and do not enter conversation history.
+
+## Tool Approval
+
+By default, dangerous tools pause for approval. The tool card shows approve and
+deny buttons.
+
+If YOLO mode is enabled, approvals are skipped. You can also set:
+
+```toml
+[permission]
+mode = "auto"
+```
+
+## Troubleshooting
+
+**The pagent icon does not appear.**
+
+Make sure the `.vsix` installation succeeded, then reload the VS Code window.
+
+**VS Code cannot find `pagent`.**
+
+Run `uv tool install pagent`. If it still cannot be found, set
+`pagent.command` in VS Code settings.
+
+**Docker or Podman does not appear in the menu.**
+
+The corresponding CLI is missing from the VS Code host environment, or it is not
+available in PATH.
+
+**SSH hosts do not appear.**
+
+Check `pagent.sshConfigPath` and make sure it contains explicit `Host xxx`
+entries.
+
+**Where is conversation history stored?**
+
+Under `threads/` in the active pagent home. In project mode this is usually
+`<workspace>/.pagent/threads/`; otherwise it is `~/.pagent/threads/`.
+
+
+---
+
+<!-- source: docs/development.md -->
+
+# Developer guide
+
+For contributors and anyone hacking the library. End users should start at the [documentation home](/) or [Quick start](./guide/quick-start).
+
+## Layout
+
+```text
+src/pagent/     v1 library
+src/pagentv4/   v4 library (core, runtime, sandbox, skills)
+src/app/        application layer (REPL, CLI) on top of pagentv4
+examples/       runnable demos grouped by category (see examples/pagentv4/)
+tests/          pytest
+docs/           documentation
+```
+
+Core: `agent.py`, `session.py`, `llm.py`, `tool.py`, `tokens.py`, `events.py`.
+
+## Capability map
+
+| Module | Notes |
+|--------|--------|
+| `Session` | OpenAI-shaped messages; `SlidingWindowSession` trims by tokens; `CompactingSession` LLM-compresses history |
+| `LLM` | `invoke` / `invoke_stream`; returns `RunEnd` |
+| `Agent` | `run` / `arun` / `arun_events` / `arun_wire` |
+| `tokens` | `count_tokens`, `count_tokens_detail`, `format_context` |
+| `events` / `wire` | UI timeline — [events.md](./events.md), [wire.md](./wire.md) |
+
+中文完整表：[开发指南](/zh/development)
+
+## Out of scope
+
+Parallel tools, RAG, MCP, built-in file/shell tools, multimodal, checkpoints — build in your app.
+
+**Planned:** [Hooks support plan](./plans/hooks.md) (lifecycle hooks for tool approval, cancel, context injection; distinct from Event/Wire).
+
+## Local development
+
+Uses [uv](https://docs.astral.sh/uv/) for env management. New to uv? See the [official docs](https://docs.astral.sh/uv/).
+
+```bash
+uv sync --group dev --extra search
+pip install -e ".[search]"
+pre-commit install
+pytest -q
+```
+
+## Documentation site
+
+Built with [VitePress](https://vitepress.dev/). Config: `docs/.vitepress/config.mts`, content: `docs/*.md`. Mermaid diagrams use [vitepress-plugin-mermaid](https://github.com/emersonbottero/vitepress-plugin-mermaid) (fenced ` ```mermaid ` blocks).
+
+**For coding agents / LLMs:** [agent-reference](./agent-reference), repo [AGENTS.md](https://github.com/SyncLionPaw/pagent/blob/main/AGENTS.md), [llms.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms.txt), [llms-full.txt](https://github.com/SyncLionPaw/pagent/blob/main/llms-full.txt) (`npm run build:llms` in `docs/` regenerates the bundle).
+
+```bash
+cd docs
+npm install
+npm run dev            # http://localhost:5173/pagent/
+npm run build          # output in docs/.vitepress/dist/
+```
+
+Node tooling lives under `docs/` (`package.json`, `package-lock.json`) so the repo root stays Python-only.
+
+Do **not** commit `docs/.vitepress/dist/` or `site/` — they are in `.gitignore`. Only Markdown sources under `docs/` live on `main`.
+
+On push to `main`, [docs.yml](https://github.com/SyncLionPaw/pagent/blob/main/.github/workflows/docs.yml) runs `npm run build` in `docs/` and publishes `docs/.vitepress/dist/` to the **`gh-pages`** branch. Enable in repo **Settings → Pages → Deploy from branch → gh-pages / root**.
+
+## Publishing
+
+Release notes live in **[`CHANGELOG.md`](../CHANGELOG.md)** at the repo root (one file, newest version first). Before tagging, write under `## Unreleased`, then rename that section to `## x.y.z — date`.
+
+```bash
+./scripts/release-notes.sh 0.7.10 | gh release create v0.7.10 --title v0.7.10 --notes-file -
+```
+
+`.github/workflows/publish.yml` — on **published** GitHub Release: uploads VS Code `.vsix`, builds Desktop macOS zip, publishes wheel to PyPI (Trusted Publishing).
+
+## See also
+
+- [events.md](./events.md)
+- [reasoning.md](./reasoning.md)
+
+
+---
+
+<!-- source: docs/pagentv4/index.md -->
+
+# pagentv4
+
+`pagentv4` is the newer typed API in this repository.
+
+Use these pages if you want:
+
+- `Provider` instead of `LLM`
+- `Message` / `Messages` instead of `Session`
+- `Runner` for thread-based orchestration, persistence, and sandbox workspaces
+- A **sandbox** (companion computer) with file and command tools
+- Optional **Thread** and **Skill** support for long-lived REPL-style apps
+
+## Module layout
+
+```text
+core/       AgentCore, Message, Provider, Tool, Event
+ithread/    IThread Protocol + ThreadSpec
+runtime/    loop_core, LoopAdapter, BaseRunner, Runner, VanillaRunner, Thread
+conversation/ ConversationStore implementations used through Thread
+sandbox/    Backend, Sandbox, built-in file/command tools
+tools/      reusable tool functions
+adapters/   ACP encode/decode
+skills/     SKILL.md discovery and on-demand loading
+```
+
+There are several layers inside `runtime/`:
+
+- `loop_core` defines the shared run / turn / tool loop semantics
+- `LoopAdapter` carries the shared loop skeleton, and each runner layers on capabilities:
+  - `VanillaRunner(LoopAdapter)` — minimal in-memory environment
+  - `BaseRunner(LoopAdapter)` — adds thread, conversation store, sandbox, skills
+  - `Runner(BaseRunner)` — adds inbound control (steer/cancel/permit) and tool hooks
+
+## Pages
+
+- [Quick start](./quick-start)
+- [Core types](./core-types)
+- [Messages](./messages)
+- [Tools](./tools)
+- [VS Code extension](/vscode)
+- [Sandbox](./sandbox)
+
+## Status
+
+New work should use `pagentv4` and `app` (terminal REPL). The top-level `pagent`
+package still documents the older `Session + LLM` API for now.
+
+
+---
+
+<!-- source: docs/pagentv4/quick-start.md -->
+
+# pagentv4 Quick Start
+
+`pagentv4` is the message-centric API with a `Runner` orchestration layer.
+It replaces `Session` / `LLM` with `Message` / `Provider`, and adds optional
+sandbox and persistence support.
+
+Prerequisites: [Install](../guide/install) (Python 3.11+, pip / uv / conda).
+
+## Open a thread
+
+`Runner` is bound to a **thread** for its entire lifetime: sandbox, messages,
+and agent are created together and torn down with `runner.close()`.
+
+```python
+import asyncio
+import os
+
+from pagentv4 import DeepSeek, Runner
+
+
+async def main():
+    if not os.getenv("DEEPSEEK_API_KEY"):
+        raise SystemExit("Set DEEPSEEK_API_KEY first.")
+
+    runner = await Runner.create(
+        "demo",
+        DeepSeek("deepseek-v4-flash"),
+        overrides={"backend": "local"},
+        extra_system="You are helpful and concise.",
+    )
+    try:
+        async for text in runner.run(
+            "Explain tail recursion in one sentence.", return_type="text"
+        ):
+            print(text, end="", flush=True)
+        print()
+    finally:
+        await runner.close()
+
+
+asyncio.run(main())
+```
+
+## Multi-turn on the same thread
+
+Call `runner.run()` again — messages accumulate and persist in the conversation
+store configured by the thread. With the default JSONL backend, the path is
+`~/.pagent/threads/<thread_id>/messages.jsonl`.
+
+```python
+runner = await Runner.create("demo", provider, overrides={"backend": "local"})
+try:
+    async for text in runner.run("My name is Ada.", return_type="text"):
+        print(text, end="")
+    async for text in runner.run("What is my name?", return_type="text"):
+        print(text, end="")
+finally:
+    await runner.close()
+```
+
+Re-open the same `thread_id` later to resume.
+
+## Sandbox + tools
+
+`Runner.create()` creates the sandbox from the thread spec, binds built-in file
+and command tools, and merges any extra tools you pass:
+
+```python
+runner = await Runner.create(
+    "demo",
+    DeepSeek("deepseek-v4-flash"),
+    overrides={"backend": "local"},
+    extra_system="Use tools when needed.",
+)
+try:
+    async for event in runner.run(
+        "Create hello.txt under /home/agent with one greeting line."
+    ):
+        ...
+finally:
+    await runner.close()
+```
+
+See [Sandbox](./sandbox) for backends (`local`, `docker`, `podman`, `ssh`).
+
+## Streaming modes
+
+`runner.run()` defaults to `return_type="event"`.
+
+| API | Returns | Use when |
+|-----|---------|----------|
+| `runner.run(..., return_type="event")` | `Event` objects | Full timeline, Python UI |
+| `runner.run(..., return_type="text")` | `str` chunks | Answer text only |
+| `runner.run(..., return_type="message")` | `Message` objects | Observe assistant/tool messages |
+| `runner.run(..., return_type="acp")` | NDJSON lines | Socket / ACP / JSON consumers |
+
+## Built-in providers
+
+```python
+from pagentv4 import DeepSeek, Kimi, LongCat, MiMo, Ollama, Provider, Sglang, Vllm
+
+deepseek = DeepSeek("deepseek-v4-flash")
+ollama = Ollama("qwen3:8b")
+vllm = Vllm("my-model")
+sglang = Sglang("my-model")
+```
+
+`Provider` and the built-in subclasses forward to OpenAI-compatible
+`/v1/chat/completions`.
+
+## Next
+
+- [Core types](./core-types)
+- [Messages](./messages)
+- [Tools](./tools)
+- [Events](./events)
+- [Sandbox](./sandbox)
+
+
+---
+
+<!-- source: docs/pagentv4/core-types.md -->
+
+# pagentv4 Core Types
+
+`pagentv4` separates **configuration** (`AgentCore`), **conversation state**
+(`Messages`), **orchestration** (`Runner`), and optional **execution**
+(`Sandbox`).
+
+## Main symbols
+
+| Symbol | Role |
+|--------|------|
+| `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang`, … | OpenAI-compatible streaming clients |
+| `AgentCore(provider, system=None, tools=None, max_turns=8)` | Model + tool configuration |
+| `Runner` | Thread-bound orchestrator: sandbox + messages + tool loop |
+| `VanillaRunner(agent, messages=None)` | Lightweight in-memory loop with no thread, sandbox, or persistence |
+| `ChatAgent`, `CodeAgent`, `ThreadAgent`, `VanillaAgent` | Agent-style aliases for the matching runner classes |
+| `loop_core.run_event_loop(adapter, …)` | Shared event-loop kernel used by both runners |
+| `Message` | One typed message item with `role` + `content` |
+| `Messages` | In-memory message list with `to_openai()` conversion |
+| `ConversationStore`, `JsonlConversationStore`, `SqliteConversationStore` | Persist messages by id |
+| `Thread`, `ThreadSpec` | Long-lived thread: spec + messages + workspace |
+| `Sandbox` | Companion computer with files and commands |
+| `TurnResult` | One model turn summary: `content`, `tool_calls`, `reasoning_content` |
+| `Event` | Union of event dataclasses emitted by the run loop |
+
+## What a `turn` means
+
+In `pagentv4`, a `turn` is one internal work cycle of the agent, not one user-facing conversation round.
+
+It includes:
+
+- one model generation
+- the tool execution requested by that round
+- the decision to continue or stop
+
+Because of that, one run may contain multiple turns.
+The user sends one `user_input`, while the agent may still go through turn 0, turn 1, turn 2, and so on until the run finishes.
+
+Do not treat `TurnResult` and `TurnEnd` as the same thing:
+
+- `TurnResult` is the summary of the model output for the current turn
+- `TurnEnd` is the event that actually marks the end of that turn
+
+## AgentCore
+
+`AgentCore` is a configuration container. It does not own conversation history
+or run the tool loop by itself.
+
+```python
+from pagentv4 import AgentCore, DeepSeek, tool
+
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for a city."""
+    return f"Sunny in {city} today."
+
+
+agent = AgentCore(
+    DeepSeek("deepseek-v4-flash"),
+    system="You are concise.",
+    tools=[get_weather],
+    max_turns=8,
+)
+```
+
+Notes:
+
+- `system=` is inserted by `Runner` if no system message is present.
+- Duplicate tool names are rejected at construction time.
+- `max_turns` must be `>= 1`.
+- `agent.generate_messages(messages)` performs one provider call only.
+- `Agent` remains as a compatibility alias for `AgentCore`.
+
+Some users prefer naming the whole runnable object an agent. `pagentv4` supports
+that style with aliases:
+
+```python
+from pagentv4 import CodeAgent, ChatAgent, ThreadAgent
+
+# Same classes as CodeRunner, ChatRunner, and Runner.
+code = CodeAgent(agent, backend="local")
+chat = ChatAgent(agent, thread_id="demo")
+full = await ThreadAgent.create("demo", provider, overrides={"backend": "local"})
+```
+
+## Runner
+
+`Runner` is created only via `Runner.create()` and lives as long as its thread.
+It owns the multi-turn tool loop, sandbox, messages, and persistence.
+
+The layering looks like this:
+
+- `loop_core` handles the shared run, turn, tool call, `TurnResult`, `TurnEnd`, and `RunEnd` semantics
+- `LoopAdapter` carries the shared loop skeleton (`execute_tool`, `stream_agent_events`, `emit`, `run`)
+- `VanillaRunner(LoopAdapter)` reuses that loop with a minimal in-memory environment
+- `BaseRunner(LoopAdapter)` adds thread, conversation store, sandbox, and skills, and flushes after each turn
+- `Runner(BaseRunner)` adds the inbound control plane (steer/cancel/permit) and tool hooks
+
+This keeps the different runtime layers aligned on turn/tool behavior while still exposing different runtime capabilities.
+
+| Method | Role |
+|--------|------|
+| `Runner.create(thread_id, provider, …)` | Open thread → sandbox → agent |
+| `runner.run(user_input, …)` | One user turn with `return_type` projection |
+| `runner.close()` | Close sandbox |
+
+```python
+from pagentv4 import DeepSeek, Runner
+
+runner = await Runner.create(
+    "demo",
+    DeepSeek("deepseek-v4-flash"),
+    overrides={"backend": "local"},
+    extra_system="You are helpful.",
+    tools=[my_tool],  # optional extras merged with sandbox tools
+)
+try:
+    async for event in runner.run("hi"):
+        ...
+finally:
+    await runner.close()
+```
+
+Messages are flushed at each `TurnEnd` into the conversation store configured by
+the thread. With the default JSONL backend, the path is
+`~/.pagent/threads/<thread_id>/messages.jsonl`.
+
+## loop_core
+
+`loop_core` is the shared runtime kernel used by both `Runner` and
+`VanillaRunner`.
+
+It handles the common steps in a run:
+
+- emit `RunBegin`
+- enter each `TurnBegin`
+- call `agent.generate_messages(messages)`
+- build `TurnResult` from the message slice
+- execute tool calls for the turn
+- emit `TurnEnd` and `RunEnd`
+
+`loop_core` leaves these concerns to the outer runner adapter:
+
+- thread lifecycle
+- sandbox
+- message persistence
+- inbound cancel / steer / checkpoint
+- tool hooks
+- skills injection
+
+## Thread
+
+A **thread** binds conversation history, thread config, and workspace on disk:
+
+```text
+~/.pagent/threads/<thread_id>/
+  thread.toml
+  workspace/
+```
+
+Use `Thread.open(thread_id, overrides={...})` to create or resume a thread.
+The terminal app (`uv run pagent`) and `examples/app/repl.py` show the full pattern.
+
+## Provider
+
+```python
+from pagentv4 import Provider
+
+provider = Provider(
+    "gpt-4o-mini",
+    base_url=None,
+    apikey=None,
+    request_kwargs=None,
+)
+```
+
+Reserved keys in `Provider.complete()`:
+
+- `model`
+- `messages`
+- `stream`
+- `tools`
+
+| Provider | Environment variable |
+|----------|---------------------|
+| `Provider` | `OPENAI_API_KEY` |
+| `DeepSeek` | `DEEPSEEK_API_KEY` |
+| `Kimi` | `MOONSHOT_API_KEY` |
+| `MiMo` | `MIMO_API_KEY` |
+| `LongCat` | `LONGCAT_API_KEY` |
+| `Ollama` | `OLLAMA_API_KEY` |
+| `Vllm` | `VLLM_API_KEY` |
+| `Sglang` | `SGLANG_API_KEY` |
+
+`ProviderProtocol` is the structural type for `complete()` (tests and custom
+backends may implement it without subclassing `Provider`).
+
+## `run()` return types
+
+Valid `return_type` values:
+
+- `"event"`: raw events
+- `"text"`: `TextDelta.text` only
+- `"message"`: `Message` projection over the event stream
+- `"acp"`: NDJSON JSON-RPC notifications
+
+## Differences from `pagent`
+
+- no `Session`
+- no `LLM`
+- typed `Message` objects instead of raw OpenAI-shaped dicts
+- `Runner` instead of `Agent.arun()` for the full loop
+- optional sandbox and conversation persistence
+
+If you want the older `Session + LLM + arun_events()` API, stay on the main
+`pagent` docs.
+
+
+---
+
+<!-- source: docs/pagentv4/messages.md -->
+
+# pagentv4 Messages
+
+`pagentv4` stores conversation state as typed `Message` objects rather than raw
+OpenAI-shaped dicts.
+
+## Roles and content types
+
+| Role | Allowed content |
+|------|-----------------|
+| `system` | `TextChunk` |
+| `user` | `TextChunk`, `ImageUrl`, `AudioUrl` |
+| `assistant` | `TextChunk`, `ThinkingChunk`, `ToolCall` |
+| `tool` | `ToolResult` |
+
+The role/content pairing is validated in `Message`.
+
+## Constructors
+
+```python
+from pagentv4 import Message
+
+system = Message.system("You are helpful.")
+user = Message.user("Describe this image.")
+image = Message.user_image("https://example.com/cat.png")
+tool = Message.tool_result("call_1", "ok")
+```
+
+Assistant messages are often created from streamed events:
+
+```python
+Message.assistant({"type": "text", "text": "hello"})
+Message.assistant({"type": "thinking", "text": "let me think"})
+```
+
+## `Messages`
+
+`Messages` is a thin wrapper around `list[Message]`:
+
+```python
+from pagentv4 import Message, Messages
+
+msgs = Messages()
+msgs += Message.system("You are concise.")
+msgs += Message.user("Hello")
+```
+
+Useful methods:
+
+- `len(msgs)`
+- iteration over `Message`
+- `msgs.to_openai()` to export provider payloads
+- `msgs.save_to_jsonl(path)` / `Messages.load_from_jsonl(path)`
+
+## Conversion to provider payloads
+
+`Messages.to_openai()` performs a few important merges:
+
+- consecutive `user` chunks become one OpenAI user message
+- consecutive `assistant` chunks become one assistant message
+- assistant `ThinkingChunk` values are joined into `reasoning_content`
+- assistant `ToolCall` values are exported into `tool_calls`
+
+## Multimedia
+
+### Image
+
+```python
+from pagentv4 import ImageUrl, Message
+
+msg = Message(role="user", content=ImageUrl(type="image_url", url="https://..."))
+```
+
+Exports to:
+
+```python
+{"type": "image_url", "image_url": {"url": "..."}}
+```
+
+### Audio
+
+```python
+from pagentv4 import AudioUrl, Message
+
+msg = Message(
+    role="user",
+    content=AudioUrl(
+        type="audio_url",
+        url="https://example.com/voice.wav",
+        text="transcribed text",
+    ),
+)
+```
+
+Current export is a fallback mapping:
+
+- one media part for the remote audio URL
+- one text part for the transcript
+
+Media types supported by `pagentv4` and media types accepted by
+OpenAI-compatible APIs do not fully align yet.
+
+
+---
+
+<!-- source: docs/pagentv4/tools.md -->
+
+# pagentv4 Tools
+
+Tools in `pagentv4` are ordinary Python functions decorated with `@tool()`.
+The `Runner` executes them during the multi-turn loop.
+
+## Define a tool
+
+```python
+from pagentv4 import tool
+
+
+@tool()
+def get_weather(city: str) -> str:
+    """Return weather for a city."""
+    return f"Sunny in {city} today."
+```
+
+The decorator derives:
+
+- tool name from the function name
+- description from the docstring
+- argument schema from type hints
+
+## Use with `AgentCore` + `VanillaRunner`
+
+```python
+from pagentv4 import AgentCore, DeepSeek, Messages, VanillaRunner
+
+agent = AgentCore(
+    DeepSeek("deepseek-v4-flash"),
+    system="Use tools when needed.",
+    tools=[get_weather],
+)
+messages = Messages()
+
+runner = VanillaRunner(agent, messages)
+async for event in runner.run("Weather in Xiamen?", return_type="event"):
+    ...
+```
+
+## Tool outputs
+
+Plain return values are wrapped into `ToolOutput(content=..., ok=True)`.
+
+To signal failure explicitly:
+
+```python
+from pagentv4 import ToolOutput, tool
+
+
+@tool()
+def calc(expression: str) -> ToolOutput:
+    """Evaluate a simple arithmetic expression."""
+    if not expression.strip():
+        return ToolOutput.fail("empty expression")
+    return ToolOutput.succeed("42")
+```
+
+`ToolResult.ok` is exposed on the event stream.
+
+## Argument handling
+
+`FunctionTool.call()` and `FunctionTool.acall()` accept:
+
+- `None`: call the tool with no arguments
+- JSON string: parse then call with `**payload`
+- mapping: call directly with `**arguments`
+
+Invalid JSON is converted into a failed `ToolOutput`.
+
+`call()` is synchronous and only supports plain functions. Async tools must
+use `acall()`; `Runner` does this automatically during a run.
+
+## Async tools
+
+```python
+@tool()
+async def fetch(city: str) -> str:
+    """Fetch weather asynchronously."""
+    return f"Sunny in {city}"
+```
+
+Register the tool on `AgentCore` as usual.
+
+## Sandbox tools
+
+When you use `Runner.create()` with a sandbox backend or bind a `Sandbox`
+manually, eight built-in
+tools are available:
+
+| Tool | Purpose |
+|------|---------|
+| `run_command` | Run a shell command in the workspace |
+| `read_file` | Read a file |
+| `write_file` | Write a file |
+| `str_replace` | Replace text in a file |
+| `list_dir` | List a directory |
+| `list_host_files` | List files on the host side of the workspace |
+| `copy_from_host` | Copy host file into the sandbox |
+| `copy_to_host` | Copy sandbox file to the host |
+
+Use `build_sandbox_tools(sandbox)` or `sandbox.tools()` to get them.
+`Runner.create()` merges sandbox tools with any extra tools you pass.
+
+## Skills
+
+Skills are optional instruction packs loaded from `SKILL.md` directories.
+Use `SkillRegistry.from_defaults()` and `make_use_skill_tool(registry)` to
+let the model load skill instructions on demand. See `examples/app/repl.py`.
+
+## Tool hooks
+
+`Runner.create(..., tool_hooks=...)` runs callbacks around each tool execution.
+Event order is unchanged: `ToolCallBegin` is emitted first, then hooks run, then
+the tool (or skip), then `ToolResult`.
+
+```python
+from pagentv4 import Runner, ToolDecision, ToolHooks
+from pagentv4.runtime.hooks import ToolHookContext, PostToolHookContext
+
+
+async def approve_dangerous(ctx: ToolHookContext):
+    if ctx.name == "run_command":
+        ok = await ctx.runner.wait_tool_permit(ctx.tool_call_id)
+        if not ok:
+            return ToolDecision.deny("not permitted")
+    return None  # allow
+
+
+def redact_result(ctx: PostToolHookContext):
+    return ctx.output  # or return a new ToolOutput to replace
+
+
+runner = await Runner.create(
+    "demo",
+    provider,
+    tool_hooks=ToolHooks(before=[approve_dangerous], after=[redact_result]),
+)
+```
+
+- `ToolDecision.deny(message)` — skip execution, emit failed `ToolResult`
+- `ToolDecision.replace(content)` — skip execution, emit success with fixed content
+- `runner.permit_tool(id)` / `runner.deny_tool(id)` — or `runner.inbound.permit(id)` / `deny(id)`
+- `await ctx.runner.wait_tool_permit(id)` — consumes inbound `PermitTool` / `DenyTool` / `CancelRun`
+- `tool_hooks=None` — same behavior as before (zero overhead path)
+
+Inbound steer/cancel remains separate from hooks; see `runtime/inbound.py`.
+
+## Notes
+
+- Tool names must be unique inside one `AgentCore`.
+- Keep docstrings short and concrete. The model sees them.
+- Tool calls use the OpenAI function-call shape.
+
+
+---
+
+<!-- source: docs/pagentv4/events.md -->
+
+# pagentv4 Events
+
+`runner.run()` emits the full multi-turn timeline, projected by `return_type`.
+
+## Event types
+
+| Event | Fields | Meaning |
+|-------|--------|---------|
+| `RunBegin` | `user_input` | A new run starts |
+| `RunEnd` | `turn`, `stop_reason` | Final run outcome |
+| `TurnBegin` | `turn` | One turn starts; see “What a `turn` means” below |
+| `TextDelta` | `text` | Assistant text chunk |
+| `ReasoningDelta` | `text` | Assistant reasoning chunk |
+| `TurnResult` | `content`, `tool_calls`, `reasoning_content` | Summary of the model output for this turn; not the end marker |
+| `ToolCallBegin` | `tool_call_id`, `name`, `arguments` | About to execute one tool |
+| `ToolResult` | `tool_call_id`, `name`, `content`, `ok` | Tool output appended |
+| `TurnEnd` | `turn`, `stopped`, `stop_reason` | Turn finished; see `StopReason` below |
+
+## What a `turn` means
+
+In `pagentv4`, a `turn` is one internal work cycle the agent performs while handling a single user input.
+
+One turn includes these steps:
+
+- emit `TurnBegin`
+- call the model and produce `TextDelta`, `ReasoningDelta`, and possible tool calls
+- summarize that model output as `TurnResult`
+- if tools were requested, execute them in the same turn and emit `ToolCallBegin` and `ToolResult`
+- emit `TurnEnd`
+
+So:
+
+- a `turn` is not the same as one user message
+- a `turn` is not the same as one bare model call
+- a `turn` is the full unit of “one model generation + tool execution for that round + continue or stop decision”
+
+## `TurnResult` vs `TurnEnd`
+
+These two events are easy to mix up:
+
+- `TurnResult`: summary of the model output for the current turn, used by the runner to decide what happens next
+- `TurnEnd`: the turn is actually finished, including tool execution and stop/continue resolution
+
+In other words, a turn may still be running after `TurnResult`. Only `TurnEnd` marks the real end of the turn.
+
+## Typical sequence
+
+With tools:
+
+```text
+RunBegin
+  TurnBegin(0)
+    TextDelta*
+    ReasoningDelta*
+    TurnResult(tool_calls=[...])
+    ToolCallBegin(...)
+    ToolResult(...)
+  TurnEnd(0, stopped=False, stop_reason="continuing")
+  TurnBegin(1)
+    TextDelta*
+    TurnResult(tool_calls=[])
+  TurnEnd(1, stopped=True, stop_reason="no_tool_calls")
+  RunEnd(1, stop_reason="no_tool_calls")
+```
+
+Without tools:
+
+```text
+RunBegin
+  TurnBegin(0)
+    TextDelta*
+    TurnResult(tool_calls=[])
+  TurnEnd(0, stopped=True, stop_reason="no_tool_calls")
+  RunEnd(0, stop_reason="no_tool_calls")
+```
+
+## `StopReason`
+
+| Value | `stopped` | Meaning |
+|-------|---------|---------|
+| `continuing` | `False` | Tools ran; another model turn will follow |
+| `no_tool_calls` | `True` | Model replied without tools; run ends |
+| `empty_response` | `True` | Model produced no assistant messages; run ends |
+| `max_turns` | `True` | `max_turns` limit reached after tool execution; run ends |
+| `cancelled` | `True` | Run cancelled by inbound control |
+
+## Consumers
+
+```python
+from pagentv4 import DeepSeek, Runner, TextDelta, ToolCallBegin, ToolResult
+
+runner = await Runner.create("demo", DeepSeek("deepseek-v4-flash"), overrides={"backend": "local"})
+try:
+    async for event in runner.run("Hello", return_type="event"):
+        if isinstance(event, TextDelta):
+            print(event.text, end="")
+        elif isinstance(event, ToolCallBegin):
+            print(f"\n[tool {event.name}]")
+        elif isinstance(event, ToolResult):
+            print(f"\n[result {event.ok}: {event.content}]")
+finally:
+    await runner.close()
+```
+
+## Other `return_type` projections
+
+`runner.run()` supports:
+
+- `"event"`: raw event objects
+- `"text"`: `TextDelta.text` only
+- `"message"`: `Message` objects projected from `TextDelta`, `ReasoningDelta`,
+  `ToolCallBegin`, and `ToolResult`
+- `"acp"`: NDJSON JSON-RPC notifications via `encode_event_line()`
+
+The event stream is the canonical source of truth in `pagentv4`.
+
+
+---
+
+<!-- source: docs/pagentv4/sandbox.md -->
+
+# pagentv4 Sandbox
+
+A **sandbox** is the agent's companion computer: an isolated workspace where
+it can run commands and read/write files. Paths are normalized to a virtual
+home (default `/home/agent`) across all backends.
+
+## Quick path: `Runner.create()`
+
+The simplest way to give an agent a computer:
+
+```python
+from pagentv4 import DeepSeek, Runner
+
+runner = await Runner.create(
+    "demo",
+    DeepSeek("deepseek-v4-flash"),
+    overrides={"backend": "local"},
+)
+try:
+    async for event in runner.run(
+        "List files under /home/agent, then create notes.md."
+    ):
+        ...
+finally:
+    await runner.close()
+```
+
+Flow:
+
+1. Open thread → create sandbox from thread spec
+2. Bind sandbox tools + any extra tools passed to `create()`
+3. Build `AgentCore` and run via `runner.run()`
+4. Close sandbox with `runner.close()`
+
+## Backends
+
+| `backend=` | Notes |
+|------------|-------|
+| `"local"` | Default. Thread workspace on host under `~/.pagent/threads/<thread_id>/workspace/` |
+| `"docker"` | Container with bind mount |
+| `"podman"` | Same as docker, Podman CLI |
+| `"ssh"` | Remote host via asyncssh |
+
+```python
+runner = await Runner.create(
+    "demo",
+    provider,
+    overrides={"backend": "docker", "image": "python:3.12-slim"},
+)
+try:
+    async for event in runner.run(user_input):
+        ...
+finally:
+    await runner.close()
+```
+
+SSH example — set `ssh_host` in thread spec or overrides:
+
+```python
+runner = await Runner.create(
+    "remote",
+    provider,
+    overrides={
+        "backend": "ssh",
+        "ssh_host": "user@example.com",
+        "ssh_workdir": "/tmp/agent",
+    },
+)
+```
+
+## Workspace layout
+
+With `thread_id="demo"`:
+
+```text
+~/.pagent/threads/demo/workspace/
+```
+
+Persistent runners get their workspace from the thread. The sandbox maps agent
+paths under `/home/agent` to this directory.
+
+## Direct `Sandbox` API
+
+For lower-level control, you can create a sandbox directly and choose a
+`workspace_id` or `workdir` yourself:
+
+```python
+from pagentv4 import Sandbox
+
+sandbox = await Sandbox.create(backend="local", workspace_id="my-project")
+try:
+    result = await sandbox.commands.run("ls -la")
+    await sandbox.files.write("hello.txt", "hi")
+    content = await sandbox.files.read_text("hello.txt")
+finally:
+    await sandbox.close()
+```
+
+Context manager form:
+
+```python
+async with await Sandbox.create(backend="local", workspace_id="demo") as box:
+    await box.files.write("hello.txt", "hi")
+```
+
+## Built-in agent tools
+
+`sandbox.tools()` returns eight `FunctionTool` instances (see [Tools](./tools)).
+Wording shown to the model avoids internal terms like "sandbox".
+
+## Thread integration
+
+A [Thread](./core-types#thread) stores sandbox spec, messages, and workspace
+together under `~/.pagent/threads/<id>/`. Use this when you need the same
+computer and conversation to survive across process restarts — see
+`examples/pagentv4/runner/sandbox.py`.
+
+## Limits
+
+`sandbox.commands.run(..., timeout=...)` and `SandboxLimits` cap stdout,
+stderr, memory, and CPU time. Defaults are conservative; tune per workload.
+
+## Error handling
+
+All backends follow the same boundary between "the command failed" and "the
+sandbox is unusable":
+
+| Situation | How it surfaces |
+|-----------|-----------------|
+| Command ran but exited nonzero, or timed out | `CommandResult(ok=False, exit_code=..., timed_out=...)` — no exception |
+| Backend used before `start()` | `SandboxNotStartedError` |
+| `start()` failed (CLI missing, `docker run` failed, remote `$HOME` unresolved) | `SandboxError` |
+| Backend died and the guard could not restart it | `SandboxDeadError` |
+| Invalid config (missing `image` / `ssh_host`) | `ValueError` |
+| File semantics (missing path, dir without `recursive`) | `FileNotFoundError` / `IsADirectoryError` |
+
+`SandboxNotStartedError` and `SandboxDeadError` both subclass `SandboxError`,
+so a caller can catch the whole "sandbox unusable" class with a single
+`except SandboxError`:
+
+```python
+from pagentv4 import SandboxError
+
+try:
+    result = await sandbox.commands.run("build.sh")
+    if not result.ok:
+        ...  # command-level failure: inspect result.exit_code / result.stderr
+except SandboxError:
+    ...  # lifecycle-level failure: the sandbox itself is gone
+```

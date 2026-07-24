@@ -1,0 +1,1 @@
+const a={securityLevel:"loose",startOnLoad:!1,fontSize:15,flowchart:{useMaxWidth:!1,htmlLabels:!1,padding:24,nodeSpacing:72,rankSpacing:80,curve:"basis",wrappingWidth:140},sequence:{diagramMarginX:48,diagramMarginY:24,actorMargin:88,messageMargin:48,boxMargin:12,noteMargin:14,width:180}};export{a as default};
