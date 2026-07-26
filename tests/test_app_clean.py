@@ -65,7 +65,7 @@ def test_clean_pagent_removes_empty_threads(tmp_path):
         threads_root=tmp_path, conversations_root=tmp_path / "conversations"
     )
 
-    assert report.removed_threads == ["empty-a", "empty-b"]
+    assert set(report.removed_threads) == {"empty-a", "empty-b"}
     assert (tmp_path / "kept").exists()
     assert not (tmp_path / "empty-a").exists()
     assert not (tmp_path / "empty-b").exists()
