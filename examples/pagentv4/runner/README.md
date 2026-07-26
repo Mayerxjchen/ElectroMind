@@ -7,6 +7,7 @@ pagentv4 使用示例，按复杂度递进：
 | [quickstart.py](quickstart.py) | `Runner.create()` 打开 thread，跑一轮 |
 | [multi_turn.py](multi_turn.py) | 同一 thread 里多次 `runner.run()` 做多轮对话 |
 | [tools.py](tools.py) | 工具调用完整事件流：`ToolCallBegin` / `ToolResult` / `TurnEnd` 等 |
+| [delegate.py](delegate.py) | 子 agent 委派：主 agent 通过 `delegate_to_*` 把子任务分派给命名子 agent，回读子对话看各自产出 |
 | [return_types.py](return_types.py) | 同一次调用，`text` / `message` / `acp` / `event` 四种投影对比 |
 | [sandbox.py](sandbox.py) | local sandbox + 文件/命令工具 |
 
@@ -25,6 +26,7 @@ uv run python -m examples.app.concurrent_repl
 uv run python -m examples.pagentv4.runner.quickstart
 uv run python -m examples.pagentv4.runner.multi_turn
 uv run python -m examples.pagentv4.runner.tools
+uv run python -m examples.pagentv4.runner.delegate
 uv run python -m examples.pagentv4.runner.return_types
 uv run python -m examples.pagentv4.runner.sandbox
 ```

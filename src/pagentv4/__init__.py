@@ -58,7 +58,7 @@ from .core import (
     to_openai_tools,
     tool,
 )
-from .ithread import IThread, ThreadSpec, validate_thread_id
+from .ithread import IThread, SubAgentSpec, ThreadSpec, validate_thread_id
 from .runtime import (
     RUN_PHASE_LABELS,
     AgentRunner,
@@ -172,6 +172,7 @@ __all__ = [
     "Thread",
     "ThreadAgent",
     "ThreadSpec",
+    "SubAgentSpec",
     "ToolCall",
     "ToolCallBegin",
     "ToolDecision",

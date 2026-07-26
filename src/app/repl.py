@@ -8,7 +8,6 @@ from datetime import datetime
 from prompt_toolkit.formatted_text import ANSI
 
 from pagentv4 import DeepSeek, Runner
-from pagentv4.tools import HARNESS_WEB_TOOLS
 
 from .clean import clean_pagent, format_clean_report
 from .config import (
@@ -57,14 +56,14 @@ async def open_runner(config: ReplConfig) -> Runner:
     if config.provider_base_url:
         provider_kwargs["base_url"] = config.provider_base_url
     provider = DeepSeek(config.resolved_model(), **provider_kwargs)
+    # 工具与 skills 不再从这里旁路注入：它们由 thread_overrides 冻结进 thread.toml 的
+    # [agent] tools / [agent] skills，assemble_run_resources 从 spec 单一来源读取。
     return await Runner.create(
         thread_id,
         provider,
         overrides=config.thread_overrides(),
         extra_system=EXTRA_SYSTEM,
         max_turns=config.resolved_max_turns(),
-        skill_roots=config.resolved_skill_roots(),
-        tools=HARNESS_WEB_TOOLS,
         tool_hooks=build_app_tool_hooks(auto=config.permission_auto()),
     )
 
@@ -279,8 +278,8 @@ def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
     config = config_from_args(args)
-    if not config.resolved_api_key() and not args.wire:
-        # 交互 REPL：缺 Key 时引导写入 ~/.pagent；--wire 由宿主（插件）先做 setup。
+    if not config.resolved_api_key() and not args.wire and not args.http:
+        # 交互 REPL：缺 Key 时引导写入 ~/.pagent；--wire/--http 由宿主先做 setup。
         from .setup import interactive_setup
 
         interactive_setup()
@@ -289,6 +288,10 @@ def main(argv: list[str] | None = None) -> None:
         from .wire import run_wire
 
         raise SystemExit(asyncio.run(run_wire(config)))
+    if args.http:
+        from .http_server import run_http
+
+        raise SystemExit(run_http(config, host=args.host, port=args.port))
     try:
         code = asyncio.run(run_repl(config))
     except KeyboardInterrupt:

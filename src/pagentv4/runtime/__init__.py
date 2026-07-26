@@ -13,6 +13,7 @@ from ..ithread import IThread, ThreadSpec, validate_thread_id
 from .base_runner import BaseRunner
 from .chat_runner import ChatRunner
 from .code_runner import CodeRunner
+from .frame import RunFrame
 from .helper import ArunReturnType, EventHandler
 from .hooks import (
     PostToolHookContext,
@@ -34,6 +35,7 @@ from .inbound import (
     fold_inbound,
 )
 from .protocol import AgentRunner
+from .resource import ConversationResource, Resource, ResourceSlot
 from .run_state import RUN_PHASE_LABELS, RunPhase, RunState
 from .runner import Runner
 from .thread import Thread, default_threads_root
@@ -57,6 +59,7 @@ __all__ = [
     "CancelRun",
     "CheckpointPolicy",
     "ConversationStore",
+    "ConversationResource",
     "DenyTool",
     "DrainResult",
     "EventHandler",
@@ -66,6 +69,9 @@ __all__ = [
     "JsonlConversationStore",
     "PermitTool",
     "RunCancelled",
+    "Resource",
+    "ResourceSlot",
+    "RunFrame",
     "Runner",
     "RunPhase",
     "RUN_PHASE_LABELS",

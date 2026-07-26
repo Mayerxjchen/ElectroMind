@@ -265,7 +265,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return false;
     }
     this.pagentCommand = cli;
-    return ensureApiKeySetup(this.output, this.workspaceRoot());
+    return ensureApiKeySetup(this.output);
   }
 
   /** setup 通过后再拿 bridge 执行；用户取消 setup 则跳过。 */
@@ -293,7 +293,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     this.pagentCommand = cli;
-    const ok = await promptAndSaveProvider(this.output, this.workspaceRoot());
+    const ok = await promptAndSaveProvider(this.output);
     if (!ok) {
       return;
     }

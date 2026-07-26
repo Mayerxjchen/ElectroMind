@@ -6,12 +6,20 @@ import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from pagentv4.paths import find_home_config
+from pagentv4.paths import (
+    activate_home,
+    default_pagent_home,
+    find_home_config,
+    home_config_path,
+)
+from pagentv4.tools import HARNESS_WEB_TOOL_NAMES
 
 BUNDLED_CONFIG = Path(__file__).with_name("pagent.toml")
 CONFIG_FILENAMES = ("pagent.toml",)
 # 兼容旧名：用户级 home 下的配置路径（未解析项目模式时）。
 USER_CONFIG_PATH = "~/.pagent/pagent.toml"
+# runner 进程自身跑在哪：local = 用户电脑（当前唯一支持）；cloud = 云端 pod（保留，未接线）。
+RUNNER_LOCATIONS = ("local", "cloud")
 
 
 @dataclass(slots=True)
@@ -22,6 +30,7 @@ class ReplConfig:
     api_key: str | None = None
     provider_base_url: str | None = None
     max_turns: int | None = None
+    runner_location: str | None = None
     backend: str | None = None
     image: str | None = None
     container_ttl: int | None = None
@@ -32,6 +41,9 @@ class ReplConfig:
     ssh_config: str | None = None
     ssh_workdir: str | None = None
     skill_roots: tuple[str, ...] | None = None
+    # 主 agent 的进程内（harness）工具白名单，冻结进新 thread.toml 的 [agent] tools。
+    # None 表示未在 pagent.toml 显式配置，回退到默认（web 工具）。
+    agent_tools: tuple[str, ...] | None = None
     user_label: str | None = None
     assistant_label: str | None = None
     permission_mode: str | None = None
@@ -47,11 +59,36 @@ class ReplConfig:
     def resolved_max_turns(self) -> int:
         return self.max_turns if self.max_turns is not None else 12
 
+    def resolved_runner_location(self) -> str:
+        return self.runner_location if self.runner_location is not None else "local"
+
     def resolved_model(self) -> str:
         return self.model or "deepseek-v4-flash"
 
     def resolved_skill_roots(self) -> tuple[str, ...]:
         return self.skill_roots or ()
+
+    def resolved_agent_tools(self) -> tuple[str, ...]:
+        """冻结进 thread.toml 的 [agent] tools 白名单。
+
+        未在 pagent.toml 显式配置时默认给全套 web 工具（保持既有行为，只是从静默
+        挂载改成显式冻结）。显式配了（含空表）就照配置来。
+        """
+        if self.agent_tools is None:
+            return HARNESS_WEB_TOOL_NAMES
+        return self.agent_tools
+
+    def resolved_skill_dirs(self) -> tuple[str, ...]:
+        """把 ``[skills] roots`` 展开成冻结进 thread.toml 的 ``[agent] skills``。
+
+        ``roots`` 就是完整扫描列表，不隐式追加任何目录：写了才扫，删了就没有。
+        其中 ``{home}`` 占位符展开成当前生效的 pagent home（prod/dev/PAGENT_HOME
+        由 home 激活决定），让模板不必写死绝对路径。
+        """
+        home = str(default_pagent_home())
+        return tuple(
+            root.replace("{home}", home) for root in self.resolved_skill_roots()
+        )
 
     def resolved_user_label(self) -> str:
         label = (self.user_label or "you").strip()
@@ -80,8 +117,15 @@ class ReplConfig:
             kwargs["command_policy"] = self.command_policy
         if self.sandbox_tools is not None:
             kwargs["sandbox_tools"] = self.sandbox_tools
+        # project_path 是本次会话冻结进 thread.toml 的 host_root：留空时在这里
+        # 解析成启动时的 cwd 绝对路径，让 thread.toml 写具体值（resume 不漂移）。
+        # 全局 pagent.toml 里留空的语义仍是"用 cwd"，只是解析点前置到冻结时。
         if self.project_path is not None and self.project_path != "":
-            kwargs["project_path"] = self.project_path
+            kwargs["project_path"] = os.path.abspath(
+                os.path.expanduser(self.project_path)
+            )
+        else:
+            kwargs["project_path"] = os.path.abspath(os.getcwd())
         if self.ssh_config is not None:
             kwargs["ssh_config"] = self.ssh_config
         if self.ssh_host is not None and self.ssh_host != "":
@@ -90,6 +134,10 @@ class ReplConfig:
             kwargs["ssh_workdir"] = self.ssh_workdir
         if self.model is not None:
             kwargs["model"] = self.model
+        # SSOT：把 harness 工具白名单与 skills 目录冻结进新 thread.toml，
+        # 让 [agent] tools / [agent] skills 成为运行时唯一事实来源。
+        kwargs["agent_tools"] = self.resolved_agent_tools()
+        kwargs["skills"] = self.resolved_skill_dirs()
         return kwargs
 
 
@@ -101,15 +149,31 @@ def load_toml(path: Path) -> dict:
 def parse_repl_config(data: dict) -> ReplConfig:
     provider = data.get("provider", {})
     sandbox = data.get("sandbox", {})
-    ssh = data.get("ssh", {})
+    sandbox_container = sandbox.get("container", {})
+    sandbox_ssh = sandbox.get("ssh", {})
     project = data.get("project", {})
     skills = data.get("skills", {})
+    agent = data.get("agent", {})
     repl = data.get("repl", {})
+    runner = data.get("runner", {})
     permission = data.get("permission", {})
 
-    max_turns = data.get("max_turns")
+    max_turns = runner.get("max_turns")
     if max_turns is not None and not isinstance(max_turns, int):
-        raise ValueError("max_turns must be an integer")
+        raise ValueError("runner.max_turns must be an integer")
+
+    runner_location = runner.get("location")
+    if runner_location == "":
+        runner_location = None
+    if runner_location is not None:
+        if not isinstance(runner_location, str):
+            raise ValueError("runner.location must be a string")
+        if runner_location not in RUNNER_LOCATIONS:
+            raise ValueError(f"runner.location must be one of {list(RUNNER_LOCATIONS)}")
+        if runner_location == "cloud":
+            raise NotImplementedError(
+                "runner.location = 'cloud' 尚未支持；云端 pod 形态待实现，当前只支持 'local'"
+            )
 
     model = provider.get("model")
     if model is not None and not isinstance(model, str):
@@ -127,7 +191,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
     if base_url == "":
         base_url = None
 
-    image = sandbox.get("image")
+    image = sandbox_container.get("image")
     if image == "":
         image = None
 
@@ -137,9 +201,9 @@ def parse_repl_config(data: dict) -> ReplConfig:
     if command_policy == "":
         command_policy = None
 
-    container_ttl = sandbox.get("container_ttl")
+    container_ttl = sandbox_container.get("container_ttl")
     if container_ttl is not None and not isinstance(container_ttl, int):
-        raise ValueError("sandbox.container_ttl must be an integer")
+        raise ValueError("sandbox.container.container_ttl must be an integer")
 
     tools = sandbox.get("tools")
     sandbox_tools: tuple[str, ...] | None
@@ -152,9 +216,19 @@ def parse_repl_config(data: dict) -> ReplConfig:
     else:
         raise ValueError("sandbox.tools must be a list of strings")
 
-    project_path = project.get("path")
+    # [project] 按 runner.location 分子表：local 绑用户目录(host_root)，
+    # cloud 绑云端资源。location=cloud 已在上面 NotImplementedError 挡住，
+    # 故这里只解析 [project.local]；[project.cloud] 是模板里的语义锚点。
+    if "path" in project:
+        raise ValueError(
+            "顶层 [project] path 已废弃；改用 [project.local] path（按 runner.location 分模式）"
+        )
+    project_local = project.get("local", {})
+    if not isinstance(project_local, dict):
+        raise ValueError("[project.local] must be a table")
+    project_path = project_local.get("path")
     if project_path is not None and not isinstance(project_path, str):
-        raise ValueError("project.path must be a string")
+        raise ValueError("project.local.path must be a string")
     if project_path == "":
         project_path = None
 
@@ -170,6 +244,17 @@ def parse_repl_config(data: dict) -> ReplConfig:
         skill_roots = tuple(item for item in roots if item.strip())
     else:
         raise ValueError("skills.roots must be a string or list of strings")
+
+    agent_tools_cfg = agent.get("tools")
+    agent_tools: tuple[str, ...] | None
+    if agent_tools_cfg is None:
+        agent_tools = None
+    elif isinstance(agent_tools_cfg, list):
+        if not all(isinstance(item, str) for item in agent_tools_cfg):
+            raise ValueError("agent.tools must be a list of strings")
+        agent_tools = tuple(item for item in agent_tools_cfg if item.strip())
+    else:
+        raise ValueError("agent.tools must be a list of strings")
 
     user_label = repl.get("user_label")
     if user_label is not None and not isinstance(user_label, str):
@@ -196,16 +281,18 @@ def parse_repl_config(data: dict) -> ReplConfig:
         api_key=api_key,
         provider_base_url=base_url,
         max_turns=max_turns,
+        runner_location=runner_location,
         backend=sandbox.get("backend"),
         image=image,
         container_ttl=container_ttl,
         command_policy=command_policy,
         sandbox_tools=sandbox_tools,
         project_path=project_path,
-        ssh_host=ssh.get("host"),
-        ssh_config=ssh.get("config_path"),
-        ssh_workdir=ssh.get("workdir"),
+        ssh_host=sandbox_ssh.get("host"),
+        ssh_config=sandbox_ssh.get("config_path"),
+        ssh_workdir=sandbox_ssh.get("workdir"),
         skill_roots=skill_roots,
+        agent_tools=agent_tools,
         user_label=user_label,
         assistant_label=assistant_label,
         permission_mode=permission_mode,
@@ -236,36 +323,42 @@ def merge_config(base: ReplConfig, override: ReplConfig) -> ReplConfig:
     return replace(base, **fields)
 
 
+def ensure_home_config(workdir: str | None = None) -> Path:
+    """定位当前 home 的 ``pagent.toml``；不存在就从包内模板物化一份写盘。
+
+    home 由入口的 ``activate_home`` 决定：``--dev`` → ``<root>/.pagent``，否则
+    ``~/.pagent``。种子取已打包的 ``src/app/pagent.toml``（``src/template`` 不进
+    wheel，安装版机器上没有），两份解析结果由测试锁死一致。
+    """
+    existing = find_home_config(workdir)
+    if existing:
+        return existing
+    target = home_config_path(workdir)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(BUNDLED_CONFIG.read_text(encoding="utf-8"), encoding="utf-8")
+    return target
+
+
 def load_config(
     *,
     config_path: Path | str | None = None,
     workdir: str | None = None,
 ) -> ReplConfig:
-    """合并配置层，后层覆盖前层：
+    """从单一来源加载配置：当前 home 的 ``pagent.toml``（缺失则先从模板物化）。
 
-    1. 包内默认 ``src/app/pagent.toml``
-    2. 当前 pagent home 的 ``pagent.toml``（``./.pagent`` 或 ``~/.pagent``，与 thread 同根）
-    3. 若传了 ``--config``，再覆盖一层
+    ``--config <file>`` 若传入，作为显式覆盖再叠一层。未设字段回落 ReplConfig
+    自身默认（与模板一致），因此手删部分字段的 home 配置仍可正常工作。
     """
-    layers: list[ReplConfig] = []
-
-    if BUNDLED_CONFIG.is_file():
-        layers.append(load_config_file(BUNDLED_CONFIG))
-
-    home_path = find_home_config(workdir)
-    if home_path:
-        layers.append(load_config_file(home_path))
+    source = ensure_home_config(workdir)
+    config = load_config_file(source)
 
     if config_path is not None:
         explicit = Path(config_path).expanduser()
         if not explicit.is_file():
             raise FileNotFoundError(f"config not found: {explicit}")
-        layers.append(load_config_file(explicit))
+        config = merge_config(config, load_config_file(explicit))
 
-    merged = ReplConfig()
-    for layer in layers:
-        merged = merge_config(merged, layer)
-    return merged
+    return config
 
 
 def refresh_provider_from_disk(
@@ -308,8 +401,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--auto",
+        "--yolo",
         action="store_true",
-        help="危险工具自动审批（等同 [permission] mode=auto）",
+        help="危险工具自动审批（等同 [permission] mode=auto）；--yolo 为别名",
     )
     parser.add_argument(
         "--permission-mode",
@@ -323,18 +417,50 @@ def build_parser() -> argparse.ArgumentParser:
         help="stdio NDJSON 后端模式：stdin 收 JSON 命令，stdout 出事件流（供插件/前端驱动）",
     )
     parser.add_argument(
+        "--http",
+        action="store_true",
+        help="HTTP 后端模式：POST /command 收命令，GET /events 出 SSE 事件流（对齐 wire）",
+    )
+    parser.add_argument(
+        "--host",
+        default="127.0.0.1",
+        help="--http 监听地址（默认 127.0.0.1）",
+    )
+    parser.add_argument(
+        "--port",
+        type=int,
+        default=8848,
+        help="--http 监听端口（默认 8848）",
+    )
+    parser.add_argument(
         "--backend",
         choices=("local", "container", "docker", "podman", "ssh"),
         default=None,
         help="覆盖 sandbox backend",
     )
-    parser.add_argument("--project", default=None, help="绑定本次会话的项目目录")
+    parser.add_argument(
+        "--project",
+        default=None,
+        help="绑定本次会话的用户目录（host_root）；存为绝对路径，避免 resume 漂移",
+    )
+    parser.add_argument(
+        "--dev",
+        nargs="?",
+        const=".",
+        default=None,
+        metavar="ROOT",
+        help="开发模式：数据落到 <ROOT>/.pagent（默认 ./.pagent）；不带则生产模式用 ~/.pagent",
+    )
     parser.add_argument("--ssh-host", default=None, help="覆盖 SSH Host 别名")
     parser.add_argument("--ssh-config", default=None, help="覆盖 SSH config 路径")
     return parser
 
 
 def config_from_args(args: argparse.Namespace) -> ReplConfig:
+    if getattr(args, "dev", None) is not None:
+        activate_home("dev", args.dev)
+    else:
+        activate_home("prod")
     config = load_config(config_path=args.config)
     fields: dict = {}
     if args.thread_id:
@@ -348,7 +474,8 @@ def config_from_args(args: argparse.Namespace) -> ReplConfig:
     if args.backend:
         fields["backend"] = args.backend
     if args.project:
-        fields["project_path"] = args.project
+        # 归一化成绝对路径：thread.toml 存字面量，相对路径 resume 时会随 cwd 漂移。
+        fields["project_path"] = os.path.abspath(os.path.expanduser(args.project))
     if args.ssh_host:
         fields["ssh_host"] = args.ssh_host
     if args.ssh_config:

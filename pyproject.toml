@@ -45,6 +45,7 @@ Documentation = "https://synclionpaw.github.io/pagent/"
 [project.optional-dependencies]
 tokens = ["transformers>=4.40"]
 ssh = ["asyncssh>=2.14"]
+server = ["fastapi>=0.115", "uvicorn>=0.30"]
 
 [project.scripts]
 pagent = "app.repl:main"
@@ -62,11 +63,13 @@ module-name = ["pagent", "pagentv4", "app"]
 dev = [
     "asyncssh>=2.14",
     "coverage[toml]>=7.15.0",
+    "fastapi>=0.115",
     "pre-commit>=4",
     "pytest>=8",
     "pytest-asyncio>=0.24",
     "pytest-cov>=7.1.0",
     "ruff>=0.9",
+    "uvicorn>=0.30",
 ]
 [tool.pytest.ini_options]
 pythonpath = ["src"]

@@ -28,12 +28,20 @@ def normalize_tool_output(value) -> ToolOutput:
     return ToolOutput.succeed(value)
 
 
+def func_wants_context(func) -> bool:
+    """func 是否声明了 `context` 形参：声明了就由 runner 在调用时注入运行上下文。"""
+    if func is None:
+        return False
+    return "context" in inspect.signature(func).parameters
+
+
 class FunctionTool:
     def __init__(self, name, description, parameters, func=None):
         self.name = name
         self.description = description
         self.parameters = parameters
         self.func = func
+        self.wants_context = func_wants_context(func)
 
     def to_dict(self):
         return {
@@ -45,48 +53,52 @@ class FunctionTool:
             },
         }
 
-    def call(self, arguments=None) -> ToolOutput:
+    def parse_arguments(self, arguments):
+        """把工具入参归一成 kwargs dict；解析失败返回 (None, ToolOutput)。"""
+        if arguments is None:
+            return {}, None
+        if not isinstance(arguments, str):
+            return dict(arguments), None
+        stripped = arguments.strip()
+        if not stripped:
+            return {}, None
+        try:
+            payload = json.loads(stripped)
+        except json.JSONDecodeError as e:
+            return None, ToolOutput.fail(f"Invalid JSON in tool arguments: {e}")
+        return payload, None
+
+    def build_kwargs(self, arguments, context):
+        kwargs, error = self.parse_arguments(arguments)
+        if error is not None:
+            return None, error
+        if self.wants_context:
+            kwargs["context"] = context
+        return kwargs, None
+
+    def call(self, arguments=None, *, context=None) -> ToolOutput:
         if self.func is None:
             return ToolOutput.fail(f"tool {self.name} has no bound function")
         if inspect.iscoroutinefunction(self.func):
             return ToolOutput.fail(f"tool {self.name!r} is async; use acall() instead")
 
+        kwargs, error = self.build_kwargs(arguments, context)
+        if error is not None:
+            return error
         try:
-            if arguments is None:
-                return normalize_tool_output(self.func())
-            if not isinstance(arguments, str):
-                return normalize_tool_output(self.func(**arguments))
-
-            stripped = arguments.strip()
-            if not stripped:
-                return normalize_tool_output(self.func())
-
-            try:
-                payload = json.loads(stripped)
-            except json.JSONDecodeError as e:
-                return ToolOutput.fail(f"Invalid JSON in tool arguments: {e}")
-            return normalize_tool_output(self.func(**payload))
+            return normalize_tool_output(self.func(**kwargs))
         except Exception as e:
             return ToolOutput.fail(f"{self.name} error: {e}")
 
-    async def acall(self, arguments=None) -> ToolOutput:
+    async def acall(self, arguments=None, *, context=None) -> ToolOutput:
         if self.func is None:
             return ToolOutput.fail(f"tool {self.name} has no bound function")
 
+        kwargs, error = self.build_kwargs(arguments, context)
+        if error is not None:
+            return error
         try:
-            if arguments is None:
-                result = self.func()
-            elif not isinstance(arguments, str):
-                result = self.func(**arguments)
-            elif not arguments.strip():
-                result = self.func()
-            else:
-                try:
-                    payload = json.loads(arguments.strip())
-                except json.JSONDecodeError as e:
-                    return ToolOutput.fail(f"Invalid JSON in tool arguments: {e}")
-                result = self.func(**payload)
-
+            result = self.func(**kwargs)
             if inspect.isawaitable(result):
                 result = await result
             return normalize_tool_output(result)

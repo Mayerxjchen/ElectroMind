@@ -82,6 +82,44 @@ function escapeHtml(text: string): string {
     .replaceAll("'", "&#39;");
 }
 
+function readStringField(params: Record<string, unknown>, key: string): string {
+  const value = params[key];
+  return typeof value === "string" ? value : "";
+}
+
+function readRecordField(
+  params: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> | undefined {
+  const value = params[key];
+  return typeof value === "object" && value !== null
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
+function unwrapSubagentEvent(
+  event: WireEvent,
+): { name: string; inner: WireEvent } | undefined {
+  if (event.method !== "SubagentEvent") {
+    return undefined;
+  }
+  const wrapped = readRecordField(event.params, "event");
+  if (!wrapped) {
+    return undefined;
+  }
+  const method = readStringField(wrapped, "method");
+  if (!method) {
+    return undefined;
+  }
+  return {
+    name: readStringField(event.params, "name"),
+    inner: {
+      method,
+      params: readRecordField(wrapped, "params") ?? {},
+    },
+  };
+}
+
 function summarize(text: string, maxLength = 72): string {
   const compact = text.replace(/\s+/g, " ").trim();
   if (!compact) {
@@ -480,7 +518,7 @@ function renderNewSessionForm(
       <label class="new-session-field">
         <span class="new-session-label">镜像</span>
         ${images.length > 1
-          ? `<div class="new-session-dropdown" data-image-dropdown>
+      ? `<div class="new-session-dropdown" data-image-dropdown>
               <button class="new-session-input new-session-dropdown-trigger" type="button" data-image-dropdown-toggle aria-haspopup="listbox" aria-expanded="false">
                 <span class="new-session-dropdown-value" data-image-label>${escapeHtml(image)}</span>
                 <span class="new-session-dropdown-chevron" aria-hidden="true">${renderIcon("chevron-down")}</span>
@@ -488,13 +526,13 @@ function renderNewSessionForm(
               <input type="hidden" data-image value="${escapeHtml(image)}" />
               <div class="new-session-dropdown-menu" data-image-dropdown-menu hidden role="listbox">
                 ${images.map((item) => {
-                  const active = item === image ? " active" : "";
-                  return `<button class="new-session-dropdown-option${active}" type="button" role="option" data-image-option value="${escapeHtml(item)}" aria-selected="${item === image ? "true" : "false"}">${escapeHtml(item)}</button>`;
-                }).join("")}
+        const active = item === image ? " active" : "";
+        return `<button class="new-session-dropdown-option${active}" type="button" role="option" data-image-option value="${escapeHtml(item)}" aria-selected="${item === image ? "true" : "false"}">${escapeHtml(item)}</button>`;
+      }).join("")}
               </div>
             </div>`
-          : `<input class="new-session-input" data-image type="text" value="${escapeHtml(image)}" placeholder="pagent:latest" spellcheck="false" />`
-        }
+      : `<input class="new-session-input" data-image type="text" value="${escapeHtml(image)}" placeholder="pagent:latest" spellcheck="false" />`
+    }
         <div class="new-session-hint">本机 pagent 镜像；browser 可用于渲染 HTML / 导出 PDF。</div>
       </label>
     `
@@ -504,7 +542,7 @@ function renderNewSessionForm(
       <label class="new-session-field">
         <span class="new-session-label">SSH Host</span>
         ${sshHosts.length > 0
-          ? `<div class="new-session-dropdown" data-ssh-dropdown>
+      ? `<div class="new-session-dropdown" data-ssh-dropdown>
               <button class="new-session-input new-session-dropdown-trigger" type="button" data-ssh-dropdown-toggle aria-haspopup="listbox" aria-expanded="false">
                 <span class="new-session-dropdown-value${draft.sshHost ? "" : " is-placeholder"}" data-ssh-host-label>${escapeHtml(draft.sshHost || "选择 Host…")}</span>
                 <span class="new-session-dropdown-chevron" aria-hidden="true">${renderIcon("chevron-down")}</span>
@@ -512,13 +550,13 @@ function renderNewSessionForm(
               <input type="hidden" data-ssh-host value="${escapeHtml(draft.sshHost)}" />
               <div class="new-session-dropdown-menu" data-ssh-dropdown-menu hidden role="listbox">
                 ${sshHosts.map((host) => {
-                  const active = host === draft.sshHost ? " active" : "";
-                  return `<button class="new-session-dropdown-option${active}" type="button" role="option" data-ssh-host-option value="${escapeHtml(host)}" aria-selected="${host === draft.sshHost ? "true" : "false"}">${escapeHtml(host)}</button>`;
-                }).join("")}
+        const active = host === draft.sshHost ? " active" : "";
+        return `<button class="new-session-dropdown-option${active}" type="button" role="option" data-ssh-host-option value="${escapeHtml(host)}" aria-selected="${host === draft.sshHost ? "true" : "false"}">${escapeHtml(host)}</button>`;
+      }).join("")}
               </div>
             </div>`
-          : `<input class="new-session-input" data-ssh-host type="text" value="${escapeHtml(draft.sshHost)}" placeholder="例如 myserver" />`
-        }
+      : `<input class="new-session-input" data-ssh-host type="text" value="${escapeHtml(draft.sshHost)}" placeholder="例如 myserver" />`
+    }
       </label>
       <label class="new-session-field">
         <span class="new-session-label">远程工作目录</span>
@@ -1325,6 +1363,22 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           </div>
         </section>
       </div>
+      <div class="desktop-modal confirm-modal" data-confirm-modal hidden>
+        <div class="desktop-modal-backdrop" data-confirm-cancel></div>
+        <section class="desktop-modal-card confirm-modal-card" role="alertdialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+          <div class="confirm-modal-body">
+            <div class="confirm-modal-icon" data-confirm-icon aria-hidden="true">${renderIcon("circle-alert")}</div>
+            <div class="confirm-modal-text">
+              <div id="confirm-title" class="confirm-modal-title" data-confirm-title></div>
+              <div id="confirm-message" class="confirm-modal-message" data-confirm-message></div>
+            </div>
+          </div>
+          <div class="confirm-modal-actions">
+            <button class="new-session-secondary" type="button" data-confirm-cancel-button></button>
+            <button class="confirm-modal-primary" type="button" data-confirm-accept-button></button>
+          </div>
+        </section>
+      </div>
     </div>
   `;
 }
@@ -1515,6 +1569,11 @@ async function start(): Promise<void> {
   const docsQrCanvas = findRequired<HTMLCanvasElement>("[data-docs-qr-canvas]");
   const onboardingModal = findRequired<HTMLElement>("[data-onboarding-modal]");
   const onboardingBody = findRequired<HTMLElement>("[data-onboarding-body]");
+  const confirmModal = findRequired<HTMLElement>("[data-confirm-modal]");
+  const confirmTitle = findRequired<HTMLElement>("[data-confirm-title]");
+  const confirmMessage = findRequired<HTMLElement>("[data-confirm-message]");
+  const confirmAcceptButton = findRequired<HTMLButtonElement>("[data-confirm-accept-button]");
+  const confirmCancelButton = findRequired<HTMLButtonElement>("[data-confirm-cancel-button]");
 
   const shell = findRequired<HTMLElement>("[data-shell]");
 
@@ -1974,6 +2033,59 @@ async function start(): Promise<void> {
       shortcutsModal.hidden = true;
     }, 140);
   }
+
+  type ConfirmOptions = {
+    title: string;
+    message: string;
+    confirmText?: string;
+    cancelText?: string;
+    tone?: "danger" | "primary";
+  };
+  let confirmModalCloseTimer = 0;
+  let resolveConfirm: ((value: boolean) => void) | null = null;
+
+  function settleConfirm(result: boolean): void {
+    if (confirmModal.hidden) {
+      return;
+    }
+    const resolve = resolveConfirm;
+    resolveConfirm = null;
+    confirmModal.classList.remove("is-open");
+    window.clearTimeout(confirmModalCloseTimer);
+    confirmModalCloseTimer = window.setTimeout(() => {
+      confirmModal.hidden = true;
+    }, 140);
+    resolve?.(result);
+  }
+
+  // 自定义二次确认对话框，替代 Electron 原生 dialog，样式与其它 desktop-modal 一致。
+  function openConfirm(options: ConfirmOptions): Promise<boolean> {
+    // 上一个确认还没关就先按取消结算，避免 promise 泄漏。
+    resolveConfirm?.(false);
+    resolveConfirm = null;
+    confirmTitle.textContent = options.title;
+    confirmMessage.textContent = options.message;
+    confirmAcceptButton.textContent = options.confirmText ?? "确认";
+    confirmCancelButton.textContent = options.cancelText ?? "取消";
+    confirmModal.classList.toggle("is-danger", options.tone !== "primary");
+    window.clearTimeout(confirmModalCloseTimer);
+    confirmModal.hidden = false;
+    window.requestAnimationFrame(() => {
+      confirmModal.classList.add("is-open");
+      confirmAcceptButton.focus();
+    });
+    return new Promise<boolean>((resolve) => {
+      resolveConfirm = resolve;
+    });
+  }
+
+  confirmAcceptButton.addEventListener("click", () => settleConfirm(true));
+  confirmCancelButton.addEventListener("click", () => settleConfirm(false));
+  confirmModal.addEventListener("click", (event) => {
+    if ((event.target as HTMLElement).closest("[data-confirm-cancel]")) {
+      settleConfirm(false);
+    }
+  });
 
   function syncNewSessionDraftFromDom(): void {
     const projectInput = newSessionBody.querySelector<HTMLInputElement>("[data-project-path]");
@@ -2632,6 +2744,45 @@ async function start(): Promise<void> {
   }
 
   function syncWireEvent(event: WireEvent): void {
+    const subagent = unwrapSubagentEvent(event);
+    if (subagent) {
+      const label = subagent.name || "subagent";
+      if (subagent.inner.method === "RunBegin") {
+        appendTerminalEntry(
+          "status",
+          `[subagent:${label}] 开始：${String(subagent.inner.params.user_input ?? "")}`,
+        );
+      } else if (subagent.inner.method === "ReasoningDelta") {
+        const text = String(subagent.inner.params.text ?? "").trim();
+        if (text) {
+          appendTerminalEntry("status", `[subagent:${label}] thinking: ${text}`);
+        }
+      } else if (subagent.inner.method === "TextDelta") {
+        const text = String(subagent.inner.params.text ?? "").trim();
+        if (text) {
+          appendTerminalEntry("stdout", `[subagent:${label}] ${text}`);
+        }
+      } else if (subagent.inner.method === "ToolCallBegin") {
+        appendTerminalEntry(
+          "command",
+          `[subagent:${label}] ${buildToolPreview(
+            String(subagent.inner.params.name ?? ""),
+            String(subagent.inner.params.arguments ?? ""),
+          )}`,
+        );
+      } else if (subagent.inner.method === "ToolResult") {
+        appendTerminalEntry(
+          "stdout",
+          `[subagent:${label}] ${String(subagent.inner.params.content ?? "")}`,
+        );
+      } else if (subagent.inner.method === "RunEnd") {
+        appendTerminalEntry("status", `[subagent:${label}] 已结束。`);
+      }
+      applyActivityState();
+      syncComposerDock();
+      return;
+    }
+
     contextUsageRing.handleWireEvent(event);
     if (
       event.method === "RunBegin" ||
@@ -3278,12 +3429,29 @@ async function start(): Promise<void> {
         return;
       }
       const deletingCurrent = threadId === uiState.runtime.currentThreadId;
+      const session = uiState.sessions.find((item) => item.id === threadId);
+      const label = session?.title?.trim();
       void (async () => {
+        const confirmed = await openConfirm({
+          title: "删除会话",
+          message: label
+            ? `删除「${label}」后无法恢复，确认删除吗？`
+            : "删除后无法恢复，确认删除这个会话吗？",
+          confirmText: "删除",
+          cancelText: "取消",
+          tone: "danger",
+        });
+        if (!confirmed) {
+          return;
+        }
+        const deleted = await window.desktop.deleteThread(threadId);
+        if (!deleted) {
+          return;
+        }
         if (deletingCurrent) {
           chatRenderer.showHistorySkeleton();
           clearSandboxPanel();
         }
-        await window.desktop.deleteThread(threadId);
         await refreshSessions();
         if (deletingCurrent) {
           chatRenderer.clear();
@@ -3348,6 +3516,10 @@ async function start(): Promise<void> {
 
   window.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
+      if (!confirmModal.hidden) {
+        settleConfirm(false);
+        return;
+      }
       if (!userMenuDropdown.hidden) {
         setUserMenuOpen(false);
         return;

@@ -1,7 +1,7 @@
 {
     "name": "pagent-desktop",
     "productName": "pagent Desktop",
-    "version": "0.7.12",
+    "version": "0.7.20-rc.1",
     "description": "pagent 的 Electron 桌面端骨架。",
     "private": true,
     "main": "dist/main.js",
@@ -9,7 +9,7 @@
         "compile": "node esbuild.js",
         "check": "tsc --noEmit",
         "start": "npm run compile && electron --no-sandbox --disable-gpu .",
-        "package": "bash scripts/package-mac.sh"
+        "package": "node scripts/package.js"
     },
     "devDependencies": {
         "@electron/packager": "^18.3.6",

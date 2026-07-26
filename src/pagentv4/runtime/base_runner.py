@@ -47,6 +47,43 @@ class RunResources(NamedTuple):
     tools: list[FunctionTool]
 
 
+def assemble_harness_tools(spec: ThreadSpec) -> list[FunctionTool]:
+    """按 ``[agent] tools`` 白名单解析主 agent 的进程内（harness）工具。
+
+    thread.toml 的 ``[agent] tools`` 是唯一事实来源：列出的名字才挂，不列就没有。
+    识别的名字：
+
+    - ``web_search`` / ``fetch_url``：网页检索工具。
+    - ``delegate_to_subagent``：子 agent 委派工具；还需配了 ``[sub.*]`` 才真正挂上。
+
+    未识别的名字直接报错（显式报错胜过静默吞掉写错的配置）。列了
+    ``delegate_to_subagent`` 却没配 ``[sub.*]`` 同样报错——一个空 enum 的委派工具
+    对模型毫无意义。
+    """
+    from ..tools.delegate import SUBAGENT_TOOL_NAME, make_subagent_tool
+    from ..tools.web import fetch_url, web_search
+
+    resolved: list[FunctionTool] = []
+    for name in spec.agent_tools:
+        if name == "web_search":
+            resolved.append(web_search)
+        elif name == "fetch_url":
+            resolved.append(fetch_url)
+        elif name == SUBAGENT_TOOL_NAME:
+            if not spec.subs:
+                raise ValueError(
+                    f"[agent] tools 列出了 {SUBAGENT_TOOL_NAME!r} 但没有配任何 "
+                    "[sub.<name>]；请在 thread.toml 里补上子 agent 定义，或去掉该项"
+                )
+            resolved.append(make_subagent_tool(spec.subs))
+        else:
+            raise ValueError(
+                f"[agent] tools 里的 {name!r} 不是已知的 harness 工具；"
+                "可用：web_search、fetch_url、delegate_to_subagent"
+            )
+    return resolved
+
+
 async def assemble_run_resources(
     thread: IThread,
     *,
@@ -66,10 +103,16 @@ async def assemble_run_resources(
     收尾三段按序拼接；system 收尾取值优先级：``thread.spec.system`` > ``extra_system``
     > ``agent_system``。
 
+    工具与 skills 都以 thread.toml（``spec``）为单一事实来源：
+
+    - harness 工具（web_search / fetch_url / delegate_to_subagent）由 ``[agent] tools``
+      白名单决定，见 :func:`assemble_harness_tools`。
+    - skills 目录取 ``[agent] skills``（不再隐式追加 pagent home 下的 skills/）。
+
     Args:
         thread: 已打开的 thread，提供 spec 与 open_sandbox。
-        skill_roots: 追加的 skill 搜索根目录。
-        tools: 需要合并进 agent 的外部工具，排在 sandbox tools 之后。
+        skill_roots: 追加的 skill 搜索根目录，拼在 ``spec.skills`` 之后（程序化注入用）。
+        tools: 需要合并进 agent 的外部工具，排在 sandbox tools 之后（程序化注入用）。
         extra_system: 调用方传入的 system 收尾候选。
         agent_system: 已有 agent 的 system，作为最后兜底（重建已有 agent 时使用）。
         run_state: 若提供，开 sandbox 期间标记为 waking_sandbox，装配完成后回到 idle。
@@ -89,8 +132,9 @@ async def assemble_run_resources(
         combined_tools.extend(sandbox.tools())
         computer_desc = await sandbox.describe()
     combined_tools.extend(tools)
+    combined_tools.extend(assemble_harness_tools(thread.spec))
 
-    skills = SkillRegistry.from_defaults(*skill_roots)
+    skills = SkillRegistry.from_dirs(*thread.spec.skills, *skill_roots)
     mount: dict = {}
     if skills.names():
         if sandbox is not None:

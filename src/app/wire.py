@@ -45,11 +45,11 @@ import json
 import posixpath
 import sys
 import tomllib
-from dataclasses import replace
+from dataclasses import fields, replace
 from datetime import datetime
 
 from pagentv4 import ToolCallBegin
-from pagentv4.adapters.acp import encode_event_line
+from pagentv4.adapters.acp import encode_event_line, json_value
 from pagentv4.core.context_limit import DEFAULT_CONTEXT_LIMIT, resolve_context_limit
 from pagentv4.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
 from pagentv4.core.turn_result import TurnResult
@@ -58,9 +58,13 @@ from pagentv4.paths import resolve_pagent_home
 from pagentv4.runtime.thread import Thread, default_threads_root
 
 from .clean import clean_pagent, format_clean_report, iter_thread_dirs
-from .config import ReplConfig
+from .config import ReplConfig, load_config, refresh_provider_from_disk
+from .config_view import config_to_public_dict
+from .environment import environment_check
 from .repl import format_fatal_error, open_runner
+from .setup import ProviderSetup, write_user_provider
 from .tool_permit import needs_tool_permit, summarize_tool_args
+from .transport import active_sink
 
 # metainfo.json 里 title 的最大字符数：超出截断加省略号，供前端会话列表展示。
 TITLE_MAX_CHARS = 40
@@ -81,9 +85,12 @@ def log(text: str) -> None:
 
 
 def emit_line(line: str) -> None:
-    """把一行事件写到 stdout。line 已自带换行（encode_event_line 的约定）。"""
-    sys.stdout.write(line)
-    sys.stdout.flush()
+    """把一行事件投递到当前活跃出口。line 已自带换行（encode_event_line 的约定）。
+
+    wire 模式下出口是 stdout；http 模式下是广播给各 SSE 连接的 FanoutSink。
+    命令处理核只调 emit_line，不关心传输。
+    """
+    active_sink().emit(line)
 
 
 def runner_project_path(runner) -> str:
@@ -609,15 +616,50 @@ SLASH_COMMANDS: list[dict[str, str]] = [
 ]
 
 
+def slash_commands_line() -> str:
+    """构造 SlashCommands 事件行（不写出口）。供 wire 启动推送与 http 新连接回放复用。"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "SlashCommands",
+        "params": {"commands": SLASH_COMMANDS},
+    }
+    return json.dumps(payload, ensure_ascii=False) + "\n"
+
+
 def emit_slash_commands() -> None:
     """下发可用 slash 命令清单，供前端填充输入框旁的斜杠菜单。
 
     清单以本进程为准，前端只负责展示，避免前后端各维护一份导致漂移。
     """
+    emit_line(slash_commands_line())
+
+
+def emit_config_snapshot(config: ReplConfig) -> None:
+    """下发脱敏后的配置快照，供前端渲染设置面板。api_key 从不原样下发。"""
     payload = {
         "jsonrpc": "2.0",
-        "method": "SlashCommands",
-        "params": {"commands": SLASH_COMMANDS},
+        "method": "ConfigSnapshot",
+        "params": config_to_public_dict(config),
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def emit_thread_meta(thread_id: str, meta: dict) -> None:
+    """下发单个 thread 的 metainfo，供前端在不 resume 的情况下取标题/用量等。"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "ThreadMeta",
+        "params": {"thread_id": thread_id, "meta": meta},
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def emit_environment_check(check: dict) -> None:
+    """下发 server 机器环境自检结果，供前端渲染环境/诊断面板。"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "EnvironmentCheck",
+        "params": check,
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
@@ -701,6 +743,58 @@ def emit_error(message: str, *, where: str = "") -> None:
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
+def client_feature_enabled(state: dict, name: str) -> bool:
+    """当前连接是否显式打开了某个前端实验能力。"""
+    features = state.get("client_features")
+    if not isinstance(features, dict):
+        return False
+    return bool(features.get(name))
+
+
+def emit_subagent_event(name: str, conversation_id: str, event) -> None:
+    """把子 agent 内部事件包成 wire 控制事件，供 desktop 实验消费。"""
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "SubagentEvent",
+        "params": {
+            "name": name,
+            "conversation_id": conversation_id,
+            "event": {
+                "method": type(event).__name__,
+                "params": {
+                    field.name: json_value(getattr(event, field.name))
+                    for field in fields(event)
+                },
+            },
+        },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def install_subagent_observer(runner, state: dict):
+    """按客户端能力开关给 runner 临时装上子 agent 事件旁路。"""
+    if not client_feature_enabled(state, "subagent_events"):
+        return lambda: None
+
+    previous = getattr(runner, "observe_subagent_event", None)
+
+    def observer(*, name: str, conversation_id: str, event) -> None:
+        emit_subagent_event(name, conversation_id, event)
+
+    runner.observe_subagent_event = observer
+
+    def restore() -> None:
+        if previous is None:
+            try:
+                delattr(runner, "observe_subagent_event")
+            except AttributeError:
+                pass
+            return
+        runner.observe_subagent_event = previous
+
+    return restore
+
+
 def format_exc(exc: BaseException, *, phase: str = "start") -> str:
     """把异常收成可读信息；沙箱启动失败走 format_fatal_error（含 SSH 提示）。"""
     if isinstance(exc, SystemExit):
@@ -717,6 +811,7 @@ async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> N
     """跑一轮 Agent，事件逐行透传 stdout；需审批工具补发 PermitRequest。"""
     ask_permit = not config.permission_auto()
     last_usage: dict | None = None
+    restore_subagent_observer = install_subagent_observer(runner, state)
     try:
         async for event in runner.run(text, return_type="event"):
             emit_line(encode_event_line(event))
@@ -734,6 +829,7 @@ async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> N
         log(f"[wire] turn failed: {exc}")
         emit_error(format_exc(exc), where="turn")
     finally:
+        restore_subagent_observer()
         if last_usage is not None:
             touch_thread_usage(
                 runner.thread,
@@ -815,6 +911,65 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
 
     if cmd == "commands":
         emit_slash_commands()
+        return runner
+
+    if cmd == "client_features":
+        features = command.get("features")
+        state["client_features"] = {
+            "subagent_events": bool(
+                features.get("subagent_events", False)
+                if isinstance(features, dict)
+                else False
+            )
+        }
+        return runner
+
+    if cmd == "get_config":
+        emit_config_snapshot(load_config())
+        return runner
+
+    if cmd == "set_provider":
+        api_key = command.get("api_key")
+        if not (isinstance(api_key, str) and api_key.strip()):
+            log("[wire] set_provider missing api_key")
+            emit_error("api_key 不能为空", where="set_provider")
+            return runner
+        model = command.get("model")
+        base_url = command.get("base_url")
+        setup = ProviderSetup(api_key=api_key.strip())
+        if isinstance(model, str) and model.strip():
+            setup.model = model.strip()
+        if isinstance(base_url, str) and base_url.strip():
+            setup.base_url = base_url.strip()
+        try:
+            write_user_provider(setup)
+        except (Exception, SystemExit) as exc:
+            log(f"[wire] set_provider failed: {exc}")
+            emit_error(format_exc(exc, phase="start"), where="set_provider")
+            return runner
+        # 写盘后回读一份脱敏快照，让前端确认生效；已开的 runner 由下次 open 时热刷新。
+        emit_config_snapshot(refresh_provider_from_disk(load_config()))
+        return runner
+
+    if cmd == "thread_meta":
+        thread_id = command.get("thread_id")
+        if not (isinstance(thread_id, str) and thread_id.strip()):
+            log("[wire] thread_meta missing thread_id")
+            emit_error("缺少 thread_id", where="thread_meta")
+            return runner
+        thread_id = thread_id.strip()
+        try:
+            meta = Thread.open(thread_id).load_metainfo()
+        except (Exception, SystemExit) as exc:
+            log(f"[wire] thread_meta failed: {exc}")
+            emit_error(format_exc(exc, phase="start"), where="thread_meta")
+            return runner
+        emit_thread_meta(thread_id, meta)
+        return runner
+
+    if cmd == "environment_check":
+        include_disk = bool(command.get("include_disk", False))
+        emit_environment_check(environment_check(include_disk=include_disk))
         return runner
 
     if cmd == "history":
@@ -1044,7 +1199,7 @@ async def run_wire(config: ReplConfig) -> int:
     启动时直接打开该 thread 并回放历史（给非插件调用方用）。
     """
     runner = None
-    state: dict = {"turn": None}
+    state: dict = {"turn": None, "client_features": {}}
     had_user_turn = False
     # 启动即下发 slash 命令清单，前端无需显式请求就能填充斜杠菜单。
     emit_slash_commands()

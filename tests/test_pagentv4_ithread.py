@@ -84,6 +84,51 @@ def test_thread_spec_empty_sandbox_tools_omitted_from_toml():
     assert "tools" not in text
 
 
+def test_thread_spec_sub_config_toml_roundtrip():
+    import tomllib
+
+    from pagentv4.ithread import SubAgentSpec
+    from pagentv4.ithread.local import dump_thread_toml
+
+    original = ThreadSpec(
+        backend="local",
+        subs={
+            "researcher": SubAgentSpec(
+                system="你是研究员", model="deepseek-v4", backend="none", max_turns=5
+            ),
+            "coder": SubAgentSpec(
+                sandbox_tools=("run_command", "read_file"), workspace="coder"
+            ),
+        },
+    )
+    text = dump_thread_toml(original.to_dict())
+    assert "[sub.researcher]" in text
+    assert "[sub.coder]" in text
+
+    restored = ThreadSpec.from_dict(tomllib.loads(text))
+    assert sorted(restored.subs) == ["coder", "researcher"]
+    assert restored.subs["researcher"].system == "你是研究员"
+    assert restored.subs["researcher"].backend == "none"
+    assert restored.subs["researcher"].max_turns == 5
+    assert restored.subs["coder"].sandbox_tools == ("run_command", "read_file")
+    assert restored.subs["coder"].workspace == "coder"
+
+
+def test_thread_spec_no_subs_omits_sub_section():
+    from pagentv4.ithread.local import dump_thread_toml
+
+    text = dump_thread_toml(ThreadSpec(backend="local").to_dict())
+    assert "[sub." not in text
+
+
+def test_thread_spec_subs_normalized_from_plain_dict():
+    from pagentv4.ithread import SubAgentSpec
+
+    spec = ThreadSpec(subs={"helper": {"system": "hi", "max_turns": 3}})
+    assert isinstance(spec.subs["helper"], SubAgentSpec)
+    assert spec.subs["helper"].max_turns == 3
+
+
 def test_thread_spec_field_names():
     names = ThreadSpec.field_names()
     assert "backend" in names
@@ -102,6 +147,6 @@ def test_thread_project_path_is_separate_from_workspace(tmp_path):
     )
     assert (
         thread.workspace_path
-        == (tmp_path / "threads" / "project-binding" / "workspace").resolve()
+        == (tmp_path / "threads" / "project-binding" / "workspaces" / "main").resolve()
     )
     assert thread.project_path == project.resolve()

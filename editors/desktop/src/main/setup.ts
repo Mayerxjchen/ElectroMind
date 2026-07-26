@@ -148,9 +148,10 @@ function readSandboxImageName(): string {
   }
   try {
     const text = readFileSync(configPath, "utf8");
-    const sandbox = /\[sandbox\][\s\S]*?(?=\n\[|$)/.exec(text);
-    if (sandbox) {
-      const match = sandbox[0].match(/^\s*image\s*=\s*"([^"]+)"/m);
+    // image 归 [sandbox.container] 块（container/docker/podman 共用）。
+    const container = /\[sandbox\.container\][\s\S]*?(?=\n\[|$)/.exec(text);
+    if (container) {
+      const match = container[0].match(/^\s*image\s*=\s*"([^"]+)"/m);
       if (match?.[1]) {
         return match[1];
       }

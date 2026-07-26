@@ -1,0 +1,33 @@
+pagent Desktop — Windows 打开说明
+==================================
+
+这是未经签名的应用，Windows SmartScreen 可能会拦截。若提示：
+
+  「Windows 已保护你的电脑」/「Windows protected your PC」
+
+这不是病毒，只是系统对未签名应用的默认拦截。
+
+打开方式
+--------
+
+1. 解压 zip 到任意文件夹（例如 D:\pagent-Desktop）。
+2. 双击「pagent Desktop.exe」。
+3. 若出现「Windows 已保护你的电脑」蓝色弹窗：
+   点「更多信息」→ 再点「仍要运行」。
+4. 首次放行后，之后直接双击即可打开。
+
+杀毒软件误报
+------------
+
+个别杀毒软件可能对未签名的 Electron 应用误报。可将解压目录加入信任，
+或改用 VS Code 插件：
+
+  https://synclionpaw.github.io/pagent/zh/vscode
+
+前置依赖
+--------
+
+桌面端需要本机安装 pagent 命令行。若应用提示无法启动后端，
+请先安装：https://synclionpaw.github.io/pagent/zh/guide/install
+
+文档：https://synclionpaw.github.io/pagent/zh/desktop

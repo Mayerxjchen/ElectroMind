@@ -10,7 +10,7 @@ from pagentv4.conversation import (
     default_conversations_root,
 )
 from pagentv4.core.message import Messages
-from pagentv4.ithread import MESSAGES_CONVERSATION_ID, SPEC_FILENAME, WORKSPACE_DIRNAME
+from pagentv4.ithread import MESSAGES_CONVERSATION_ID, SPEC_FILENAME, WORKSPACES_DIRNAME
 from pagentv4.runtime.thread import default_threads_root
 
 
@@ -27,10 +27,14 @@ def user_message_count(path: Path) -> int:
     return sum(1 for message in messages.data if message.role == "user")
 
 
-def workspace_is_empty(workspace: Path) -> bool:
-    if not workspace.is_dir():
+def workspace_is_empty(workspaces_root: Path) -> bool:
+    """``workspaces/`` 下所有命名 workspace（main / 各 sub）都没内容才算空。"""
+    if not workspaces_root.is_dir():
         return True
-    return not any(workspace.iterdir())
+    for workspace in workspaces_root.iterdir():
+        if workspace.is_dir() and any(workspace.iterdir()):
+            return False
+    return True
 
 
 def thread_is_useless(thread_dir: Path) -> bool:
@@ -42,7 +46,7 @@ def thread_is_useless(thread_dir: Path) -> bool:
     )
     if user_count > 0:
         return False
-    return workspace_is_empty(thread_dir / WORKSPACE_DIRNAME)
+    return workspace_is_empty(thread_dir / WORKSPACES_DIRNAME)
 
 
 def conversation_is_useless(path: Path) -> bool:

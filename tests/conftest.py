@@ -1,5 +1,7 @@
 import pytest
 
+from pagentv4.paths import reset_home
+
 PROXY_ENV_VARS = (
     "HTTP_PROXY",
     "HTTPS_PROXY",
@@ -20,3 +22,11 @@ def clear_proxy_env(monkeypatch):
 def isolate_pagent_home(tmp_path, monkeypatch):
     """默认 ``~/.pagent/*`` 落到测试临时目录，避免污染真实 home。"""
     monkeypatch.setenv("HOME", str(tmp_path))
+
+
+@pytest.fixture(autouse=True)
+def reset_active_home():
+    """清空进程级 pagent home，避免用例间 activate_home 泄漏。"""
+    reset_home()
+    yield
+    reset_home()

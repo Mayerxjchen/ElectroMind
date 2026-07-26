@@ -1,32 +1,18 @@
-// pagent home 二选一（与 Python pagentv4.paths.resolve_pagent_home 对齐）：
-//   A <workspace>/.pagent  —— 目录存在，或工作区根有遗留 pagent.toml
-//   B ~/.pagent
+// pagent home 固定为 ~/.pagent（与后端默认 prod 模式对齐）。
+// 后端不带 --dev 时一律用 ~/.pagent；VS Code 扩展始终以该模式启动，
+// 因此这里不再做「工作区下有没有 .pagent」的探测，避免与后端 home 分裂。
 
-import { existsSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-export function resolvePagentHome(workspaceRoot?: string): string {
-  if (workspaceRoot) {
-    const project = join(workspaceRoot, ".pagent");
-    try {
-      if (statSync(project).isDirectory()) {
-        return project;
-      }
-    } catch {
-      // 不存在
-    }
-    if (existsSync(join(workspaceRoot, "pagent.toml"))) {
-      return project;
-    }
-  }
+export function resolvePagentHome(): string {
   return join(homedir(), ".pagent");
 }
 
-export function homeConfigPath(workspaceRoot?: string): string {
-  return join(resolvePagentHome(workspaceRoot), "pagent.toml");
+export function homeConfigPath(): string {
+  return join(resolvePagentHome(), "pagent.toml");
 }
 
-export function homeThreadsRoot(workspaceRoot?: string): string {
-  return join(resolvePagentHome(workspaceRoot), "threads");
+export function homeThreadsRoot(): string {
+  return join(resolvePagentHome(), "threads");
 }

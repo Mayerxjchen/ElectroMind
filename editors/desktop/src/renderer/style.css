@@ -1342,6 +1342,100 @@ button {
     filter: brightness(1.05);
 }
 
+.confirm-modal {
+    place-items: center center;
+    padding-top: 0;
+}
+
+.confirm-modal-card {
+    width: min(420px, calc(100vw - 48px));
+    padding: 24px;
+    gap: 20px;
+}
+
+.confirm-modal-body {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+}
+
+.confirm-modal-icon {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 auto;
+    border-radius: 10px;
+    color: var(--danger);
+    background: color-mix(in srgb, var(--danger) 14%, transparent);
+}
+
+.confirm-modal:not(.is-danger) .confirm-modal-icon {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 14%, transparent);
+}
+
+.confirm-modal-icon .desktop-icon {
+    width: 20px;
+    height: 20px;
+}
+
+.confirm-modal-text {
+    display: grid;
+    gap: 6px;
+    padding-top: 2px;
+}
+
+.confirm-modal-title {
+    color: var(--text-primary);
+    font-size: 15px;
+    font-weight: 600;
+    user-select: none;
+}
+
+.confirm-modal-message {
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1.5;
+    word-break: break-word;
+}
+
+.confirm-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.confirm-modal-primary {
+    min-height: 36px;
+    padding: 0 16px;
+    border: 0;
+    border-radius: 8px;
+    font-size: 12px;
+    font-weight: 560;
+    cursor: pointer;
+    color: #fff;
+    background: var(--primary);
+    transition: background 120ms ease, filter 120ms ease;
+}
+
+.confirm-modal.is-danger .confirm-modal-primary {
+    background: var(--danger);
+}
+
+.confirm-modal-primary:hover {
+    filter: brightness(1.05);
+}
+
+.confirm-modal-primary:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--primary) 60%, transparent);
+    outline-offset: 2px;
+}
+
+.confirm-modal.is-danger .confirm-modal-primary:focus-visible {
+    outline-color: color-mix(in srgb, var(--danger) 60%, transparent);
+}
+
 .thread-meta-summary {
     padding-bottom: 14px;
     box-shadow: 0 1px 0 0 var(--hairline);

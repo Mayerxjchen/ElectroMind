@@ -17,7 +17,7 @@ async def test_runner_open_local(tmp_path, monkeypatch):
     assert runner.thread.created is True
     assert runner.agent.max_turns == 8
     assert runner.sandbox.workdir == str(
-        tmp_path / ".pagent" / "threads" / "demo" / "workspace"
+        tmp_path / ".pagent" / "threads" / "demo" / "workspaces" / "main"
     )
     assert runner.messages.data == []
     await runner.close()

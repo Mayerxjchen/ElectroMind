@@ -19,13 +19,16 @@ def write_thread(
     (root / "thread.toml").write_text(
         '[sandbox]\nbackend = "local"\n', encoding="utf-8"
     )
-    (root / "workspace").mkdir()
+    workspace = root / "workspaces" / "main"
+    workspace.mkdir(parents=True)
     if user_text is not None:
         messages = Messages()
         messages += Message.user(user_text)
-        messages.save_to_jsonl(root / "messages.jsonl")
+        messages_dir = root / "messages"
+        messages_dir.mkdir(exist_ok=True)
+        messages.save_to_jsonl(messages_dir / "messages.jsonl")
     if workspace_file is not None:
-        (root / "workspace" / workspace_file).write_text("data", encoding="utf-8")
+        (workspace / workspace_file).write_text("data", encoding="utf-8")
     return root
 
 

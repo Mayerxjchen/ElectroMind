@@ -787,6 +787,63 @@ body {
   user-select: none;
 }
 
+/* desktop 实验：把子 agent 的内部事件收进一个独立折叠面板，避免与主回复正文混在一起。 */
+.subagent-panel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  width: 80%;
+  border: 1px solid color-mix(in srgb, #ff9f1a 56%, var(--vscode-panel-border));
+  border-radius: 8px;
+  background: color-mix(in srgb, #ff8a00 10%, var(--vscode-editor-background));
+  padding: 4px 10px;
+}
+
+.subagent-name {
+  flex: none;
+  font-family: var(--vscode-editor-font-family, monospace);
+  color: var(--vscode-textPreformat-foreground, var(--vscode-foreground));
+  user-select: none;
+}
+
+.subagent-preview {
+  flex: 1;
+  min-width: 0;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.85;
+  font-size: 0.9em;
+  user-select: none;
+}
+
+.subagent-status {
+  flex: none;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  font-size: 0.82em;
+  color: var(--vscode-descriptionForeground);
+  user-select: none;
+}
+
+.subagent-panel>.codicon {
+  flex: none;
+  color: color-mix(in srgb, #ff8a00 82%, var(--vscode-descriptionForeground));
+}
+
+.subagent-status>.codicon {
+  flex: none;
+  color: color-mix(in srgb, #ff8a00 82%, var(--vscode-descriptionForeground));
+}
+
+.subagent-panel[data-state="done"] {
+  border-color: color-mix(in srgb, #ff9f1a 72%, var(--vscode-testing-iconPassed, var(--vscode-panel-border)));
+}
+
+.subagent-panel[data-state="cancelled"] {
+  border-color: color-mix(in srgb, #ff9f1a 56%, var(--vscode-errorForeground, var(--vscode-panel-border)));
+}
+
 /* 工具卡片（第 11 课）：ToolCallBegin 建卡，ToolResult 回填。
  * call=运行中中性边框，result.ok=成功色，result.fail=错误色；折叠展开看参数/结果。 */
 .tool-card {

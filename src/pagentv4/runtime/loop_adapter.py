@@ -26,6 +26,7 @@ from ..core.agent import Agent
 from ..core.events import ToolCallBegin, ToolResult
 from ..core.message import Message, Messages, ToolCall
 from ..core.tool import FunctionTool, ToolOutput
+from .frame import RunFrame
 from .helper import (
     ArunReturnType,
     EventHandler,
@@ -41,14 +42,97 @@ from .run_state import RunState
 class LoopAdapter:
     """Runner 共享的事件循环骨架；满足 `loop_core.LoopCoreAdapter` 协议。
 
-    持有 `agent` + `messages`；子类按需覆写 `emit` / `emit_tool_events` /
-    `after_*` / `_event_source` 来叠加 inbound、hooks、持久化等能力。
+    运行上下文放在帧栈 ``self.frames`` 上，当前上下文永远是栈顶帧。``agent`` /
+    ``messages`` / ``run_state`` / ``sandbox`` / ``store`` / ``skills`` /
+    ``conversation_id`` 都是栈顶帧的字段，通过 property 读写——循环骨架照旧用
+    ``self.agent`` 就够了，委派子 agent 时压帧换栈顶即可切换整套上下文。
+
+    子类按需覆写 `emit` / `emit_tool_events` / `after_*` / `_event_source` 来叠加
+    inbound、hooks、持久化等能力。
     """
 
     def __init__(self, agent: Agent, messages: Messages | None = None) -> None:
-        self.agent = agent
-        self.messages = messages if messages is not None else Messages()
-        self.run_state = RunState()
+        base = RunFrame(
+            agent=agent,
+            messages=messages if messages is not None else Messages(),
+        )
+        self.frames: list[RunFrame] = [base]
+
+    @property
+    def frame(self) -> RunFrame:
+        return self.frames[-1]
+
+    @property
+    def agent(self) -> Agent:
+        return self.frame.agent
+
+    @agent.setter
+    def agent(self, value: Agent) -> None:
+        self.frame.agent = value
+
+    @property
+    def messages(self) -> Messages:
+        return self.frame.messages
+
+    @messages.setter
+    def messages(self, value: Messages) -> None:
+        self.frame.messages = value
+
+    @property
+    def run_state(self) -> RunState:
+        return self.frame.run_state
+
+    @run_state.setter
+    def run_state(self, value: RunState) -> None:
+        self.frame.run_state = value
+
+    @property
+    def conversation_id(self) -> str | None:
+        return self.frame.conversation_id
+
+    @conversation_id.setter
+    def conversation_id(self, value: str | None) -> None:
+        self.frame.conversation_id = value
+
+    @property
+    def sandbox(self):
+        return self.frame.sandbox
+
+    @sandbox.setter
+    def sandbox(self, value) -> None:
+        self.frame.sandbox = value
+
+    @property
+    def store(self):
+        return self.frame.store
+
+    @store.setter
+    def store(self, value) -> None:
+        self.frame.store = value
+
+    @property
+    def skills(self):
+        return self.frame.skills
+
+    @skills.setter
+    def skills(self, value) -> None:
+        self.frame.skills = value
+
+    def push_frame(self, frame: RunFrame) -> RunFrame:
+        """压入一帧并切换当前上下文到它；返回该帧。"""
+        self.frames.append(frame)
+        return frame
+
+    async def pop_frame(self) -> RunFrame:
+        """弹出栈顶帧并释放它拥有的资源；返回被弹出的帧。
+
+        栈底基帧不弹（那是 runner 自身的主上下文，由 ``close`` 收尾）。
+        """
+        if len(self.frames) <= 1:
+            raise RuntimeError("cannot pop the base frame")
+        frame = self.frames.pop()
+        await frame.release()
+        return frame
 
     async def execute_tool(self, tool_call: ToolCall) -> ToolOutput:
         name = tool_call.name
@@ -57,7 +141,14 @@ class LoopAdapter:
             return ToolOutput.fail(
                 f"error: unknown tool {name!r}; available: {sorted(self.agent.tool_map)}"
             )
-        return await tool.acall(tool_call.arguments)
+        return await tool.acall(tool_call.arguments, context=self.tool_context())
+
+    def tool_context(self):
+        """注入给声明了 `context` 形参的工具的运行上下文；默认是 runner 自身。
+
+        delegate 之类需要压栈起子 agent 的工具靠它拿到 runner 与资源栈。
+        """
+        return self
 
     async def emit(self, event, *, turn_id: int, turn: int) -> AsyncGenerator:
         del turn_id, turn

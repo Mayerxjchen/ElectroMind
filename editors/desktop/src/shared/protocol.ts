@@ -14,6 +14,8 @@ export type RuntimeState = {
     sandboxAlive?: boolean;
     yoloMode: boolean;
     bridgeActive: boolean;
+    /** 当前后端传输：wire=本地 spawn 子进程，http=连远程 server。 */
+    transport: "wire" | "http";
     status: "idle" | "starting" | "ready" | "error";
     lastError?: string;
 };
@@ -187,7 +189,7 @@ export type DesktopApi = {
     saveProviderSetup(setup: ProviderSetupInput): Promise<string>;
     completeOnboarding(options?: { preferredBackend?: "local" | "container" | "ssh"; skipped?: boolean }): Promise<void>;
     resumeThread(threadId: string): Promise<void>;
-    deleteThread(threadId: string): Promise<void>;
+    deleteThread(threadId: string): Promise<boolean>;
     sendUserInput(text: string): Promise<void>;
     clearLastError(): Promise<void>;
     resetSession(options?: ResetSessionOptions): Promise<void>;

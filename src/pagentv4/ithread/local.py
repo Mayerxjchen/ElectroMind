@@ -3,9 +3,14 @@
 目录布局：
 
     ~/.pagent/threads/<thread_id>/
-        thread.toml        # thread 配置（首次冻结；可含 [project] path）
-        metainfo.json      # 面向用户的元信息（标题、时间戳、对话摘要、usage 快照）
-        workspace/         # agent 沙箱地盘（与用户 project 分离）
+        thread.toml          # thread 配置（首次冻结；可含 [project] path、[sub.<name>]）
+        metainfo.json        # 面向用户的元信息（标题、时间戳、对话摘要、usage 快照）
+        workspaces/
+            main/            # 主 agent 沙箱地盘
+            <sub_name>/      # 子 agent（delegate）各自的沙箱地盘（按需新建）
+        messages/
+            messages.jsonl   # 主对话
+            messages.sub.<name>.<seq>.jsonl  # 子对话（delegate 产生），同 thread 落盘
 
 ``[project].path`` 是用户侧工作目录：挂到 sandbox 的 host_root（list_host_files /
 copy_from_host / copy_to_host → ``<project>/artifacts``），不是沙箱 workdir。
@@ -29,9 +34,11 @@ from ..core.message import Messages
 from ..paths import default_pagent_home
 from ..sandbox import Sandbox, open_sandbox_for_spec
 from . import (
+    MAIN_WORKSPACE_NAME,
     METAINFO_FILENAME,
     SPEC_FILENAME,
-    WORKSPACE_DIRNAME,
+    SUB_SECTION,
+    WORKSPACES_DIRNAME,
     ThreadSpec,
     validate_thread_id,
 )
@@ -56,28 +63,40 @@ def format_toml_array(values: tuple | list) -> str:
     return f"[{items}]"
 
 
-def dump_thread_toml(payload: dict) -> str:
+def format_toml_kv_lines(values: dict) -> list[str]:
+    """把一个 TOML 表的键值对渲染成行；跳过 None、空数组、嵌套 dict。"""
     lines: list[str] = []
+    for name, value in values.items():
+        if value is None or isinstance(value, dict):
+            continue
+        if isinstance(value, (tuple, list)):
+            if not value:
+                continue
+            lines.append(f"{name} = {format_toml_array(value)}")
+            continue
+        lines.append(f"{name} = {format_toml_value(value)}")
+    return lines
+
+
+def dump_thread_toml(payload: dict) -> str:
+    blocks: list[list[str]] = []
     for section, values in payload.items():
-        if not isinstance(values, dict):
+        if not isinstance(values, dict) or not values:
             continue
-        items = [(name, value) for name, value in values.items() if value is not None]
-        if not items:
-            continue
-        lines.append(f"[{section}]")
-        for name, value in items:
-            if isinstance(value, dict):
-                continue
-            if isinstance(value, (tuple, list)):
-                if not value:
+        if section == SUB_SECTION:
+            # sub 是 name -> spec 的嵌套表，渲染成 [sub.<name>] 子表。
+            for name, spec in values.items():
+                if not isinstance(spec, dict):
                     continue
-                lines.append(f"{name} = {format_toml_array(value)}")
-                continue
-            lines.append(f"{name} = {format_toml_value(value)}")
-        lines.append("")
-    if lines:
-        lines.pop()
-    return "\n".join(lines) + "\n"
+                kv = format_toml_kv_lines(spec)
+                if kv:
+                    blocks.append([f"[{SUB_SECTION}.{name}]", *kv])
+            continue
+        kv = format_toml_kv_lines(values)
+        if kv:
+            blocks.append([f"[{section}]", *kv])
+    body = "\n\n".join("\n".join(block) for block in blocks)
+    return body + "\n" if body else "\n"
 
 
 def default_threads_root() -> Path:
@@ -98,8 +117,13 @@ class Thread:
 
     @property
     def workspace_path(self) -> Path:
-        """Agent 沙箱地盘：始终是 thread 下的 workspace/，与用户 project 分离。"""
-        return self.root / WORKSPACE_DIRNAME
+        """主 agent 沙箱地盘：``workspaces/main/``，与用户 project 分离。"""
+        return self.workspace_path_for(MAIN_WORKSPACE_NAME)
+
+    def workspace_path_for(self, name: str) -> Path:
+        """按名字取沙箱地盘 ``workspaces/<name>/``；主 agent 用 ``main``，
+        子 agent（delegate）各自命名，同一 thread 下互不干扰。"""
+        return self.root / WORKSPACES_DIRNAME / name
 
     @property
     def project_path(self) -> Path | None:
@@ -174,11 +198,19 @@ class Thread:
             close()
         return messages
 
-    async def open_sandbox(self) -> Sandbox:
+    async def open_sandbox(self, name: str = MAIN_WORKSPACE_NAME) -> Sandbox:
+        """打开某个命名 workspace 的沙箱；主 agent 用 ``main``，子 agent 各自命名。"""
+        workspace = self.workspace_path_for(name)
+        workspace.mkdir(parents=True, exist_ok=True)
+        label = (
+            f"thread {self.id!r}"
+            if name == MAIN_WORKSPACE_NAME
+            else (f"thread {self.id!r} sub {name!r}")
+        )
         return await open_sandbox_for_spec(
             self.spec,
-            str(self.workspace_path),
-            label=f"thread {self.id!r}",
+            str(workspace),
+            label=label,
         )
 
     @classmethod
@@ -192,7 +224,7 @@ class Thread:
         """打开或首次创建一个 thread。
 
         - 目录不存在：把 `overrides`（缺省 {}）合进 ThreadSpec 默认值写入 thread.toml，
-          mkdir workspace/。
+          mkdir workspaces/main/。
         - 目录已存在：读 thread.toml；`overrides` 里跟已存字段冲突的项被忽略，
           实际使用的 spec 仍以磁盘为准。`ignored_overrides` 记录哪些字段被丢了。
         """
@@ -205,18 +237,28 @@ class Thread:
         if spec_path.exists():
             payload = load_thread_toml(spec_path)
             existing = ThreadSpec.from_dict(payload)
+            # resume 时补写迟到的自描述字段：老 thread.toml 没有 [lock] 段，或
+            # project_path 首次绑定，都在这里回填一次并落盘（唯一事实来源随之补全）。
+            backfilled = False
             if existing.project_path is None and isinstance(
                 provided.get("project_path"), str
             ):
                 existing.project_path = provided["project_path"]
+                provided.pop("project_path")
+                backfilled = True
+            if not existing.file_self_fs_pos:
+                existing.file_self_fs_pos = str(spec_path.resolve())
+                backfilled = True
+            if backfilled:
                 spec_path.write_text(
                     dump_thread_toml(existing.to_dict()),
                     encoding="utf-8",
                 )
-                provided.pop("project_path")
             ignored = cls.diff_overrides(existing, provided)
             thread_dir.mkdir(parents=True, exist_ok=True)
-            (thread_dir / WORKSPACE_DIRNAME).mkdir(parents=True, exist_ok=True)
+            (thread_dir / WORKSPACES_DIRNAME / MAIN_WORKSPACE_NAME).mkdir(
+                parents=True, exist_ok=True
+            )
             return cls(
                 id=thread_id,
                 root=thread_dir,
@@ -227,8 +269,12 @@ class Thread:
             )
 
         spec = ThreadSpec(**provided) if provided else ThreadSpec()
+        # 冻结时把 thread.toml 自身的绝对路径写进 [lock]（自指锚点，单一事实来源）。
+        spec.file_self_fs_pos = str(spec_path.resolve())
         thread_dir.mkdir(parents=True, exist_ok=True)
-        (thread_dir / WORKSPACE_DIRNAME).mkdir(parents=True, exist_ok=True)
+        (thread_dir / WORKSPACES_DIRNAME / MAIN_WORKSPACE_NAME).mkdir(
+            parents=True, exist_ok=True
+        )
         spec_path.write_text(
             dump_thread_toml(spec.to_dict()),
             encoding="utf-8",
@@ -243,6 +289,12 @@ class Thread:
         for name, value in overrides.items():
             if name not in ThreadSpec.field_names() or name == "extra":
                 continue
-            if value != getattr(existing, name):
+            current = getattr(existing, name)
+            # TOML 数组回读成 list，覆盖项常是 tuple；同序列内容不算冲突。
+            if isinstance(value, (tuple, list)) and isinstance(current, (tuple, list)):
+                if list(value) != list(current):
+                    ignored.append(name)
+                continue
+            if value != current:
                 ignored.append(name)
         return ignored
