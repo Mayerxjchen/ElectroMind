@@ -1042,7 +1042,7 @@ wheels = [
 
 [[package]]
 name = "pagent"
-version = "0.7.12"
+version = "0.7.20"
 source = { editable = "." }
 dependencies = [
     { name = "asyncssh" },

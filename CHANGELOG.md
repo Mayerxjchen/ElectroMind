@@ -18,6 +18,36 @@
 
 ---
 
+## 0.7.20 — 2026-07-26
+
+Subagent 委托、HTTP 后端、配置/路径 SSOT，以及 Desktop 三平台打包与子代理 UI。
+
+### Highlights
+
+- **Subagent**：Runner 帧栈委托（`delegate` tool），子对话与 per-agent workspace 落盘；Desktop / VS Code 展示子代理进度
+- **HTTP 后端**：`pagent --http`（SSE `/events` + `POST /command`），与 wire 共用命令核；Desktop 可切 HttpBridge
+- **配置 SSOT**：显式 prod/dev home（`~/.pagent` / `--dev`）；`[project.local|cloud]`、`[runner]`、嵌套 sandbox；前端统一读 `~/.pagent`
+- **Desktop**：macOS / Windows / Linux 矩阵打包上传 Release；删除会话确认弹窗；入门文档重写
+- **CLI**：banner 显示 project；`--yolo` 别名；ascii logo
+
+### Install
+
+```bash
+uv tool install --force pagent
+```
+
+- VS Code：`pagent-vscode-0.7.20.vsix`
+- 桌面端：
+  - macOS Apple Silicon：`pagent-Desktop-0.7.20-mac-arm64.zip`
+  - Windows x64：`pagent-Desktop-0.7.20-win-x64.zip`
+  - Linux x64：`pagent-Desktop-0.7.20-linux-x64.tar.gz`
+
+### Links
+
+- Compare: https://github.com/SyncLionPaw/pagent/compare/v0.7.12...v0.7.20
+
+---
+
 ## 0.7.12 — 2026-07-22
 
 沙箱工具白名单，以及 Desktop 新建会话时选择本地容器镜像。
