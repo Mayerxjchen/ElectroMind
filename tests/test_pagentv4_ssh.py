@@ -17,6 +17,7 @@
 from __future__ import annotations
 
 import os
+from unittest.mock import AsyncMock
 
 import pytest
 
@@ -101,6 +102,51 @@ async def test_ssh_backend_alive_check(tmp_path):
         assert await inner.alive() is False
     finally:
         await box.close()
+
+
+@pytest.mark.asyncio
+async def test_ssh_backend_start_passes_connect_timeout(monkeypatch):
+    from pagentv4.sandbox.backends import ssh as ssh_mod
+    from pagentv4.sandbox.backends.ssh import SshBackend
+    from pagentv4.sandbox.base import SandboxSpec
+
+    captured: dict = {}
+
+    class FakeConn:
+        async def start_sftp_client(self):
+            return FakeSftp()
+
+        def close(self):
+            return None
+
+        async def wait_closed(self):
+            return None
+
+    class FakeSftp:
+        async def chdir(self, path):
+            return None
+
+        def exit(self):
+            return None
+
+    async def fake_connect(**kwargs):
+        captured.update(kwargs)
+        return FakeConn()
+
+    monkeypatch.setattr(ssh_mod.asyncssh, "connect", fake_connect)
+
+    backend = SshBackend()
+    backend.expand_remote_path = AsyncMock(return_value="/home/u/pagent")
+    backend.sftp_mkdirs = AsyncMock()
+    await backend.start(
+        SandboxSpec(connection={"host": "example.com", "user": "alice"}),
+        "/local",
+    )
+    assert captured["host"] == "example.com"
+    assert captured["username"] == "alice"
+    assert captured["connect_timeout"] == ssh_mod.DEFAULT_CONNECT_TIMEOUT
+    assert captured["login_timeout"] == ssh_mod.DEFAULT_LOGIN_TIMEOUT
+    await backend.close()
 
 
 @pytest.mark.asyncio

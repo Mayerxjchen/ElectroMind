@@ -6,6 +6,7 @@ import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
+from pagentv4.ithread import SubAgentSpec
 from pagentv4.paths import (
     activate_home,
     default_pagent_home,
@@ -44,6 +45,8 @@ class ReplConfig:
     # 主 agent 的进程内（harness）工具白名单，冻结进新 thread.toml 的 [agent] tools。
     # None 表示未在 pagent.toml 显式配置，回退到默认（web 工具）。
     agent_tools: tuple[str, ...] | None = None
+    # 命名子 agent：冻结进新 thread.toml 的 [sub.<name>]。None = 未配置。
+    subs: dict[str, SubAgentSpec] | None = None
     user_label: str | None = None
     assistant_label: str | None = None
     permission_mode: str | None = None
@@ -82,12 +85,13 @@ class ReplConfig:
         """把 ``[skills] roots`` 展开成冻结进 thread.toml 的 ``[agent] skills``。
 
         ``roots`` 就是完整扫描列表，不隐式追加任何目录：写了才扫，删了就没有。
-        其中 ``{home}`` 占位符展开成当前生效的 pagent home（prod/dev/PAGENT_HOME
-        由 home 激活决定），让模板不必写死绝对路径。
+        ``{pagent_home}``（兼容旧写法 ``{home}``）展开成当前生效的 pagent 数据根
+        （prod/dev/PAGENT_HOME 由 activate_home 决定），让模板不必写死绝对路径。
         """
-        home = str(default_pagent_home())
+        pagent_home = str(default_pagent_home())
         return tuple(
-            root.replace("{home}", home) for root in self.resolved_skill_roots()
+            root.replace("{pagent_home}", pagent_home).replace("{home}", pagent_home)
+            for root in self.resolved_skill_roots()
         )
 
     def resolved_user_label(self) -> str:
@@ -138,6 +142,8 @@ class ReplConfig:
         # 让 [agent] tools / [agent] skills 成为运行时唯一事实来源。
         kwargs["agent_tools"] = self.resolved_agent_tools()
         kwargs["skills"] = self.resolved_skill_dirs()
+        if self.subs:
+            kwargs["subs"] = dict(self.subs)
         return kwargs
 
 
@@ -256,6 +262,22 @@ def parse_repl_config(data: dict) -> ReplConfig:
     else:
         raise ValueError("agent.tools must be a list of strings")
 
+    sub_block = data.get("sub")
+    subs: dict[str, SubAgentSpec] | None
+    if sub_block is None:
+        subs = None
+    elif not isinstance(sub_block, dict):
+        raise ValueError("[sub] must be a table of [sub.<name>] entries")
+    else:
+        parsed: dict[str, SubAgentSpec] = {}
+        for name, spec in sub_block.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("[sub.<name>] name must be a non-empty string")
+            if not isinstance(spec, dict):
+                raise ValueError(f"[sub.{name}] must be a table")
+            parsed[name] = SubAgentSpec.from_dict(spec)
+        subs = parsed
+
     user_label = repl.get("user_label")
     if user_label is not None and not isinstance(user_label, str):
         raise ValueError("repl.user_label must be a string")
@@ -293,6 +315,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
         ssh_workdir=sandbox_ssh.get("workdir"),
         skill_roots=skill_roots,
         agent_tools=agent_tools,
+        subs=subs,
         user_label=user_label,
         assistant_label=assistant_label,
         permission_mode=permission_mode,

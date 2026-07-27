@@ -4,6 +4,7 @@
 - 依赖 `asyncssh`；作为 optional extra `pagent[ssh]` 提供
 - 一次 `start()` 建立一条长连接；`close()` 关掉；所有 exec / files 走同一个 conn
 - 远端 workdir：`connection["workdir"]` 显式指定，或回退到 `~/pagent`（会 mkdir -p）
+- 连接带 `connect_timeout`（默认 10s）+ `login_timeout`（默认 15s），连不上尽快失败
 - alive 走 `conn.is_closed()` + 一次极短 `true` 命令兜底，判断是否可用
 - Guard 层会在自愈时重跑 start()，此时会重建连接 + 重新 mkdir workdir
 
@@ -62,6 +63,12 @@ class SshBackend:
             "username": user,
             "port": int(connection.get("port", 22)),
             "known_hosts": connection.get("known_hosts"),
+            "connect_timeout": float(
+                connection.get("connect_timeout", DEFAULT_CONNECT_TIMEOUT)
+            ),
+            "login_timeout": float(
+                connection.get("login_timeout", DEFAULT_LOGIN_TIMEOUT)
+            ),
         }
         if password := connection.get("password"):
             connect_kwargs["password"] = password
@@ -248,6 +255,10 @@ class SshBackend:
 
 DEFAULT_SSH_CONFIG = "~/.ssh/config"
 DEFAULT_REMOTE_WORKDIR = "~/pagent"
+# TCP+握手总上限；连不上时尽快失败，避免堵死 wire 命令循环。
+DEFAULT_CONNECT_TIMEOUT = 10
+# SSH 认证阶段上限（TCP 已通之后）。
+DEFAULT_LOGIN_TIMEOUT = 15
 
 
 @dataclass

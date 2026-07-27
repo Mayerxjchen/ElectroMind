@@ -1017,38 +1017,38 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         return runner
 
     if cmd == "sandbox_tree":
-        if runner is None and isinstance(state.get("thread_id"), str):
-            try:
-                runner = await ensure_runner(runner, config, state)
-                emit_current_thread(runner)
-            except (Exception, SystemExit) as exc:
-                log(f"[wire] open runner failed: {exc}")
-                emit_error(format_exc(exc), where="open")
-                return runner
+        # 状态/树查询不唤醒沙箱：SSH 连不上时 ensure_runner 会堵死 stdin 命令循环，
+        # 连 cancel 都进不来。沙箱只在 user/reset 等显式路径打开。
         await emit_sandbox_tree(runner)
         return runner
 
     if cmd == "sandbox_status":
-        if runner is None and isinstance(state.get("thread_id"), str):
-            try:
-                runner = await ensure_runner(runner, config, state)
-                emit_current_thread(runner)
-            except (Exception, SystemExit) as exc:
-                log(f"[wire] open runner failed: {exc}")
-                emit_error(format_exc(exc), where="open")
-                return runner
+        if runner is None:
+            thread_id = (
+                state["thread_id"] if isinstance(state.get("thread_id"), str) else ""
+            )
+            backend = ""
+            if thread_id:
+                try:
+                    project_path = state.get("project_path")
+                    thread = open_thread_history(
+                        thread_id,
+                        project_path if isinstance(project_path, str) else None,
+                    )
+                    backend = thread.spec.backend or ""
+                except Exception as exc:
+                    log(f"[wire] sandbox_status meta failed: {exc}")
+            emit_sandbox_status_payload(
+                thread_id=thread_id,
+                backend=backend,
+                alive=False,
+                workdir="",
+            )
+            return runner
         await emit_sandbox_status(runner)
         return runner
 
     if cmd == "skills":
-        if runner is None and isinstance(state.get("thread_id"), str):
-            try:
-                runner = await ensure_runner(runner, config, state)
-                emit_current_thread(runner)
-            except (Exception, SystemExit) as exc:
-                log(f"[wire] open runner failed: {exc}")
-                emit_error(format_exc(exc), where="open")
-                return runner
         emit_skills(runner)
         return runner
 

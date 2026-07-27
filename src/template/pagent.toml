@@ -1,16 +1,16 @@
 # pagent 全局配置模板（全字段参考）
 #
-# 这是「全局」配置：管 REPL 启动时的缺省。对话级配置见每个 thread 目录下的
-# thread.toml（含 subagent 的 [sub.<name>]），与本文件 schema 不同。
+# 这是「全局」配置：管 REPL 启动时的缺省。新建对话时把 sandbox / agent /
+# skills / [sub.*] 等冻结进该 thread 的 thread.toml；之后以 thread.toml 为准。
 #
-# 生效 home（配置 / threads / skills 同根，二选一）：
+# 生效 pagent home（数据根：配置 / threads / skills 同根，≠ 系统 $HOME）：
 #   uv run pagent --dev  → ./.pagent/pagent.toml
 #   uv run pagent        → ~/.pagent/pagent.toml
-# 生效 home 缺该文件时从包内默认物化一份；只认这一个文件，另可用 --config <file> 叠加、CLI flag 覆盖。
+# 缺该文件时从包内默认物化一份；只认这一个文件，另可用 --config <file> 叠加、CLI flag 覆盖。
 #
 # host_root（agent 能观察/取文件的用户目录，list_host_files / copy_from_host 的根）：
 #   默认 = 启动 pagent 时的当前工作目录（cwd）；用 [project.local] path 或 --project 显式绑定。
-#   注意它与生效 home 无关：--dev 只改数据根，不改 host_root。
+#   注意它与 pagent home 无关：--dev 只改数据根，不改 host_root。
 #
 # 注：运行时真正加载的包内默认层当前是 src/app/pagent.toml；本文件是收拢中的
 # 全字段模板，后续 breaking change 会把运行时默认迁到 src/template/ 下统一。
@@ -74,17 +74,37 @@ workdir = "~/pagent" # 远端工作目录，agent 只能操作此目录（自动
 # ── [skills] 技能扫描 ─────────────────────────────────
 [skills]
 # skill 扫描目录白名单（字符串或字符串数组）。这里列的就是全部扫描位置，
-# 写了才扫、删了就没有。{home} 展开成当前生效的 pagent home
-# （~/.pagent 或 --dev 下的 ./.pagent）。新建对话时展开成绝对路径，
-# 冻结进 thread.toml 的 [agent] skills，运行时只读那份。
-roots = ["{home}/skills"]
+# 写了才扫、删了就没有。{pagent_home} 展开成当前生效的数据根
+# （~/.pagent 或 --dev 下的 ./.pagent；兼容旧写法 {home}）。新建对话时
+# 展开成绝对路径，冻结进 thread.toml 的 [agent] skills，运行时只读那份。
+roots = ["{pagent_home}/skills"]
 
 # ── [agent] 主 agent 进程内工具 ───────────────────────
 [agent]
 # harness 工具白名单，冻结进新建 thread.toml 的 [agent] tools（运行时唯一事实来源）。
-# 可选：web_search、fetch_url、delegate_to_subagent（后者还需 thread.toml 配 [sub.*]）。
+# 可选：web_search、fetch_url、delegate_to_subagent（后者还需至少配一个 [sub.*]）。
 # 删去不想启用的即可；给空表 = 不挂任何进程内工具。
 tools = ["web_search", "fetch_url"]
+
+# ── [sub.<name>] 子 agent（新建对话时冻结进 thread.toml）──
+# 主 agent 通过 delegate_to_subagent 委派；name 出现在工具的 type 枚举里。
+# 字段：system / model（空=继承主 agent）/ backend（空=继承 thread；"none"=不开沙箱）/
+#       sandbox_tools（空=放开全部）/ max_turns / workspace（空=共用 main；
+#       非空 → workspaces/<name>/ 独立地盘）。
+# 启用示例（取消注释，并在上面 tools 加上 "delegate_to_subagent"）：
+#
+# [sub.coder]
+# system = "你是程序员，只负责实现与改代码。"
+# max_turns = 24
+# # model = ""
+# # backend = "none"
+# # sandbox_tools = ["read_file", "write_file", "str_replace", "run_command"]
+# # workspace = "coder"
+#
+# [sub.researcher]
+# system = "你只做调研与摘要，不改代码。"
+# backend = "none"
+# max_turns = 24
 
 # ── [repl] 终端显示 ───────────────────────────────────
 [repl]

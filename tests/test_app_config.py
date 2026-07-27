@@ -77,6 +77,30 @@ def test_thread_overrides_from_config():
     }
 
 
+def test_parse_and_freeze_subagents():
+    config = parse_repl_config(
+        {
+            "agent": {"tools": ["delegate_to_subagent"]},
+            "sub": {
+                "coder": {
+                    "system": "你是程序员",
+                    "max_turns": 24,
+                    "workspace": "coder",
+                },
+                "researcher": {"system": "调研员", "backend": "none"},
+            },
+        }
+    )
+    assert config.agent_tools == ("delegate_to_subagent",)
+    assert sorted(config.subs) == ["coder", "researcher"]
+    assert config.subs["coder"].workspace == "coder"
+    assert config.subs["researcher"].backend == "none"
+    overrides = config.thread_overrides()
+    assert overrides["agent_tools"] == ("delegate_to_subagent",)
+    assert overrides["subs"]["coder"].system == "你是程序员"
+    assert "subs" not in ReplConfig().thread_overrides()
+
+
 def test_resolved_api_key_prefers_config(monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "from-env")
     config = ReplConfig(api_key="from-toml")
@@ -332,6 +356,19 @@ def test_no_dev_flag_uses_user_home(tmp_path, monkeypatch):
 
 def test_resolved_skill_roots_default():
     assert ReplConfig().resolved_skill_roots() == ()
+
+
+def test_resolved_skill_dirs_expands_pagent_home(tmp_path, monkeypatch):
+    activate_home("dev", tmp_path)
+    config = ReplConfig(
+        skill_roots=("{pagent_home}/skills", "{home}/legacy", "./local")
+    )
+    home = str(default_pagent_home())
+    assert config.resolved_skill_dirs() == (
+        f"{home}/skills",
+        f"{home}/legacy",
+        "./local",
+    )
 
 
 def test_parse_repl_config_skills_roots_string():

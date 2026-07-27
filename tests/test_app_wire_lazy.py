@@ -444,6 +444,11 @@ async def test_sandbox_status_without_runner_does_not_open(monkeypatch):
         "open_fresh_runner",
         AsyncMock(side_effect=AssertionError("should not open")),
     )
+    monkeypatch.setattr(
+        wire,
+        "open_thread_runner",
+        AsyncMock(side_effect=AssertionError("should not open")),
+    )
     lines: list[str] = []
     monkeypatch.setattr(wire, "emit_line", lambda line: lines.append(line))
 
@@ -460,6 +465,42 @@ async def test_sandbox_status_without_runner_does_not_open(monkeypatch):
     assert payload["params"] == {
         "thread_id": "",
         "backend": "",
+        "alive": False,
+        "workdir": "",
+    }
+
+
+@pytest.mark.asyncio
+async def test_sandbox_status_with_thread_id_does_not_open_runner(monkeypatch):
+    """状态轮询带 thread_id 时也不能唤醒沙箱（SSH 连不上会堵死 wire）。"""
+    monkeypatch.setattr(
+        wire,
+        "ensure_runner",
+        AsyncMock(side_effect=AssertionError("should not open")),
+    )
+    monkeypatch.setattr(
+        wire,
+        "open_thread_history",
+        lambda thread_id, project_path=None: SimpleNamespace(
+            spec=SimpleNamespace(backend="ssh")
+        ),
+    )
+    lines: list[str] = []
+    monkeypatch.setattr(wire, "emit_line", lambda line: lines.append(line))
+
+    result = await wire.handle_command(
+        {"cmd": "sandbox_status"},
+        None,
+        ReplConfig(),
+        {"turn": None, "thread_id": "thread-ssh"},
+    )
+
+    assert result is None
+    payload = json.loads(lines[0])
+    assert payload["method"] == "SandboxStatus"
+    assert payload["params"] == {
+        "thread_id": "thread-ssh",
+        "backend": "ssh",
         "alive": False,
         "workdir": "",
     }
