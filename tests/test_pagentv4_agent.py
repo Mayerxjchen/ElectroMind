@@ -42,7 +42,7 @@ class FakeProvider:
 
 
 async def open_runner(
-    tmp_path, monkeypatch, provider, *, system="test", tools=(), max_turns=8
+    tmp_path, monkeypatch, provider, *, system="test", tools=(), max_turns=24
 ):
     monkeypatch.chdir(tmp_path)
     return await Runner.create(

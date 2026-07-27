@@ -45,7 +45,7 @@ def make_runner() -> VanillaRunner:
         DeepSeek("deepseek-v4-flash"),
         system=SYSTEM_PROMPT,
         tools=[calculate],
-        max_turns=8,
+        max_turns=24,
     )
     return VanillaRunner(agent)
 
@@ -56,7 +56,7 @@ def make_agent() -> AgentCore:
         DeepSeek("deepseek-v4-flash"),
         system=SYSTEM_PROMPT,
         tools=[calculate],
-        max_turns=8,
+        max_turns=24,
     )
 
 

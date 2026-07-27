@@ -10,7 +10,7 @@
 | 符号 | 作用 |
 |------|------|
 | `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang`, … | OpenAI 兼容流式客户端 |
-| `AgentCore(provider, system=None, tools=None, max_turns=8)` | 模型 + 工具配置 |
+| `AgentCore(provider, system=None, tools=None, max_turns=24)` | 模型 + 工具配置 |
 | `Runner.create(thread_id, provider, …)` | Thread 绑定的编排器：sandbox + messages + tool loop |
 | `VanillaRunner(agent, messages=None)` | 轻量内存循环：无 thread、无 sandbox、无持久化 |
 | `ChatAgent`, `CodeAgent`, `ThreadAgent`, `VanillaAgent` | Agent 风格别名，对应同名 Runner 能力 |
@@ -60,7 +60,7 @@ agent = AgentCore(
     DeepSeek("deepseek-v4-flash"),
     system="回答要简洁。",
     tools=[get_weather],
-    max_turns=8,
+    max_turns=24,
 )
 ```
 

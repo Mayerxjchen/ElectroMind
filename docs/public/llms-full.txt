@@ -31,7 +31,7 @@ Dense API reference for **coding agents** and LLM tools. Human docs: <https://sy
 | `SlidingWindowSession` | Trim by **token** budget (not message count) |
 | `CompactingSession` | LLM summarization when context grows |
 | `LLM`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang` | Provider clients; model name in constructor |
-| `Agent(llm, session, tools=None, max_turns=8)` | Runs the tool loop |
+| `Agent(llm, session, tools=None, max_turns=24)` | Runs the tool loop |
 | `RunEnd` | Final model step: `.content`, `.tool_calls`, `.reasoning_content`, `.usage` |
 | `@tool()` | Decorator; schema from type hints + docstring |
 
@@ -94,7 +94,7 @@ async def main():
         llm=LLM("gpt-4o-mini"),
         session=Session("You are helpful."),
         tools=[get_weather],
-        max_turns=8,
+        max_turns=24,
     )
     end = await agent.run("Weather in Xiamen?")
     print(end.content)
@@ -187,7 +187,7 @@ async def main():
         llm=LLM("gpt-4o-mini"),
         session=Session("You are helpful. Use tools when needed."),
         tools=[get_weather],
-        max_turns=8,
+        max_turns=24,
     )
 
     result = await agent.run("What's the weather in Xiamen?")
@@ -295,7 +295,7 @@ session += {"role": "user", "content": "What's 2+2?"}
 ```python
 from pagent import Agent, LLM
 
-agent = Agent(llm=LLM("gpt-4o-mini"), session=session, tools=[], max_turns=8)
+agent = Agent(llm=LLM("gpt-4o-mini"), session=session, tools=[], max_turns=24)
 await agent.run("What's 2+2?")
 ```
 
@@ -357,7 +357,7 @@ agent = Agent(
     llm=LLM("gpt-4o-mini"),
     session=Session("Use get_weather for weather."),
     tools=[get_weather],
-    max_turns=8,
+    max_turns=24,
 )
 await agent.run("Weather in Xiamen?")
 ```
@@ -386,7 +386,7 @@ agent = Agent(
     llm=LLM("gpt-4o-mini"),
     session=Session("You are helpful."),
     tools=[*DEFAULT_TOOLS],  # clock + region
-    max_turns=8,
+    max_turns=24,
 )
 ```
 
@@ -1541,7 +1541,7 @@ sglang = Sglang("my-model")
 | Symbol | Role |
 |--------|------|
 | `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang`, … | OpenAI-compatible streaming clients |
-| `AgentCore(provider, system=None, tools=None, max_turns=8)` | Model + tool configuration |
+| `AgentCore(provider, system=None, tools=None, max_turns=24)` | Model + tool configuration |
 | `Runner` | Thread-bound orchestrator: sandbox + messages + tool loop |
 | `VanillaRunner(agent, messages=None)` | Lightweight in-memory loop with no thread, sandbox, or persistence |
 | `ChatAgent`, `CodeAgent`, `ThreadAgent`, `VanillaAgent` | Agent-style aliases for the matching runner classes |
@@ -1591,7 +1591,7 @@ agent = AgentCore(
     DeepSeek("deepseek-v4-flash"),
     system="You are concise.",
     tools=[get_weather],
-    max_turns=8,
+    max_turns=24,
 )
 ```
 

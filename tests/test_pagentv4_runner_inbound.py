@@ -31,7 +31,7 @@ class FakeProvider:
         return stream()
 
 
-async def open_runner(tmp_path, monkeypatch, provider, *, tools=(), max_turns=8):
+async def open_runner(tmp_path, monkeypatch, provider, *, tools=(), max_turns=24):
     monkeypatch.chdir(tmp_path)
     return await Runner.create(
         "test",

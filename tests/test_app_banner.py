@@ -36,7 +36,7 @@ def test_box_top_and_row_share_width():
 
 def test_banner_contains_key_fields():
     class FakeAgent:
-        max_turns = 12
+        max_turns = 24
 
     class FakeThread:
         created = True

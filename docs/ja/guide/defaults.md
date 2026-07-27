@@ -11,7 +11,7 @@ agent = Agent(
     llm=LLM("gpt-4o-mini"),
     session=Session("助手として答えて。"),
     tools=[*DEFAULT_TOOLS],
-    max_turns=8,
+    max_turns=24,
 )
 ```
 

@@ -5,7 +5,7 @@ Example — judge-style run (no wrapper class)::
     from pagent import Agent, Session, JUDGER_SYSTEM
 
     async def main(llm):
-        agent = Agent(llm, Session(JUDGER_SYSTEM), tools=[], max_turns=8)
+        agent = Agent(llm, Session(JUDGER_SYSTEM), tools=[], max_turns=24)
         result = await agent.run(
             "Candidate answer: ...\\nGround truth: ...\\nPass or fail?"
         )

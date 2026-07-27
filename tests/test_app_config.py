@@ -106,7 +106,7 @@ def test_refresh_provider_from_disk_picks_up_new_key(tmp_path, monkeypatch):
 
 
 def test_resolved_max_turns_default():
-    assert ReplConfig().resolved_max_turns() == 12
+    assert ReplConfig().resolved_max_turns() == 24
 
 
 def test_config_from_file(tmp_path, monkeypatch):
@@ -122,7 +122,7 @@ def test_config_from_file(tmp_path, monkeypatch):
     assert config.container_ttl == 300
     assert config.ssh_host == "machine_root"
     assert config.command_policy == "workdir"
-    assert config.resolved_max_turns() == 12
+    assert config.resolved_max_turns() == 24
     assert config.ssh_config == "~/.ssh/config"
     assert config.ssh_workdir == "~/pagent"
 
@@ -244,7 +244,7 @@ def test_reference_template_parses_full_schema():
     # src/template/pagent.toml 是收拢中的全字段参考模板，锁定它能被解析器解析且不腐烂成死字段。
     template = BUNDLED_CONFIG.parent.parent / "template" / "pagent.toml"
     config = load_config_file(template)
-    assert config.max_turns == 12
+    assert config.max_turns == 24
     assert config.model == "deepseek-v4-flash"
     assert config.backend == "local"
     assert config.command_policy == "workdir"
@@ -340,7 +340,7 @@ def test_parse_repl_config_skills_roots_string():
 
 
 def test_merge_config():
-    base = ReplConfig(model="a", max_turns=12)
+    base = ReplConfig(model="a", max_turns=24)
     override = ReplConfig(model="b", max_turns=20)
     merged = merge_config(base, override)
     assert merged.model == "b"
@@ -353,12 +353,12 @@ def test_load_project_config(tmp_path, monkeypatch):
     project_home = tmp_path / ".pagent"
     project_home.mkdir()
     (project_home / "pagent.toml").write_text(
-        '[runner]\nmax_turns = 8\n\n[provider]\nmodel = "custom-model"\n',
+        '[runner]\nmax_turns = 24\n\n[provider]\nmodel = "custom-model"\n',
         encoding="utf-8",
     )
     config = load_config(workdir=str(tmp_path))
     assert config.model == "custom-model"
-    assert config.max_turns == 8
+    assert config.max_turns == 24
 
 
 def test_project_local_path_parses():

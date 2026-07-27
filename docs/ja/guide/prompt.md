@@ -23,7 +23,7 @@ session += {"role": "user", "content": "2+2 は？"}
 ```python
 from pagent import Agent, LLM
 
-agent = Agent(llm=LLM("gpt-4o-mini"), session=session, tools=[], max_turns=8)
+agent = Agent(llm=LLM("gpt-4o-mini"), session=session, tools=[], max_turns=24)
 await agent.run("2+2 は？")
 ```
 

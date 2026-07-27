@@ -27,7 +27,7 @@ async def main():
         llm=DeepSeek("deepseek-v4-flash"),
         session=Session("你是简洁助手，需要时用工具。"),
         tools=[get_weather],
-        max_turns=8,
+        max_turns=24,
     )
 
     result = await agent.run("厦门天气怎么样？")

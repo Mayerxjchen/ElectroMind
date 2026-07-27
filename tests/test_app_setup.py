@@ -32,9 +32,9 @@ def test_upsert_adds_under_provider():
 
 
 def test_upsert_appends_provider_section():
-    text = "max_turns = 8\n"
+    text = "max_turns = 24\n"
     out = upsert_provider_api_key(text, "sk-x")
-    assert out.startswith("max_turns = 8\n")
+    assert out.startswith("max_turns = 24\n")
     assert "[provider]" in out
     assert 'api_key = "sk-x"' in out
 

@@ -40,7 +40,7 @@ class AgentStats:
 
 
 class Agent:
-    def __init__(self, llm, session, tools=None, max_turns=8):
+    def __init__(self, llm, session, tools=None, max_turns=24):
         self.llm = llm
         self.session = session
         self.tools = tools or []

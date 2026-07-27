@@ -13,7 +13,7 @@ class AgentCore:
         *,
         system: str | None = None,
         tools: list[FunctionTool] | None = None,
-        max_turns: int = 8,
+        max_turns: int = 24,
     ):
         self.provider = provider
         self.system = system

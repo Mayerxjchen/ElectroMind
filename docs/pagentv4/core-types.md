@@ -11,7 +11,7 @@
 | Symbol | Role |
 |--------|------|
 | `Provider`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang`, … | OpenAI-compatible streaming clients |
-| `AgentCore(provider, system=None, tools=None, max_turns=8)` | Model + tool configuration |
+| `AgentCore(provider, system=None, tools=None, max_turns=24)` | Model + tool configuration |
 | `Runner` | Thread-bound orchestrator: sandbox + messages + tool loop |
 | `VanillaRunner(agent, messages=None)` | Lightweight in-memory loop with no thread, sandbox, or persistence |
 | `ChatAgent`, `CodeAgent`, `ThreadAgent`, `VanillaAgent` | Agent-style aliases for the matching runner classes |
@@ -61,7 +61,7 @@ agent = AgentCore(
     DeepSeek("deepseek-v4-flash"),
     system="You are concise.",
     tools=[get_weather],
-    max_turns=8,
+    max_turns=24,
 )
 ```
 

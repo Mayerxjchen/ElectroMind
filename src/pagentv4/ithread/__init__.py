@@ -78,7 +78,7 @@ class SubAgentSpec:
     model: str = ""
     backend: str = ""
     sandbox_tools: tuple[str, ...] = ()
-    max_turns: int = 8
+    max_turns: int = 24
     workspace: str = ""
 
     def to_dict(self) -> dict:
@@ -100,7 +100,7 @@ class SubAgentSpec:
             model=payload.get("model", ""),
             backend=payload.get("backend", ""),
             sandbox_tools=tuple(tools),
-            max_turns=payload.get("max_turns", 8),
+            max_turns=payload.get("max_turns", 24),
             workspace=payload.get("workspace", ""),
         )
 

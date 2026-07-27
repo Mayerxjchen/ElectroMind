@@ -18,7 +18,7 @@ async def main():
         llm=DeepSeek("deepseek-chat"),
         session=Session("You are helpful. Use tools when needed."),
         tools=[get_weather],
-        max_turns=8,
+        max_turns=24,
     )
 
     result = await agent.run("What's the weather in Xiamen?")

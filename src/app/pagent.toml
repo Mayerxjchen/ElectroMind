@@ -8,7 +8,7 @@
 
 [runner]
 location = "local" # runner 进程跑在哪：local = 用户电脑（默认，当前唯一支持）；cloud = 云端 pod（保留，未实现）
-max_turns = 12 # 单轮对话最大工具调用轮数
+max_turns = 24 # 单轮对话最大工具调用轮数
 
 [provider]
 # api_key 请写到当前 home 的 pagent.toml，勿提交进仓库；也可 export DEEPSEEK_API_KEY。

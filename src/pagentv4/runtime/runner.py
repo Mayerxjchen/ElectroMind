@@ -233,7 +233,7 @@ class Runner(BaseRunner):
         *,
         overrides: dict | None = None,
         extra_system: str = "",
-        max_turns: int = 8,
+        max_turns: int = 24,
         skill_roots: Sequence[str | Path] = (),
         tools: Sequence[FunctionTool] = (),
         tool_hooks: ToolHooks | None = None,

@@ -11,7 +11,7 @@ agent = Agent(
     llm=LLM("gpt-4o-mini"),
     session=Session("你是助手。"),
     tools=[*DEFAULT_TOOLS],  # clock + region
-    max_turns=8,
+    max_turns=24,
 )
 ```
 

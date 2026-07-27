@@ -26,7 +26,7 @@ agent = Agent(
     llm=LLM("gpt-4o-mini"),
     session=Session("天气用 get_weather。"),
     tools=[get_weather],
-    max_turns=8,
+    max_turns=24,
 )
 await agent.run("厦门天气咋个样？")
 ```

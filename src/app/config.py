@@ -57,7 +57,7 @@ class ReplConfig:
         return None
 
     def resolved_max_turns(self) -> int:
-        return self.max_turns if self.max_turns is not None else 12
+        return self.max_turns if self.max_turns is not None else 24
 
     def resolved_runner_location(self) -> str:
         return self.runner_location if self.runner_location is not None else "local"

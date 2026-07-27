@@ -51,7 +51,7 @@ async def test_live_agent_runs_full_loop_with_sandbox_tools(tmp_path, monkeypatc
             "收到任务时请使用提供的工具（run_command / write_file / read_file）"
             "实际操作文件来完成，不要只口头回答。"
         ),
-        max_turns=8,
+        max_turns=24,
     )
     try:
         events = []

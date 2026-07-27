@@ -18,7 +18,7 @@ Dense API reference for **coding agents** and LLM tools. Human docs: <https://sy
 | `SlidingWindowSession` | Trim by **token** budget (not message count) |
 | `CompactingSession` | LLM summarization when context grows |
 | `LLM`, `DeepSeek`, `Ollama`, `Vllm`, `Sglang` | Provider clients; model name in constructor |
-| `Agent(llm, session, tools=None, max_turns=8)` | Runs the tool loop |
+| `Agent(llm, session, tools=None, max_turns=24)` | Runs the tool loop |
 | `RunEnd` | Final model step: `.content`, `.tool_calls`, `.reasoning_content`, `.usage` |
 | `@tool()` | Decorator; schema from type hints + docstring |
 
@@ -81,7 +81,7 @@ async def main():
         llm=LLM("gpt-4o-mini"),
         session=Session("You are helpful."),
         tools=[get_weather],
-        max_turns=8,
+        max_turns=24,
     )
     end = await agent.run("Weather in Xiamen?")
     print(end.content)
