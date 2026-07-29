@@ -1,5 +1,5 @@
 from app.clean import (
-    clean_pagent,
+    clean_electromind,
     format_clean_report,
     thread_is_useless,
     user_message_count,
@@ -56,12 +56,12 @@ def test_thread_is_not_useless_with_workspace_files(tmp_path):
     assert thread_is_useless(root) is False
 
 
-def test_clean_pagent_removes_empty_threads(tmp_path):
+def test_clean_electromind_removes_empty_threads(tmp_path):
     write_thread(tmp_path, "empty-a")
     write_thread(tmp_path, "kept", user_text="hi")
     write_thread(tmp_path, "empty-b")
 
-    report = clean_pagent(
+    report = clean_electromind(
         threads_root=tmp_path, conversations_root=tmp_path / "conversations"
     )
 
@@ -71,10 +71,10 @@ def test_clean_pagent_removes_empty_threads(tmp_path):
     assert not (tmp_path / "empty-b").exists()
 
 
-def test_clean_pagent_keeps_active_thread_without_turn(tmp_path):
+def test_clean_electromind_keeps_active_thread_without_turn(tmp_path):
     write_thread(tmp_path, "current")
 
-    report = clean_pagent(
+    report = clean_electromind(
         threads_root=tmp_path,
         conversations_root=tmp_path / "conversations",
         keep_thread_ids={"current"},
@@ -84,7 +84,7 @@ def test_clean_pagent_keeps_active_thread_without_turn(tmp_path):
     assert (tmp_path / "current").exists()
 
 
-def test_clean_pagent_removes_empty_conversations(tmp_path):
+def test_clean_electromind_removes_empty_conversations(tmp_path):
     conversations = tmp_path / "conversations"
     conversations.mkdir()
     empty = conversations / "demo.jsonl"
@@ -98,7 +98,7 @@ def test_clean_pagent_removes_empty_conversations(tmp_path):
     kept_messages += Message.user("hi")
     kept_messages.save_to_jsonl(kept)
 
-    report = clean_pagent(
+    report = clean_electromind(
         threads_root=tmp_path / "threads", conversations_root=conversations
     )
 

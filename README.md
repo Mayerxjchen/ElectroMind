@@ -71,8 +71,7 @@ REPL 内可用命令：`/exit` `/resume` `/sessions` `/pwd` `/ls` `/skills` `/hi
 ```
 src/
 ├── app/                 CLI、REPL、配置、会话管理、HTTP/Wire 后端、Dockerfile
-├── electromind/         核心：运行时、Thread、对话持久化、Sandbox、Skills、工具、Trace
-└── electromind_legacy/  旧版 API 兼容层
+└── electromind/         核心：运行时、Thread、对话持久化、Sandbox、Skills、工具、Trace
 editors/
 ├── desktop/             Electron 桌面端
 ├── vscode/              VS Code 扩展
