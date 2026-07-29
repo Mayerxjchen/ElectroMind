@@ -18,7 +18,7 @@ ElectroMind 整合了第一性原理计算软件（VASP、CP2K、LAMMPS、DeepMD
 
 - 终端内多轮对话，流式输出与工具调用审批
 - 本地（local）、容器（Docker / Podman）、远程（SSH / HPC）三种 Sandbox，适配计算集群
-- **科学计算 Skills**：内建 CP2K、VASP、LAMMPS、DeepMD、MCMC 等软件的输入生成、输出解析与工作流编排
+- 科学计算 Skills：内建 CP2K、VASP、LAMMPS、DeepMD、MCMC 等软件的输入生成、输出解析与工作流编排
 - 会话持久化与恢复：`--continue`、`--resume`、`session list`
 - HTTP 与 Wire（stdio NDJSON）后端，供 Web UI、桌面端、VS Code 插件集成
 - 可扩展的 Skills 系统与子 Agent 委托
