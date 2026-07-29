@@ -1,5 +1,5 @@
 from pagent import DEFAULT_TOOLS, bash, clock, readfile, region
-from pagent.defaults import parse_bash_argv, resolve_readfile_path
+from electromind_legacy.defaults import parse_bash_argv, resolve_readfile_path
 
 
 def test_default_tools_order():

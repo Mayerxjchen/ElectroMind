@@ -338,7 +338,7 @@ def test_agent_arun_passes_run_kwargs():
 
 
 def test_llm_rejects_reserved_run_kwargs():
-    from pagent.llm import check_run_kwargs
+    from electromind_legacy.llm import check_run_kwargs
 
     with pytest.raises(TypeError, match="reserved"):
         check_run_kwargs({"model": "hacked"})

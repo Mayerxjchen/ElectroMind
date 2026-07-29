@@ -15,8 +15,8 @@ from app.config import (
     parse_repl_config,
     refresh_provider_from_disk,
 )
-from pagentv4.paths import activate_home, default_pagent_home
-from pagentv4.sandbox.tools import SANDBOX_TOOL_NAMES
+from electromind.paths import activate_home, default_electromind_home
+from electromind.sandbox.tools import SANDBOX_TOOL_NAMES
 
 
 def test_thread_overrides_includes_container_ttl():
@@ -114,13 +114,13 @@ def test_resolved_api_key_falls_back_to_env(monkeypatch):
 
 
 def test_refresh_provider_from_disk_picks_up_new_key(tmp_path, monkeypatch):
-    home = tmp_path / "home" / ".pagent"
+    home = tmp_path / "home" / ".electromind"
     home.mkdir(parents=True)
-    monkeypatch.setenv("PAGENT_HOME", str(home))
+    monkeypatch.setenv("ELECTROMIND_HOME", str(home))
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     stale = ReplConfig()
     assert stale.resolved_api_key() is None
-    (home / "pagent.toml").write_text(
+    (home / "electromind.toml").write_text(
         '[provider]\napi_key = "sk-after-setup"\nmodel = "deepseek-v4-flash"\n',
         encoding="utf-8",
     )
@@ -163,7 +163,7 @@ def test_thread_id_from_cli_only(tmp_path, monkeypatch):
 def test_backend_from_cli_overrides_project_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "pagent.toml").write_text(
+    (tmp_path / "electromind.toml").write_text(
         '[sandbox]\nbackend = "local"\n',
         encoding="utf-8",
     )
@@ -175,7 +175,7 @@ def test_backend_from_cli_overrides_project_config(tmp_path, monkeypatch):
 def test_runtime_modes_from_cli_override_project_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "pagent.toml").write_text(
+    (tmp_path / "electromind.toml").write_text(
         '[permission]\nmode = "prompt"\n\n[sandbox.ssh]\nhost = "old"\n',
         encoding="utf-8",
     )
@@ -260,13 +260,13 @@ def test_parse_repl_config_bundled_template():
 def test_bundled_and_reference_templates_parse_identically():
     # 运行时默认层（src/app）与全字段模板（src/template）终点是归一。
     # 归一形态未定前，先用测试锁死两份解析结果完全一致，漂移即红。
-    template = BUNDLED_CONFIG.parent.parent / "template" / "pagent.toml"
+    template = BUNDLED_CONFIG.parent.parent / "template" / "electromind.toml"
     assert load_config_file(BUNDLED_CONFIG) == load_config_file(template)
 
 
 def test_reference_template_parses_full_schema():
-    # src/template/pagent.toml 是收拢中的全字段参考模板，锁定它能被解析器解析且不腐烂成死字段。
-    template = BUNDLED_CONFIG.parent.parent / "template" / "pagent.toml"
+    # src/template/electromind.toml 是收拢中的全字段参考模板，锁定它能被解析器解析且不腐烂成死字段。
+    template = BUNDLED_CONFIG.parent.parent / "template" / "electromind.toml"
     config = load_config_file(template)
     assert config.max_turns == 24
     assert config.model == "deepseek-v4-flash"
@@ -335,35 +335,35 @@ def test_config_from_args_auto_flag(tmp_path, monkeypatch):
 
 
 def test_dev_flag_activates_project_home(tmp_path, monkeypatch):
-    from pagentv4.paths import resolve_pagent_home
+    from electromind.paths import resolve_electromind_home
 
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     parser = build_parser()
     config_from_args(parser.parse_args(["--dev", str(tmp_path)]))
-    assert resolve_pagent_home() == (tmp_path / ".pagent").resolve()
+    assert resolve_electromind_home() == (tmp_path / ".electromind").resolve()
 
 
 def test_no_dev_flag_uses_user_home(tmp_path, monkeypatch):
-    from pagentv4.paths import resolve_pagent_home
+    from electromind.paths import resolve_electromind_home
 
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     parser = build_parser()
     config_from_args(parser.parse_args([]))
-    assert resolve_pagent_home() == (home / ".pagent").resolve()
+    assert resolve_electromind_home() == (home / ".electromind").resolve()
 
 
 def test_resolved_skill_roots_default():
     assert ReplConfig().resolved_skill_roots() == ()
 
 
-def test_resolved_skill_dirs_expands_pagent_home(tmp_path, monkeypatch):
+def test_resolved_skill_dirs_expands_electromind_home(tmp_path, monkeypatch):
     activate_home("dev", tmp_path)
     config = ReplConfig(
-        skill_roots=("{pagent_home}/skills", "{home}/legacy", "./local")
+        skill_roots=("{electromind_home}/skills", "{home}/legacy", "./local")
     )
-    home = str(default_pagent_home())
+    home = str(default_electromind_home())
     assert config.resolved_skill_dirs() == (
         f"{home}/skills",
         f"{home}/legacy",
@@ -387,9 +387,9 @@ def test_merge_config():
 def test_load_project_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     activate_home("dev", tmp_path)
-    project_home = tmp_path / ".pagent"
+    project_home = tmp_path / ".electromind"
     project_home.mkdir()
-    (project_home / "pagent.toml").write_text(
+    (project_home / "electromind.toml").write_text(
         '[runner]\nmax_turns = 24\n\n[provider]\nmodel = "custom-model"\n',
         encoding="utf-8",
     )
@@ -421,21 +421,21 @@ def test_find_user_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     activate_home("prod")
     assert find_user_config(str(tmp_path)) is None
-    user_dir = tmp_path / ".pagent"
+    user_dir = tmp_path / ".electromind"
     user_dir.mkdir()
-    user_toml = user_dir / "pagent.toml"
+    user_toml = user_dir / "electromind.toml"
     user_toml.write_text('[provider]\napi_key = "sk-user"\n', encoding="utf-8")
     assert find_user_config(str(tmp_path)) == user_toml
 
 
 def test_dev_mode_materializes_missing_config(tmp_path, monkeypatch):
-    """--dev 指向空目录时，从包内模板物化 ./.pagent/pagent.toml，只认这一个文件。"""
+    """--dev 指向空目录时，从包内模板物化 ./.electromind/electromind.toml，只认这一个文件。"""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     project = tmp_path / "proj"
     project.mkdir()
     activate_home("dev", project)
 
-    target = project / ".pagent" / "pagent.toml"
+    target = project / ".electromind" / "electromind.toml"
     assert not target.exists()
 
     config = load_config(workdir=str(project))
@@ -444,16 +444,16 @@ def test_dev_mode_materializes_missing_config(tmp_path, monkeypatch):
         encoding="utf-8"
     )  # 内容取自打包种子
     assert config.backend == "local"
-    assert default_pagent_home() == target.parent
+    assert default_electromind_home() == target.parent
 
 
 def test_ensure_home_config_keeps_existing(tmp_path, monkeypatch):
     """已有 home 配置时不覆盖，直接沿用。"""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     project = tmp_path / "proj"
-    home = project / ".pagent"
+    home = project / ".electromind"
     home.mkdir(parents=True)
-    existing = home / "pagent.toml"
+    existing = home / "electromind.toml"
     existing.write_text('[provider]\nmodel = "kept-model"\n', encoding="utf-8")
     activate_home("dev", project)
 
@@ -471,15 +471,15 @@ def test_project_home_does_not_read_user_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     activate_home("dev", project)
 
-    user_dir = home / ".pagent"
+    user_dir = home / ".electromind"
     user_dir.mkdir()
-    (user_dir / "pagent.toml").write_text(
+    (user_dir / "electromind.toml").write_text(
         '[provider]\napi_key = "sk-user"\nmodel = "user-model"\n',
         encoding="utf-8",
     )
-    project_home = project / ".pagent"
+    project_home = project / ".electromind"
     project_home.mkdir()
-    (project_home / "pagent.toml").write_text(
+    (project_home / "electromind.toml").write_text(
         '[provider]\nmodel = "project-model"\n',
         encoding="utf-8",
     )
@@ -494,9 +494,9 @@ def test_explicit_config_merges_active_home(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     activate_home("prod")
-    user_dir = home / ".pagent"
+    user_dir = home / ".electromind"
     user_dir.mkdir()
-    (user_dir / "pagent.toml").write_text(
+    (user_dir / "electromind.toml").write_text(
         '[provider]\napi_key = "sk-user"\n',
         encoding="utf-8",
     )

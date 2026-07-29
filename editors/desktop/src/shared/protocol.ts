@@ -83,8 +83,8 @@ export type SandboxBackendOption = "local" | "container" | "docker" | "podman" |
 export type EnvironmentCheck = {
     uvInstalled: boolean;
     uvPath?: string;
-    pagentInstalled: boolean;
-    pagentPath?: string;
+    electromindInstalled: boolean;
+    electromindPath?: string;
     apiKeyConfigured: boolean;
     dockerInstalled: boolean;
     podmanInstalled: boolean;
@@ -92,9 +92,9 @@ export type EnvironmentCheck = {
     sandboxImage: string;
     sandboxImageExists: boolean;
     configPath: string;
-    /** ~/.pagent 绝对路径 */
+    /** ~/.electromind 绝对路径 */
     dataHomePath: string;
-    /** 展示用，例如 ~/.pagent */
+    /** 展示用，例如 ~/.electromind */
     dataHomeLabel: string;
     /** 目录占用字节数；目录不存在时为 0；无法读取时为 undefined */
     dataHomeBytes?: number;
@@ -108,7 +108,7 @@ export type OnboardingState = {
     /** 未完成且未跳过时展示可选向导 */
     shouldShow: boolean;
     /**
-     * 硬拦截：缺少 pagent CLI 或 API Key 时为 true。
+     * 硬拦截：缺少 electromind CLI 或 API Key 时为 true。
      * 为 true 时主界面不可用，设置向导不可关闭/跳过。
      */
     blocked: boolean;
@@ -135,9 +135,9 @@ export type NewSessionOptions = {
     projectPath: string;
     availableBackends: SandboxBackendOption[];
     sshHosts: string[];
-    /** 配置默认镜像（[sandbox].image 或 pagent:latest） */
+    /** 配置默认镜像（[sandbox].image 或 electromind:latest） */
     defaultImage: string;
-    /** 本机可用的 pagent* 镜像（含 defaultImage） */
+    /** 本机可用的 electromind* 镜像（含 defaultImage） */
     availableImages: string[];
 };
 
@@ -185,7 +185,7 @@ export type DesktopApi = {
     getNewSessionOptions(): Promise<NewSessionOptions>;
     getOnboardingState(): Promise<OnboardingState>;
     refreshEnvironmentCheck(): Promise<EnvironmentCheck>;
-    installPagentCli(): Promise<{ ok: boolean; error?: string; pagentPath?: string }>;
+    installElectromindCli(): Promise<{ ok: boolean; error?: string; electromindPath?: string }>;
     saveProviderSetup(setup: ProviderSetupInput): Promise<string>;
     completeOnboarding(options?: { preferredBackend?: "local" | "container" | "ssh"; skipped?: boolean }): Promise<void>;
     resumeThread(threadId: string): Promise<void>;

@@ -55,4 +55,4 @@ def test_web_search_missing_ddgs():
     with patch.object(builtins, "__import__", block_ddgs):
         out = web_search.call({"query": "test"})
     assert out.ok is False
-    assert "pagent[search]" in out.content
+    assert "electromind[search]" in out.content

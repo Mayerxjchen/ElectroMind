@@ -1,6 +1,6 @@
 import pytest
 
-from pagentv4 import (
+from electromind import (
     JsonlConversationStore,
     Messages,
     Runner,
@@ -40,20 +40,20 @@ class FakeProvider:
 
 
 def test_default_conversations_root_is_user_home(tmp_path, monkeypatch):
-    monkeypatch.delenv("PAGENT_HOME", raising=False)
+    monkeypatch.delenv("ELECTROMIND_HOME", raising=False)
     home = tmp_path / "home"
     cwd = tmp_path / "cwd"
     home.mkdir()
     cwd.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.chdir(cwd)
-    assert default_conversations_root() == str(home / ".pagent" / "conversations")
+    assert default_conversations_root() == str(home / ".electromind" / "conversations")
 
 
 def test_jsonl_store_roundtrip(tmp_path):
     store = JsonlConversationStore(root=tmp_path)
     messages = Messages()
-    from pagentv4 import Message
+    from electromind import Message
 
     messages += Message.system("sys")
     messages += Message.user("hi", turn_id=1)
@@ -101,7 +101,7 @@ async def test_runner_loads_prior_conversation(tmp_path, monkeypatch):
         await runner.close()
 
     store = JsonlConversationStore(
-        root=tmp_path / ".pagent" / "threads" / "beta" / "messages"
+        root=tmp_path / ".electromind" / "threads" / "beta" / "messages"
     )
     reloaded = store.load("messages")
     assert reloaded.data[-1].content.text == "second"
@@ -148,7 +148,7 @@ async def test_runner_flushes_each_turn(tmp_path, monkeypatch):
         ]
     )
 
-    from pagentv4 import tool
+    from electromind import tool
 
     @tool()
     def noop() -> str:
@@ -183,7 +183,7 @@ def test_jsonl_store_rejects_bad_id(tmp_path):
 def test_jsonl_store_delete(tmp_path):
     store = JsonlConversationStore(root=tmp_path)
     messages = Messages()
-    from pagentv4 import Message
+    from electromind import Message
 
     messages += Message.system("sys")
     store.save("delta", messages)
@@ -196,7 +196,7 @@ def test_sqlite_store_roundtrip(tmp_path):
     store = SqliteConversationStore(db_path=tmp_path / "conv.sqlite")
     try:
         messages = Messages()
-        from pagentv4 import Message
+        from electromind import Message
 
         messages += Message.system("sys")
         messages += Message.user("hello", turn_id=1)
@@ -230,7 +230,7 @@ async def test_runner_persists_conversation(tmp_path, monkeypatch):
         await runner.close()
 
     store = JsonlConversationStore(
-        root=tmp_path / ".pagent" / "threads" / "zeta" / "messages"
+        root=tmp_path / ".electromind" / "threads" / "zeta" / "messages"
     )
     reloaded = store.load("messages")
     assert reloaded.data[-1].content.text == "done"

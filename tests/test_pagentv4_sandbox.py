@@ -5,8 +5,8 @@ import sys
 
 import pytest
 
-from pagentv4 import Runner, Sandbox, SandboxLimits
-from pagentv4.sandbox import (
+from electromind import Runner, Sandbox, SandboxLimits
+from electromind.sandbox import (
     SANDBOX_TOOL_NAMES,
     LocalBackend,
     SandboxSpec,
@@ -16,9 +16,9 @@ from pagentv4.sandbox import (
     resolve_tool_names,
     resolve_workdir,
 )
-from pagentv4.sandbox.backends.docker import DockerBackend
-from pagentv4.sandbox.backends.podman import PodmanBackend
-from pagentv4.sandbox.backends.ssh import SshBackend
+from electromind.sandbox.backends.docker import DockerBackend
+from electromind.sandbox.backends.podman import PodmanBackend
+from electromind.sandbox.backends.ssh import SshBackend
 
 
 @pytest.mark.asyncio
@@ -38,7 +38,7 @@ async def test_resolve_workdir_workspace_id(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.chdir(cwd)
     resolved = resolve_workdir(workspace_id="alpha", workdir=None)
-    assert resolved == str((home / ".pagent" / "workspaces" / "alpha").resolve())
+    assert resolved == str((home / ".electromind" / "workspaces" / "alpha").resolve())
     assert os.path.isdir(resolved)
 
 
@@ -61,7 +61,7 @@ def test_default_workspaces_root_is_user_home(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.chdir(cwd)
     resolved = resolve_workdir(workspace_id="beta", workdir=None)
-    assert resolved == str((home / ".pagent" / "workspaces" / "beta").resolve())
+    assert resolved == str((home / ".electromind" / "workspaces" / "beta").resolve())
     assert os.path.isdir(resolved)
 
 
@@ -75,7 +75,7 @@ def test_build_backend_dispatch():
 
 def test_build_backend_container_prefers_docker(monkeypatch):
     """backend=container 时按 docker→podman 探测 PATH，docker 在就用 docker。"""
-    from pagentv4.sandbox import sandbox as sandbox_mod
+    from electromind.sandbox import sandbox as sandbox_mod
 
     monkeypatch.setattr(sandbox_mod.shutil, "which", lambda cli: cli == "docker")
     assert isinstance(build_backend("container"), DockerBackend)
@@ -83,7 +83,7 @@ def test_build_backend_container_prefers_docker(monkeypatch):
 
 def test_build_backend_container_falls_back_to_podman(monkeypatch):
     """docker 不在 PATH、podman 在时，container 落到 podman。"""
-    from pagentv4.sandbox import sandbox as sandbox_mod
+    from electromind.sandbox import sandbox as sandbox_mod
 
     monkeypatch.setattr(sandbox_mod.shutil, "which", lambda cli: cli == "podman")
     assert isinstance(build_backend("container"), PodmanBackend)
@@ -91,8 +91,8 @@ def test_build_backend_container_falls_back_to_podman(monkeypatch):
 
 def test_detect_container_cli_raises_when_none_available(monkeypatch):
     """docker/podman 都不在 PATH，detect_container_cli 抛 SandboxError 指明安装项。"""
-    from pagentv4.sandbox import SandboxError, detect_container_cli
-    from pagentv4.sandbox import sandbox as sandbox_mod
+    from electromind.sandbox import SandboxError, detect_container_cli
+    from electromind.sandbox import sandbox as sandbox_mod
 
     monkeypatch.setattr(sandbox_mod.shutil, "which", lambda cli: None)
     with pytest.raises(SandboxError, match="docker / podman"):
@@ -543,7 +543,7 @@ async def test_read_file_bad_start_line_reports_error(tmp_path):
 
 @pytest.mark.asyncio
 async def test_install_skills_copies_files_and_returns_mount(tmp_path):
-    from pagentv4 import SkillRegistry
+    from electromind import SkillRegistry
 
     skill_source = tmp_path / "src" / "greeter"
     skill_source.mkdir(parents=True)
@@ -575,7 +575,7 @@ async def test_install_skills_copies_files_and_returns_mount(tmp_path):
 
 @pytest.mark.asyncio
 async def test_install_skills_empty_registry_returns_empty(tmp_path):
-    from pagentv4 import SkillRegistry
+    from electromind import SkillRegistry
 
     async with await Sandbox.create(backend="local", workdir=str(tmp_path)) as box:
         mount = await box.install_skills(SkillRegistry())
@@ -732,7 +732,7 @@ async def test_runner_open_binds_sandbox_tools(tmp_path, monkeypatch):
 
     note_path = (
         tmp_path
-        / ".pagent"
+        / ".electromind"
         / "threads"
         / "sandbox-test"
         / "workspaces"
@@ -754,7 +754,7 @@ async def test_runner_open_binds_sandbox_tools(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_runner_open_merges_extra_tools(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    from pagentv4 import tool
+    from electromind import tool
 
     @tool()
     def add(a: int, b: int) -> int:
@@ -815,7 +815,7 @@ async def test_runner_open_closes_sandbox_on_exception(tmp_path, monkeypatch):
     await runner.close()
 
     assert (
-        tmp_path / ".pagent" / "threads" / "boom-test" / "workspaces" / "main"
+        tmp_path / ".electromind" / "threads" / "boom-test" / "workspaces" / "main"
     ).exists()
 
 
@@ -863,7 +863,7 @@ def test_ssh_backend_describe_formats_connection():
 @pytest.mark.asyncio
 async def test_container_backend_exec_before_start_raises_sandbox_error():
     """未 start 就 exec 属生命周期错误，走 SandboxNotStartedError（SandboxError 子类）。"""
-    from pagentv4.sandbox import SandboxError, SandboxNotStartedError
+    from electromind.sandbox import SandboxError, SandboxNotStartedError
 
     backend = DockerBackend()
     with pytest.raises(SandboxNotStartedError) as excinfo:
@@ -873,7 +873,7 @@ async def test_container_backend_exec_before_start_raises_sandbox_error():
 
 @pytest.mark.asyncio
 async def test_ssh_backend_exec_before_start_raises_sandbox_error():
-    from pagentv4.sandbox import SandboxError, SandboxNotStartedError
+    from electromind.sandbox import SandboxError, SandboxNotStartedError
 
     backend = SshBackend()
     with pytest.raises(SandboxNotStartedError) as excinfo:
@@ -892,7 +892,7 @@ async def test_container_backend_missing_image_raises_value_error():
 @pytest.mark.asyncio
 async def test_ssh_backend_read_file_before_start_raises_sandbox_error():
     """文件操作也遵守同一边界：未 start 就 read_file 抛 SandboxNotStartedError。"""
-    from pagentv4.sandbox import SandboxError, SandboxNotStartedError
+    from electromind.sandbox import SandboxError, SandboxNotStartedError
 
     backend = SshBackend()
     with pytest.raises(SandboxNotStartedError) as excinfo:
@@ -903,8 +903,8 @@ async def test_ssh_backend_read_file_before_start_raises_sandbox_error():
 @pytest.mark.asyncio
 async def test_open_sandbox_for_spec_docker_missing_image_raises_value_error():
     """工厂层校验：backend=docker 但缺 image，在 open_sandbox_for_spec 阶段抛 ValueError。"""
-    from pagentv4 import ThreadSpec
-    from pagentv4.sandbox import open_sandbox_for_spec
+    from electromind import ThreadSpec
+    from electromind.sandbox import open_sandbox_for_spec
 
     profile = ThreadSpec(backend="docker", image=None)
     with pytest.raises(ValueError, match="image"):
@@ -914,8 +914,8 @@ async def test_open_sandbox_for_spec_docker_missing_image_raises_value_error():
 @pytest.mark.asyncio
 async def test_open_sandbox_for_spec_ssh_missing_host_raises_value_error():
     """工厂层校验：backend=ssh 但缺 ssh_host，抛 ValueError。"""
-    from pagentv4 import ThreadSpec
-    from pagentv4.sandbox import open_sandbox_for_spec
+    from electromind import ThreadSpec
+    from electromind.sandbox import open_sandbox_for_spec
 
     profile = ThreadSpec(backend="ssh", ssh_host=None)
     with pytest.raises(ValueError, match="ssh_host"):

@@ -21,7 +21,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
-from pagentv4.sandbox.backends.ssh import (
+from electromind.sandbox.backends.ssh import (
     SshConfigBlock,
     SshConnection,
     host_matches,
@@ -58,7 +58,7 @@ needs_ssh = pytest.mark.skipif(
 @needs_ssh
 @pytest.mark.asyncio
 async def test_ssh_backend_end_to_end(tmp_path):
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     connection = build_connection()
     async with await Sandbox.create(
@@ -87,7 +87,7 @@ async def test_ssh_backend_end_to_end(tmp_path):
 @needs_ssh
 @pytest.mark.asyncio
 async def test_ssh_backend_alive_check(tmp_path):
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     connection = build_connection()
     box = await Sandbox.create(
@@ -106,9 +106,9 @@ async def test_ssh_backend_alive_check(tmp_path):
 
 @pytest.mark.asyncio
 async def test_ssh_backend_start_passes_connect_timeout(monkeypatch):
-    from pagentv4.sandbox.backends import ssh as ssh_mod
-    from pagentv4.sandbox.backends.ssh import SshBackend
-    from pagentv4.sandbox.base import SandboxSpec
+    from electromind.sandbox.backends import ssh as ssh_mod
+    from electromind.sandbox.backends.ssh import SshBackend
+    from electromind.sandbox.base import SandboxSpec
 
     captured: dict = {}
 
@@ -151,8 +151,8 @@ async def test_ssh_backend_start_passes_connect_timeout(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_ssh_backend_requires_host_and_user():
-    from pagentv4.sandbox.backends.ssh import SshBackend
-    from pagentv4.sandbox.base import SandboxSpec
+    from electromind.sandbox.backends.ssh import SshBackend
+    from electromind.sandbox.base import SandboxSpec
 
     backend = SshBackend()
     with pytest.raises(ValueError):

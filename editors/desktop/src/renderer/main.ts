@@ -173,12 +173,12 @@ function artifactIcon(name: string): DesktopIconName {
 }
 
 function readStoredTheme(): ThemeMode {
-  const value = window.localStorage.getItem("pagent-desktop-theme");
+  const value = window.localStorage.getItem("electromind-desktop-theme");
   return value === "light" ? "light" : "dark";
 }
 
 function readStoredSidebarPinned(): boolean {
-  return window.localStorage.getItem("pagent-desktop-sidebar-pinned") === "1";
+  return window.localStorage.getItem("electromind-desktop-sidebar-pinned") === "1";
 }
 
 function projectLabel(runtime: RuntimeState): string {
@@ -493,7 +493,7 @@ function renderNewSessionForm(
   const sshHosts = options.sshHosts;
   const images = options.availableImages.length > 0
     ? options.availableImages
-    : [options.defaultImage || "pagent:latest"];
+    : [options.defaultImage || "electromind:latest"];
   const image = draft.image && images.includes(draft.image)
     ? draft.image
     : (images.includes(options.defaultImage) ? options.defaultImage : images[0]);
@@ -531,9 +531,9 @@ function renderNewSessionForm(
       }).join("")}
               </div>
             </div>`
-      : `<input class="new-session-input" data-image type="text" value="${escapeHtml(image)}" placeholder="pagent:latest" spellcheck="false" />`
+      : `<input class="new-session-input" data-image type="text" value="${escapeHtml(image)}" placeholder="electromind:latest" spellcheck="false" />`
     }
-        <div class="new-session-hint">本机 pagent 镜像；browser 可用于渲染 HTML / 导出 PDF。</div>
+        <div class="new-session-hint">本机 electromind 镜像；browser 可用于渲染 HTML / 导出 PDF。</div>
       </label>
     `
     : "";
@@ -560,7 +560,7 @@ function renderNewSessionForm(
       </label>
       <label class="new-session-field">
         <span class="new-session-label">远程工作目录</span>
-        <input class="new-session-input" data-ssh-workdir type="text" value="${escapeHtml(draft.sshWorkdir)}" placeholder="~/pagent" />
+        <input class="new-session-input" data-ssh-workdir type="text" value="${escapeHtml(draft.sshWorkdir)}" placeholder="~/electromind" />
       </label>
     `
     : "";
@@ -971,7 +971,7 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           <div class="composer-dock">
             <div class="mention-popup" data-mention-popup hidden></div>
             <div class="composer composer-floating">
-              <textarea id="prompt" placeholder="给 pagent 下达任务，输入 @ 引用文件"></textarea>
+              <textarea id="prompt" placeholder="给 electromind 下达任务，输入 @ 引用文件"></textarea>
               <div class="composer-actions">
                 <div class="composer-actions-start">
                   <button
@@ -1210,9 +1210,9 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           </div>
           <div class="desktop-modal-body docs-qr-body">
             <div class="docs-qr-frame">
-              <canvas data-docs-qr-canvas width="220" height="220" aria-label="pagent 文档站二维码"></canvas>
+              <canvas data-docs-qr-canvas width="220" height="220" aria-label="electromind 文档站二维码"></canvas>
             </div>
-            <p class="docs-qr-hint">微信扫一扫，在手机上阅读 pagent 文档</p>
+            <p class="docs-qr-hint">微信扫一扫，在手机上阅读 electromind 文档</p>
             <button class="new-session-primary docs-qr-open" type="button" data-docs-qr-open>在浏览器中打开</button>
           </div>
         </section>
@@ -1651,7 +1651,7 @@ async function start(): Promise<void> {
 
   function applyTheme(): void {
     document.documentElement.dataset.theme = uiState.theme;
-    window.localStorage.setItem("pagent-desktop-theme", uiState.theme);
+    window.localStorage.setItem("electromind-desktop-theme", uiState.theme);
     const lightOn = uiState.theme === "light";
     titlebarSwitch.dataset.on = String(lightOn);
     titlebarSwitch.setAttribute("aria-pressed", String(lightOn));
@@ -1691,7 +1691,7 @@ async function start(): Promise<void> {
       uiState.sidebarPinned ? "pin" : "pin-off",
     );
     window.localStorage.setItem(
-      "pagent-desktop-sidebar-pinned",
+      "electromind-desktop-sidebar-pinned",
       uiState.sidebarPinned ? "1" : "0",
     );
   }
@@ -1742,8 +1742,8 @@ async function start(): Promise<void> {
     backend: "local" as SandboxBackendOption,
     projectPath: "",
     sshHost: "",
-    sshWorkdir: "~/pagent",
-    image: "pagent:latest",
+    sshWorkdir: "~/electromind",
+    image: "electromind:latest",
   };
   let newSessionOptionsCache: NewSessionOptions | null = null;
 
@@ -1841,14 +1841,14 @@ async function start(): Promise<void> {
           toast("已复制安装命令", { type: "success" });
         },
         onInstallPagent: async () => {
-          const result = await window.desktop.installPagentCli();
+          const result = await window.desktop.installElectromindCli();
           if (!result.ok) {
             toast(result.error ?? "安装失败", { type: "error" });
             return;
           }
           currentEnv = await window.desktop.refreshEnvironmentCheck();
           replacePanel();
-          toast("pagent 已安装", { type: "success" });
+          toast("electromind 已安装", { type: "success" });
         },
       });
     }
@@ -2094,7 +2094,7 @@ async function start(): Promise<void> {
     }
     const imageEl = newSessionBody.querySelector<HTMLInputElement>("[data-image]");
     if (imageEl) {
-      newSessionDraft.image = imageEl.value.trim() || "pagent:latest";
+      newSessionDraft.image = imageEl.value.trim() || "electromind:latest";
     }
     const sshHostEl = newSessionBody.querySelector<HTMLInputElement>("[data-ssh-host]");
     if (sshHostEl) {
@@ -2102,7 +2102,7 @@ async function start(): Promise<void> {
     }
     const sshWorkdirInput = newSessionBody.querySelector<HTMLInputElement>("[data-ssh-workdir]");
     if (sshWorkdirInput) {
-      newSessionDraft.sshWorkdir = sshWorkdirInput.value.trim() || "~/pagent";
+      newSessionDraft.sshWorkdir = sshWorkdirInput.value.trim() || "~/electromind";
     }
   }
 
@@ -2252,7 +2252,7 @@ async function start(): Promise<void> {
         !newSessionDraft.image ||
         (options.availableImages.length > 0 && !options.availableImages.includes(newSessionDraft.image))
       ) {
-        newSessionDraft.image = options.defaultImage || options.availableImages[0] || "pagent:latest";
+        newSessionDraft.image = options.defaultImage || options.availableImages[0] || "electromind:latest";
       }
       if (
         newSessionDraft.backend === "ssh" &&
@@ -2290,11 +2290,11 @@ async function start(): Promise<void> {
       newSessionDraft.backend === "docker" ||
       newSessionDraft.backend === "podman"
     ) {
-      options.image = newSessionDraft.image.trim() || "pagent:latest";
+      options.image = newSessionDraft.image.trim() || "electromind:latest";
     }
     if (newSessionDraft.backend === "ssh") {
       options.sshHost = newSessionDraft.sshHost;
-      options.sshWorkdir = newSessionDraft.sshWorkdir || "~/pagent";
+      options.sshWorkdir = newSessionDraft.sshWorkdir || "~/electromind";
     }
     closeNewSessionModal();
     chatRenderer.showHistorySkeleton();
@@ -2351,7 +2351,7 @@ async function start(): Promise<void> {
       skillsList.innerHTML = `
         <div class="session-empty">
           <div class="session-empty-title">暂无 Skills</div>
-          <div class="session-empty-copy">在 ~/.pagent/skills/ 目录下放置技能即可。</div>
+          <div class="session-empty-copy">在 ~/.electromind/skills/ 目录下放置技能即可。</div>
         </div>
       `;
       return;
@@ -3153,7 +3153,7 @@ async function start(): Promise<void> {
         newSessionDraft.image =
           newSessionOptionsCache.defaultImage ||
           newSessionOptionsCache.availableImages[0] ||
-          "pagent:latest";
+          "electromind:latest";
       }
       paintNewSessionForm();
       return;

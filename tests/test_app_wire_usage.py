@@ -1,8 +1,8 @@
 import json
 
 from app import wire
-from pagentv4.ithread import METAINFO_FILENAME
-from pagentv4.runtime.thread import Thread
+from electromind.ithread import METAINFO_FILENAME
+from electromind.runtime.thread import Thread
 
 
 def test_build_usage_snapshot_flattens_turn_result_usage():
@@ -69,7 +69,7 @@ def test_emit_thread_history_replay_includes_usage(monkeypatch):
             }
 
         def load_messages(self):
-            from pagentv4.core.message import Messages
+            from electromind.core.message import Messages
 
             return Messages()
 

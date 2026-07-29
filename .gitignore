@@ -54,3 +54,7 @@ debug
 artifacts/
 benchmarks/
 .trae
+
+# web dev state
+editors/web/tsconfig.tsbuildinfo
+.superpowers/

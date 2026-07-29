@@ -1,6 +1,6 @@
 import pytest
 
-from pagentv4 import Kimi, LongCat, MiMo, Ollama, Provider, Sglang, Vllm
+from electromind import Kimi, LongCat, MiMo, Ollama, Provider, Sglang, Vllm
 
 
 def test_provider_uses_dummy_api_key_when_missing(monkeypatch):

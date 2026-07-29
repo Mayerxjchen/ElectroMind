@@ -1,5 +1,5 @@
-from pagentv4 import Message, Messages, Thread
-from pagentv4.trace import (
+from electromind import Message, Messages, Thread
+from electromind.trace import (
     load_messages,
     render_html,
     render_text,

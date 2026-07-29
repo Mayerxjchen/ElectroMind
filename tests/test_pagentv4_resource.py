@@ -2,7 +2,7 @@
 
 import pytest
 
-from pagentv4.runtime.resource import (
+from electromind.runtime.resource import (
     ConversationResource,
     Resource,
     ResourceSlot,

@@ -19,7 +19,7 @@ from app.repl import (
     say_goodbye,
     split_prefixed_command,
 )
-from pagentv4 import TextDelta, ToolCallBegin, ToolResult, TurnEnd
+from electromind import TextDelta, ToolCallBegin, ToolResult, TurnEnd
 
 
 class FakeRunner:

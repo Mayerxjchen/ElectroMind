@@ -12,7 +12,7 @@ from pagent import (
     message_tokens,
     tools_tokens,
 )
-from pagent.tokens import TokenBreakdown, format_context, infer_backend
+from electromind_legacy.tokens import TokenBreakdown, format_context, infer_backend
 
 
 def test_message_tokens_user_content():

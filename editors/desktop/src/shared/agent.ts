@@ -37,7 +37,16 @@ export type CliInvocation = {
   args: string[];
 };
 
-/** stdio transport：spawn `pagent --wire` 子进程，走 stdin/stdout NDJSON。 */
+export type BackendAvailability = {
+  /** 后端是否可用（源码检出模式下的 uv run 或全局 CLI）。 */
+  available: boolean;
+  /** 'project' = uv run 源码检出，'global' = 全局 electromind CLI，'none' = 不可用。 */
+  mode: "project" | "global" | "none";
+  /** 人类可读的解析结果标签。 */
+  label: string;
+};
+
+/** stdio transport：spawn `electromind --wire` 子进程，走 stdin/stdout NDJSON。 */
 export class AgentBridge implements AgentTransport {
   private child: ChildProcessWithoutNullStreams | undefined;
   private stdoutBuffer = "";
@@ -118,7 +127,7 @@ export type HttpBridgeOptions = {
 } & BridgeCallbacks;
 
 /**
- * http transport：连远程 `pagent --http` 后端。命令走 POST /command，
+ * http transport：连远程 `electromind --http` 后端。命令走 POST /command，
  * 事件走 GET /events 的 SSE 流，与 wire 的 stdin/stdout 一一对应。
  *
  * 用 node 核心 http/https 而非全局 fetch：Electron 主进程的 fetch 对无限
@@ -310,7 +319,7 @@ export function enrichedPath(base = process.env.PATH ?? ""): string {
 }
 
 export function resolveCliCommand(command: string): string {
-  const trimmed = command.trim() || "pagent";
+  const trimmed = command.trim() || "electromind";
   if (trimmed.includes("/") || trimmed.includes("\\")) {
     return trimmed.replace(/^~/, homedir());
   }
@@ -336,7 +345,7 @@ export function resolveCliCommand(command: string): string {
   return trimmed;
 }
 
-export function resolvePagentWireInvocation(
+export function resolveElectromindWireInvocation(
   projectRoot: string,
   options?: { yolo?: boolean },
 ): CliInvocation {
@@ -350,13 +359,44 @@ export function resolvePagentWireInvocation(
   if (pyproject && existsSync(pyproject) && uv) {
     return {
       command: uv,
-      args: ["run", "--project", projectRoot, "pagent", ...wireArgs],
+      args: ["run", "--project", projectRoot, "electromind", ...wireArgs],
     };
   }
   return {
-    command: resolveCliCommand("pagent"),
+    command: resolveCliCommand("electromind"),
     args: wireArgs,
   };
+}
+
+/**
+ * 解析后端可用性——同时覆盖源码检出（uv run）和全局 CLI 两种模式。
+ * 环境自检与启动使用同一来源，避免启动能用但自检挡墙的割裂。
+ */
+export function resolveBackendAvailability(projectRoot: string): BackendAvailability {
+  const pyproject = projectRoot ? join(projectRoot, "pyproject.toml") : "";
+  const uv = resolveCliCommand("uv");
+  if (pyproject && existsSync(pyproject) && uv) {
+    return {
+      available: true,
+      mode: "project",
+      label: `uv run --project ${projectRoot} electromind`,
+    };
+  }
+  // 检查全局 electromind CLI（复用与 cliOnPath 一致的逻辑）。
+  try {
+    execFileSync("/bin/sh", ["-c", "command -v electromind"], {
+      encoding: "utf8",
+      env: { ...process.env, PATH: enrichedPath() },
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    return { available: true, mode: "global", label: resolveCliCommand("electromind") };
+  } catch {
+    const resolved = resolveCliCommand("electromind");
+    if (resolved.includes("/") && existsSync(resolved)) {
+      return { available: true, mode: "global", label: resolved };
+    }
+    return { available: false, mode: "none", label: "electromind (not found)" };
+  }
 }
 
 function shellQuote(value: string): string {

@@ -1,15 +1,16 @@
 {
-    "name": "pagent-desktop",
-    "productName": "pagent Desktop",
+    "name": "electromind-desktop",
+    "productName": "electromind Desktop",
     "version": "0.7.20",
-    "description": "pagent 的 Electron 桌面端骨架。",
+    "description": "electromind 的 Electron 桌面端骨架。",
     "private": true,
     "main": "dist/main.js",
     "scripts": {
         "compile": "node esbuild.js",
         "check": "tsc --noEmit",
         "start": "npm run compile && electron --no-sandbox --disable-gpu .",
-        "package": "node scripts/package.js"
+        "package": "node scripts/package.js",
+        "generate-icons": "cd assets && python3 -m venv .venv && .venv/bin/pip install -q Pillow && .venv/bin/python3 generate_icons.py"
     },
     "devDependencies": {
         "@electron/packager": "^18.3.6",

@@ -6,7 +6,7 @@
 //   node scripts/package.js            # 打当前运行平台
 //   node scripts/package.js --platform win32 --arch x64
 //
-// 产物统一落在 release/ 下，命名 pagent-Desktop-<version>-<platform>-<arch>.<ext>。
+// 产物统一落在 release/ 下，命名 electromind-Desktop-<version>-<platform>-<arch>.<ext>。
 
 const { execFileSync } = require("node:child_process");
 const fs = require("node:fs");
@@ -24,7 +24,7 @@ function arg(name, fallback) {
 const platform = arg("platform", process.platform); // darwin | win32 | linux
 const arch = arg("arch", process.arch); // arm64 | x64
 const version = require(path.join(root, "package.json")).version;
-const productName = "pagent Desktop";
+const productName = "electromind Desktop";
 const releaseDir = path.join(root, "release");
 
 // 每个平台的图标与最终分发格式。
@@ -42,7 +42,7 @@ function rmrf(target) {
   fs.rmSync(target, { recursive: true, force: true });
 }
 
-// electron-packager 产出的目录名，如 "pagent Desktop-darwin-arm64"。
+// electron-packager 产出的目录名，如 "electromind Desktop-darwin-arm64"。
 function packagedDir() {
   return path.join(releaseDir, `${productName}-${platform}-${arch}`);
 }
@@ -84,8 +84,8 @@ function archive(stageDir, outFile, kind) {
 
 function stageMac() {
   const app = path.join(packagedDir(), `${productName}.app`);
-  const stage = path.join(releaseDir, `pagent-Desktop-${version}-${arch}`);
-  const zip = path.join(releaseDir, `pagent-Desktop-${version}-mac-${arch}.zip`);
+  const stage = path.join(releaseDir, `electromind-Desktop-${version}-${arch}`);
+  const zip = path.join(releaseDir, `electromind-Desktop-${version}-mac-${arch}.zip`);
   rmrf(stage);
   fs.mkdirSync(stage, { recursive: true });
   run("cp", ["-R", app, stage]);
@@ -101,7 +101,7 @@ function stageMac() {
 
 function stageWindows() {
   const stage = packagedDir(); // 直接压 electron-packager 的输出目录
-  const zip = path.join(releaseDir, `pagent-Desktop-${version}-win-${arch}.zip`);
+  const zip = path.join(releaseDir, `electromind-Desktop-${version}-win-${arch}.zip`);
   fs.copyFileSync(
     path.join(root, "scripts", "win-open-hint.txt"),
     path.join(stage, "打开说明.txt"),
@@ -112,7 +112,7 @@ function stageWindows() {
 
 function stageLinux() {
   const stage = packagedDir();
-  const tar = path.join(releaseDir, `pagent-Desktop-${version}-linux-${arch}.tar.gz`);
+  const tar = path.join(releaseDir, `electromind-Desktop-${version}-linux-${arch}.tar.gz`);
   archive(stage, tar, "tar.gz");
   return tar;
 }

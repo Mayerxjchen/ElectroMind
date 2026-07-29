@@ -6,22 +6,22 @@ import tomllib
 
 import pytest
 
-from pagentv4 import Thread, ThreadSpec
-from pagentv4.conversation import SqliteConversationStore
-from pagentv4.core.message import Message
-from pagentv4.ithread import validate_thread_id
-from pagentv4.runtime.thread import default_threads_root
+from electromind import Thread, ThreadSpec
+from electromind.conversation import SqliteConversationStore
+from electromind.core.message import Message
+from electromind.ithread import validate_thread_id
+from electromind.runtime.thread import default_threads_root
 
 
 def test_default_threads_root_is_user_home(monkeypatch, tmp_path):
-    monkeypatch.delenv("PAGENT_HOME", raising=False)
+    monkeypatch.delenv("ELECTROMIND_HOME", raising=False)
     home = tmp_path / "home"
     cwd = tmp_path / "cwd"
     home.mkdir()
     cwd.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.chdir(cwd)
-    assert default_threads_root() == home / ".pagent" / "threads"
+    assert default_threads_root() == home / ".electromind" / "threads"
 
 
 @pytest.mark.parametrize("bad", ["", "-leading", "a/b", "a b", "x" * 129])

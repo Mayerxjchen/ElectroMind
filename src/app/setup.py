@@ -1,9 +1,9 @@
-"""首次使用：检测缺失 API Key，引导写入当前 pagent home 的 ``pagent.toml``。
+"""首次使用：检测缺失 API Key，引导写入当前 electromind home 的 ``electromind.toml``。
 
 Home 二选一（与 thread / skills 同根）：
 
-- A ``./.pagent``（项目目录下已有 ``.pagent/`` 或遗留 ``./pagent.toml``）
-- B ``~/.pagent``
+- A ``./.electromind``（项目目录下已有 ``.electromind/`` 或遗留 ``./electromind.toml``）
+- B ``~/.electromind``
 
 Setup 收集 provider 三项：
 
@@ -21,7 +21,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
-from pagentv4.paths import home_config_path
+from electromind.paths import home_config_path
 
 from .config import ReplConfig, load_config
 
@@ -72,7 +72,7 @@ def upsert_provider_api_key(text: str, api_key: str) -> str:
 
 
 def write_user_provider(setup: ProviderSetup, *, cwd: str | Path | None = None) -> Path:
-    """写入当前 pagent home 的 ``pagent.toml`` provider 段；目录不存在则创建。"""
+    """写入当前 electromind home 的 ``electromind.toml`` provider 段；目录不存在则创建。"""
     key = setup.api_key.strip()
     if not key:
         raise ValueError("api_key 不能为空")
@@ -85,8 +85,8 @@ def write_user_provider(setup: ProviderSetup, *, cwd: str | Path | None = None) 
         text = path.read_text(encoding="utf-8")
     else:
         text = (
-            "# pagent home 配置（与 threads/skills 同目录）\n"
-            "# home = ./.pagent（项目）或 ~/.pagent（用户）\n"
+            "# electromind home 配置（与 threads/skills 同目录）\n"
+            "# home = ./.electromind（项目）或 ~/.electromind（用户）\n"
             "\n"
             "[provider]\n"
         )

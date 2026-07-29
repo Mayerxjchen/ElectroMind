@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from pagentv4.sandbox import BackendGuard, SandboxDeadError, SandboxSpec
+from electromind.sandbox import BackendGuard, SandboxDeadError, SandboxSpec
 
 
 def make_spec(tmp_path) -> SandboxSpec:
@@ -127,7 +127,7 @@ async def test_guard_rejects_negative_attempts():
 @pytest.mark.asyncio
 async def test_guard_can_be_disabled_via_sandbox_create(tmp_path):
     """auto_restart=False 时 Sandbox 应该直接用原始 backend，不套 Guard。"""
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     async with await Sandbox.create(
         backend="local",
@@ -140,7 +140,7 @@ async def test_guard_can_be_disabled_via_sandbox_create(tmp_path):
 
 @pytest.mark.asyncio
 async def test_guard_default_wraps_backend(tmp_path):
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     async with await Sandbox.create(backend="local", workdir=str(tmp_path)) as box:
         assert isinstance(box.backend, BackendGuard)

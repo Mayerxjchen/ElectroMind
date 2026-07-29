@@ -2,8 +2,8 @@
 
 import pytest
 
-from pagentv4.ithread import IThread, ThreadSpec, validate_thread_id
-from pagentv4.runtime.thread import Thread
+from electromind.ithread import IThread, ThreadSpec, validate_thread_id
+from electromind.runtime.thread import Thread
 
 
 def test_thread_satisfies_ithread_protocol():
@@ -66,7 +66,7 @@ def test_thread_spec_to_dict_roundtrip():
 def test_thread_spec_sandbox_tools_toml_roundtrip():
     import tomllib
 
-    from pagentv4.ithread.local import dump_thread_toml
+    from electromind.ithread.local import dump_thread_toml
 
     original = ThreadSpec(
         backend="local",
@@ -78,7 +78,7 @@ def test_thread_spec_sandbox_tools_toml_roundtrip():
 
 
 def test_thread_spec_empty_sandbox_tools_omitted_from_toml():
-    from pagentv4.ithread.local import dump_thread_toml
+    from electromind.ithread.local import dump_thread_toml
 
     text = dump_thread_toml(ThreadSpec(backend="local").to_dict())
     assert "tools" not in text
@@ -87,8 +87,8 @@ def test_thread_spec_empty_sandbox_tools_omitted_from_toml():
 def test_thread_spec_sub_config_toml_roundtrip():
     import tomllib
 
-    from pagentv4.ithread import SubAgentSpec
-    from pagentv4.ithread.local import dump_thread_toml
+    from electromind.ithread import SubAgentSpec
+    from electromind.ithread.local import dump_thread_toml
 
     original = ThreadSpec(
         backend="local",
@@ -115,14 +115,14 @@ def test_thread_spec_sub_config_toml_roundtrip():
 
 
 def test_thread_spec_no_subs_omits_sub_section():
-    from pagentv4.ithread.local import dump_thread_toml
+    from electromind.ithread.local import dump_thread_toml
 
     text = dump_thread_toml(ThreadSpec(backend="local").to_dict())
     assert "[sub." not in text
 
 
 def test_thread_spec_subs_normalized_from_plain_dict():
-    from pagentv4.ithread import SubAgentSpec
+    from electromind.ithread import SubAgentSpec
 
     spec = ThreadSpec(subs={"helper": {"system": "hi", "max_turns": 3}})
     assert isinstance(spec.subs["helper"], SubAgentSpec)

@@ -49,7 +49,7 @@ export function removeProviderField(text: string, field: string): string {
 
 export function buildProviderToml(setup: ProviderSetup): string {
   let text =
-    "# pagent home 配置\n\n[provider]\n";
+    "# electromind home 配置\n\n[provider]\n";
   text = upsertProviderField(text, "api_key", setup.apiKey.trim());
   text = upsertProviderField(text, "model", setup.model.trim() || DEFAULT_MODEL);
   const baseUrl = setup.baseUrl?.trim() ?? "";

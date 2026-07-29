@@ -6,7 +6,7 @@ from app.render import (
     format_logo,
     row,
 )
-from pagentv4 import RunState
+from electromind import RunState
 
 
 def test_logo_fits_in_box_width():

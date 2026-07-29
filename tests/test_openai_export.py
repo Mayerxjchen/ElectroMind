@@ -1,7 +1,7 @@
 import json
 
-from pagentv4 import Message, Messages, Thread
-from pagentv4.trace import load_messages, messages_to_openai_json, resolve_messages_path
+from electromind import Message, Messages, Thread
+from electromind.trace import load_messages, messages_to_openai_json, resolve_messages_path
 
 
 def test_messages_to_openai_json_from_file(tmp_path):

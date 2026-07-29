@@ -4,8 +4,8 @@ import types
 
 import pytest
 
-from pagentv4 import Agent, CodeAgent, CodeRunner, RunEnd, TextDelta, Thread, tool
-from pagentv4.core.tool import FunctionTool
+from electromind import Agent, CodeAgent, CodeRunner, RunEnd, TextDelta, Thread, tool
+from electromind.core.tool import FunctionTool
 
 
 class FakeStreamChunk:
@@ -300,7 +300,7 @@ async def test_code_runner_from_toml_uses_thread_workspace(
 
 @pytest.mark.asyncio
 async def test_code_runner_event_stream_with_tools(tmp_path, fake_sandbox):
-    from pagentv4 import ToolCallBegin, ToolResult
+    from electromind import ToolCallBegin, ToolResult
 
     del fake_sandbox
     tc = types.SimpleNamespace(

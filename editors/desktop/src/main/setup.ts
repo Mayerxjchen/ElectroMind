@@ -3,7 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, 
 import { homedir } from "node:os";
 import path from "node:path";
 
-import { enrichedPath, resolveCliCommand } from "../shared/agent";
+import { enrichedPath, resolveBackendAvailability, resolveCliCommand } from "../shared/agent";
 import {
   DEFAULT_MODEL,
   mergeProviderToml,
@@ -12,18 +12,18 @@ import {
 } from "../shared/provider-config";
 import type { EnvironmentCheck, OnboardingState, SandboxBackendOption } from "../shared/protocol";
 
-const DEFAULT_SANDBOX_IMAGE = "pagent:latest";
+const DEFAULT_SANDBOX_IMAGE = "electromind:latest";
 
 function desktopSettingsPath(): string {
-  return path.join(homedir(), ".pagent", "desktop.json");
+  return path.join(homedir(), ".electromind", "desktop.json");
 }
 
-function pagentConfigPath(): string {
-  return path.join(homedir(), ".pagent", "pagent.toml");
+function electromindConfigPath(): string {
+  return path.join(homedir(), ".electromind", "electromind.toml");
 }
 
-function pagentDataHomePath(): string {
-  return path.join(homedir(), ".pagent");
+function electromindDataHomePath(): string {
+  return path.join(homedir(), ".electromind");
 }
 
 function tildePath(full: string): string {
@@ -142,7 +142,7 @@ function shellQuote(value: string): string {
 }
 
 function readSandboxImageName(): string {
-  const configPath = pagentConfigPath();
+  const configPath = electromindConfigPath();
   if (!existsSync(configPath)) {
     return DEFAULT_SANDBOX_IMAGE;
   }
@@ -180,7 +180,7 @@ export function hasConfiguredApiKey(): boolean {
   if (fromEnv) {
     return true;
   }
-  const configPath = pagentConfigPath();
+  const configPath = electromindConfigPath();
   if (!existsSync(configPath)) {
     return false;
   }
@@ -217,7 +217,7 @@ function listLocalImageTags(runtime: "docker" | "podman"): string[] {
     const tags: string[] = [];
     for (const line of out.split("\n")) {
       const tag = line.trim();
-      if (!tag || tag.includes("<none>") || !tag.startsWith("pagent")) {
+      if (!tag || tag.includes("<none>") || !tag.startsWith("electromind")) {
         continue;
       }
       tags.push(tag);
@@ -228,7 +228,7 @@ function listLocalImageTags(runtime: "docker" | "podman"): string[] {
   }
 }
 
-/** 新建会话用的默认镜像 + 本机 pagent* 镜像列表。 */
+/** 新建会话用的默认镜像 + 本机 electromind* 镜像列表。 */
 export function listSandboxImages(): { defaultImage: string; images: string[] } {
   const defaultImage = readSandboxImageName();
   const runtime = detectContainerRuntime();
@@ -240,10 +240,14 @@ export function listSandboxImages(): { defaultImage: string; images: string[] } 
 export function getEnvironmentCheck(options?: {
   /** 是否统计磁盘占用（偏慢）；设置页自检为 true，启动挡墙为 false */
   includeDisk?: boolean;
+  /** 源码检出项目根目录，用于判断是否走 uv run 而非全局 CLI。 */
+  projectRoot?: string;
 }): EnvironmentCheck {
   const includeDisk = options?.includeDisk === true;
+  const projectRoot = options?.projectRoot;
   const uvInstalled = cliOnPath("uv");
-  const pagentInstalled = cliOnPath("pagent");
+  const backend = resolveBackendAvailability(projectRoot ?? "");
+  const electromindInstalled = backend.available;
   const dockerInstalled = cliOnPath("docker");
   const podmanInstalled = cliOnPath("podman");
   const containerRuntime = detectContainerRuntime();
@@ -251,20 +255,20 @@ export function getEnvironmentCheck(options?: {
   const sandboxImageExists = containerRuntime
     ? imageExists(containerRuntime, image)
     : false;
-  const dataHomePath = pagentDataHomePath();
+  const dataHomePath = electromindDataHomePath();
 
   return {
     uvInstalled,
     uvPath: uvInstalled ? resolveCliCommand("uv") : undefined,
-    pagentInstalled,
-    pagentPath: pagentInstalled ? resolveCliCommand("pagent") : undefined,
+    electromindInstalled,
+    electromindPath: electromindInstalled ? backend.label : undefined,
     apiKeyConfigured: hasConfiguredApiKey(),
     dockerInstalled,
     podmanInstalled,
     containerRuntime,
     sandboxImage: image,
     sandboxImageExists,
-    configPath: pagentConfigPath(),
+    configPath: electromindConfigPath(),
     dataHomePath,
     dataHomeLabel: tildePath(dataHomePath),
     dataHomeBytes: includeDisk ? directorySizeBytes(dataHomePath) : undefined,
@@ -277,13 +281,13 @@ export function getEnvironmentCheck(options?: {
 
 /** 能正常对话的最低条件：CLI + API Key。 */
 export function isEnvironmentReady(env: EnvironmentCheck): boolean {
-  return env.pagentInstalled && env.apiKeyConfigured;
+  return env.electromindInstalled && env.apiKeyConfigured;
 }
 
-export function getOnboardingState(): OnboardingState {
+export function getOnboardingState(projectRoot?: string): OnboardingState {
   const data = readDesktopJson();
   // 启动挡墙走快速检测，不跑 du / 镜像体积
-  const env = getEnvironmentCheck({ includeDisk: false });
+  const env = getEnvironmentCheck({ includeDisk: false, projectRoot });
   const completed = data.onboardingCompleted === true;
   const skipped = data.onboardingSkipped === true;
   const blocked = !isEnvironmentReady(env);
@@ -309,7 +313,7 @@ export function saveProviderSetup(setup: ProviderSetup): string {
   if (!apiKey) {
     throw new Error("API Key 不能为空");
   }
-  const configPath = pagentConfigPath();
+  const configPath = electromindConfigPath();
   mkdirSync(path.dirname(configPath), { recursive: true });
   let text = "";
   try {
@@ -331,13 +335,13 @@ export function saveProviderSetup(setup: ProviderSetup): string {
   return configPath;
 }
 
-export function installPagentCli(): { ok: boolean; error?: string; pagentPath?: string } {
+export function installElectromindCli(): { ok: boolean; error?: string; electromindPath?: string } {
   if (!cliOnPath("uv")) {
     return { ok: false, error: "未找到 uv，请先安装：https://docs.astral.sh/uv/" };
   }
   const uvBin = resolveCliCommand("uv");
   try {
-    execFileSync(uvBin, ["tool", "install", "--force", "pagent"], {
+    execFileSync(uvBin, ["tool", "install", "--force", "electromind"], {
       encoding: "utf8",
       env: { ...process.env, PATH: enrichedPath() },
       stdio: ["ignore", "pipe", "pipe"],
@@ -347,20 +351,21 @@ export function installPagentCli(): { ok: boolean; error?: string; pagentPath?: 
     const detail = error instanceof Error ? error.message : String(error);
     return { ok: false, error: detail };
   }
-  if (!cliOnPath("pagent")) {
+  if (!cliOnPath("electromind")) {
     return {
       ok: false,
-      error: "安装完成但仍找不到 pagent，请确认 ~/.local/bin 在 PATH 中。",
+      error: "安装完成但仍找不到 electromind，请确认 ~/.local/bin 在 PATH 中。",
     };
   }
-  return { ok: true, pagentPath: resolveCliCommand("pagent") };
+  return { ok: true, electromindPath: resolveCliCommand("electromind") };
 }
 
 export function completeOnboarding(options?: {
   preferredBackend?: SandboxBackendOption;
   skipped?: boolean;
+  projectRoot?: string;
 }): void {
-  const env = getEnvironmentCheck();
+  const env = getEnvironmentCheck({ projectRoot: options?.projectRoot });
   // 未就绪时禁止「稍后配置」：跳过无效，挡墙仍会再次打开
   if (options?.skipped) {
     if (!isEnvironmentReady(env)) {
@@ -370,7 +375,7 @@ export function completeOnboarding(options?: {
     return;
   }
   if (!isEnvironmentReady(env)) {
-    throw new Error("请先安装 pagent 并配置 API Key");
+    throw new Error("请先安装 electromind 并配置 API Key");
   }
   const patch: Record<string, unknown> = { onboardingCompleted: true, onboardingSkipped: false };
   if (options?.preferredBackend) {

@@ -1,6 +1,6 @@
 import pytest
 
-from pagentv4 import DeepSeek, Runner
+from electromind import DeepSeek, Runner
 
 
 @pytest.mark.asyncio
@@ -17,7 +17,7 @@ async def test_runner_open_local(tmp_path, monkeypatch):
     assert runner.thread.created is True
     assert runner.agent.max_turns == 24
     assert runner.sandbox.workdir == str(
-        tmp_path / ".pagent" / "threads" / "demo" / "workspaces" / "main"
+        tmp_path / ".electromind" / "threads" / "demo" / "workspaces" / "main"
     )
     assert runner.messages.data == []
     await runner.close()

@@ -104,6 +104,18 @@ async def test_dispatch_delivers_event_to_subscriber():
     assert event["method"] == "ConfigSnapshot"
 
 
+def test_health_is_public_and_side_effect_free(monkeypatch):
+    """GET /health 不需要鉴权，始终返回 ok，无副作用。"""
+    monkeypatch.setenv(http_server.AUTH_ENV, "secret")
+    app = http_server.build_app(ReplConfig())
+    client = TestClient(app)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json() == {"ok": True, "service": "electromind"}
+
+
 @pytest.mark.asyncio
 async def test_session_close_without_runner_is_safe():
     sink = FanoutSink()

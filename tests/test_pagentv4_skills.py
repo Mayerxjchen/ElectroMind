@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from pagentv4 import (
+from electromind import (
     Skill,
     SkillDiscoveryError,
     SkillRegistry,
@@ -13,7 +13,7 @@ from pagentv4 import (
     load_skills_from_root,
     make_use_skill_tool,
 )
-from pagentv4.skills.skill import (
+from electromind.skills.skill import (
     collect_resources,
     parse_skill_md,
 )
@@ -256,8 +256,8 @@ def test_use_skill_tool_description_when_empty():
     assert "暂无可用 skill" in tool.description
 
 
-def test_default_skill_roots_follow_pagent_home(monkeypatch, tmp_path):
-    from pagentv4.paths import activate_home
+def test_default_skill_roots_follow_electromind_home(monkeypatch, tmp_path):
+    from electromind.paths import activate_home
 
     home = tmp_path / "home"
     home.mkdir()
@@ -266,11 +266,11 @@ def test_default_skill_roots_follow_pagent_home(monkeypatch, tmp_path):
 
     activate_home("prod")
     roots = default_skill_roots()
-    assert roots == [home / ".pagent" / "skills"]
+    assert roots == [home / ".electromind" / "skills"]
 
     activate_home("dev", tmp_path)
     roots = default_skill_roots()
-    assert roots == [tmp_path / ".pagent" / "skills"]
+    assert roots == [tmp_path / ".electromind" / "skills"]
 
 
 def test_registry_from_defaults_accepts_extra_roots(monkeypatch, tmp_path):

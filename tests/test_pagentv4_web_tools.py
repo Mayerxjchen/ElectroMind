@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from pagentv4.tools import fetch_url, web_search
+from electromind.tools import fetch_url, web_search
 
 
 def test_web_search_formats_results():
@@ -11,7 +11,7 @@ def test_web_search_formats_results():
             "body": "Sodium is a chemical element.",
         }
     ]
-    with patch("pagentv4.tools.web.ddgs_client") as client_fn:
+    with patch("electromind.tools.web.ddgs_client") as client_fn:
         client_fn.return_value.text.return_value = fake
         out = web_search.call({"query": "sodium symbol", "max_results": 3})
 
@@ -28,7 +28,7 @@ def test_web_search_empty_query():
 
 
 def test_web_search_no_results():
-    with patch("pagentv4.tools.web.ddgs_client") as client_fn:
+    with patch("electromind.tools.web.ddgs_client") as client_fn:
         client_fn.return_value.text.return_value = []
         out = web_search.call({"query": "xyznonexistentquery123"})
     assert out.ok is True
@@ -36,7 +36,7 @@ def test_web_search_no_results():
 
 
 def test_web_search_api_error():
-    with patch("pagentv4.tools.web.ddgs_client") as client_fn:
+    with patch("electromind.tools.web.ddgs_client") as client_fn:
         client_fn.return_value.text.side_effect = RuntimeError("network down")
         out = web_search.call({"query": "test"})
     assert out.ok is False
@@ -44,15 +44,15 @@ def test_web_search_api_error():
 
 
 def test_web_search_missing_ddgs():
-    with patch("pagentv4.tools.web.ddgs_client", return_value=None):
+    with patch("electromind.tools.web.ddgs_client", return_value=None):
         out = web_search.call({"query": "test"})
     assert out.ok is False
-    assert "pagent[search]" in out.content
+    assert "electromind[search]" in out.content
 
 
 def test_fetch_url_formats_content():
     fake = {"url": "https://example.com", "content": "# Hello\n\nWorld"}
-    with patch("pagentv4.tools.web.ddgs_client") as client_fn:
+    with patch("electromind.tools.web.ddgs_client") as client_fn:
         client_fn.return_value.extract.return_value = fake
         out = fetch_url.call({"url": "https://example.com"})
 
@@ -72,7 +72,7 @@ def test_fetch_url_rejects_non_http():
 
 def test_fetch_url_truncates():
     fake = {"url": "https://example.com", "content": "x" * 5000}
-    with patch("pagentv4.tools.web.ddgs_client") as client_fn:
+    with patch("electromind.tools.web.ddgs_client") as client_fn:
         client_fn.return_value.extract.return_value = fake
         out = fetch_url.call({"url": "https://example.com", "max_chars": 1000})
 
@@ -81,7 +81,7 @@ def test_fetch_url_truncates():
 
 
 def test_fetch_url_missing_ddgs():
-    with patch("pagentv4.tools.web.ddgs_client", return_value=None):
+    with patch("electromind.tools.web.ddgs_client", return_value=None):
         out = fetch_url.call({"url": "https://example.com"})
     assert out.ok is False
-    assert "pagent[search]" in out.content
+    assert "electromind[search]" in out.content

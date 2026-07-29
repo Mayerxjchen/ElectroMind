@@ -2,8 +2,8 @@ import asyncio
 
 import pytest
 
-from pagentv4.core.events import RunBegin, TextDelta, ToolCallBegin, ToolResult, TurnEnd
-from pagentv4.runtime.inbound import (
+from electromind.core.events import RunBegin, TextDelta, ToolCallBegin, ToolResult, TurnEnd
+from electromind.runtime.inbound import (
     CancelRun,
     CheckpointPolicy,
     DenyTool,

@@ -2,8 +2,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from pagentv4 import Agent, AgentCore, Runner, ThreadAgent
-from pagentv4.core.turn_result import TurnResult
+from electromind import Agent, AgentCore, Runner, ThreadAgent
+from electromind.core.turn_result import TurnResult
 
 
 class FakeStreamChunk:

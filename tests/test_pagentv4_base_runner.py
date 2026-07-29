@@ -4,8 +4,8 @@ import types
 
 import pytest
 
-from pagentv4 import Agent, BaseRunner, RunEnd, TextDelta, Thread, tool
-from pagentv4.ithread import ThreadSpec
+from electromind import Agent, BaseRunner, RunEnd, TextDelta, Thread, tool
+from electromind.ithread import ThreadSpec
 
 
 class FakeStreamChunk:
@@ -217,7 +217,7 @@ async def test_flush_each_continuing(tmp_path):
 
 @pytest.mark.asyncio
 async def test_event_stream_with_tools(tmp_path):
-    from pagentv4 import ToolCallBegin, ToolResult
+    from electromind import ToolCallBegin, ToolResult
 
     tc = types.SimpleNamespace(
         index=0,

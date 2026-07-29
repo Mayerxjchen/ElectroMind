@@ -19,15 +19,15 @@ from pagent import (
     event_to_rpc,
     rpc_to_event,
 )
-from pagent.wire import usage_to_dict
-from pagentv4.adapters import decode_event_line as decode_v4_event_line
-from pagentv4.adapters import encode_event_line as encode_v4_event_line
-from pagentv4.core.events import RunBegin as V4RunBegin
-from pagentv4.core.events import RunEnd as V4RunEnd
-from pagentv4.core.events import TurnBegin as V4TurnBegin
-from pagentv4.core.events import TurnEnd as V4TurnEnd
-from pagentv4.core.message import ToolCall as V4ToolCall
-from pagentv4.core.turn_result import TurnResult as V4TurnResult
+from electromind_legacy.wire import usage_to_dict
+from electromind.adapters import decode_event_line as decode_v4_event_line
+from electromind.adapters import encode_event_line as encode_v4_event_line
+from electromind.core.events import RunBegin as V4RunBegin
+from electromind.core.events import RunEnd as V4RunEnd
+from electromind.core.events import TurnBegin as V4TurnBegin
+from electromind.core.events import TurnEnd as V4TurnEnd
+from electromind.core.message import ToolCall as V4ToolCall
+from electromind.core.turn_result import TurnResult as V4TurnResult
 
 
 class FakeUsage:

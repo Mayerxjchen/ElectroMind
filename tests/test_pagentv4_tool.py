@@ -1,10 +1,10 @@
-"""pagentv4.core.tool 的单测 —— 覆盖 call/acall 分支与 schema 提取。"""
+"""electromind.core.tool 的单测 —— 覆盖 call/acall 分支与 schema 提取。"""
 
 from __future__ import annotations
 
 import asyncio
 
-from pagentv4.core.tool import (
+from electromind.core.tool import (
     FunctionTool,
     ToolOutput,
     extract_function_schema,

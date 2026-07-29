@@ -4,10 +4,10 @@ import types
 
 import pytest
 
-from pagentv4 import Agent, Runner
-from pagentv4.ithread import SubAgentSpec, ThreadSpec
-from pagentv4.runtime.base_runner import assemble_harness_tools
-from pagentv4.tools.delegate import (
+from electromind import Agent, Runner
+from electromind.ithread import SubAgentSpec, ThreadSpec
+from electromind.runtime.base_runner import assemble_harness_tools
+from electromind.tools.delegate import (
     SUBAGENT_TOOL_NAME,
     make_delegate_tool,
     make_delegate_tools,
@@ -131,7 +131,7 @@ async def test_delegate_runs_sub_agent_and_returns_answer(tmp_path, monkeypatch)
     await runner.close()
 
     # 子对话已落盘：同一 thread 的 messages 目录下多了命名空间 id 的文件。
-    thread_root = tmp_path / ".pagent" / "threads" / "deleg"
+    thread_root = tmp_path / ".electromind" / "threads" / "deleg"
     sub_file = thread_root / "messages" / "messages.sub.coder.0.jsonl"
     assert sub_file.is_file()
     main_file = thread_root / "messages" / "messages.jsonl"

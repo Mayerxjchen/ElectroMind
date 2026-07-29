@@ -25,7 +25,7 @@ import {
   type AgentTransport,
   HttpBridge,
   normalizeBaseUrl,
-  resolvePagentWireInvocation,
+  resolveElectromindWireInvocation,
 } from "../shared/agent";
 import type {
   AppInfo,
@@ -48,7 +48,7 @@ import {
   completeOnboarding,
   getEnvironmentCheck,
   getOnboardingState,
-  installPagentCli,
+  installElectromindCli,
   listSandboxImages,
   saveProviderSetup,
 } from "./setup";
@@ -136,20 +136,20 @@ function applyAppIcon(): void {
     app.dock?.setIcon(image);
   }
   app.setAboutPanelOptions({
-    applicationName: "pagent Desktop",
+    applicationName: "electromind Desktop",
     iconPath: png,
   });
 }
 
-function userPagentHome(): string {
-  return path.join(homedir(), ".pagent");
+function userElectromindHome(): string {
+  return path.join(homedir(), ".electromind");
 }
 
 function desktopSettingsPath(): string {
-  return path.join(userPagentHome(), "desktop.json");
+  return path.join(userElectromindHome(), "desktop.json");
 }
 
-/** 从 ~/.pagent/desktop.json 读取 YOLO；缺省或损坏时为 false。 */
+/** 从 ~/.electromind/desktop.json 读取 YOLO；缺省或损坏时为 false。 */
 function loadYoloMode(): boolean {
   return readDesktopSettings().yoloMode === true;
 }
@@ -169,11 +169,11 @@ function saveYoloMode(enabled: boolean): void {
 
 /**
  * 后端传输配置。默认 wire（本地 spawn 子进程）；设为 http 则连远程
- * `pagent --http` server，前端行为不变。
+ * `electromind --http` server，前端行为不变。
  *
  * 优先级：环境变量 > desktop.json，方便开发期用 flag 临时切换：
- *   PAGENT_TRANSPORT=http PAGENT_SERVER_URL=127.0.0.1:8899 \
- *   PAGENT_SERVER_TOKEN=secret npm start
+ *   ELECTROMIND_TRANSPORT=http ELECTROMIND_SERVER_URL=127.0.0.1:8899 \
+ *   ELECTROMIND_SERVER_TOKEN=secret npm start
  * desktop.json 里对应 { "transport": "http", "serverUrl": "...", "serverToken": "..." }
  */
 type TransportConfig = {
@@ -184,18 +184,18 @@ type TransportConfig = {
 
 function loadTransportConfig(): TransportConfig {
   const settings = readDesktopSettings();
-  const envMode = process.env.PAGENT_TRANSPORT?.trim().toLowerCase();
+  const envMode = process.env.ELECTROMIND_TRANSPORT?.trim().toLowerCase();
   const settingMode =
     typeof settings.transport === "string"
       ? settings.transport.trim().toLowerCase()
       : "";
   const mode = (envMode || settingMode) === "http" ? "http" : "wire";
   const serverUrl =
-    process.env.PAGENT_SERVER_URL?.trim() ||
+    process.env.ELECTROMIND_SERVER_URL?.trim() ||
     (typeof settings.serverUrl === "string" ? settings.serverUrl : "") ||
     "127.0.0.1:8848";
   const serverToken =
-    process.env.PAGENT_SERVER_TOKEN?.trim() ||
+    process.env.ELECTROMIND_SERVER_TOKEN?.trim() ||
     (typeof settings.serverToken === "string" ? settings.serverToken : "");
   return { mode, serverUrl, serverToken };
 }
@@ -214,7 +214,7 @@ function readDesktopSettings(): Record<string, unknown> {
 
 /** 桌面默认用户 project（host_root）；agent 沙箱仍是 thread/workspace。 */
 function defaultProjectPath(): string {
-  return path.join(userPagentHome(), "default");
+  return path.join(userElectromindHome(), "default");
 }
 
 function ensureProjectDirectory(): void {
@@ -222,7 +222,7 @@ function ensureProjectDirectory(): void {
 }
 
 function activeHomePath(): string {
-  return userPagentHome();
+  return userElectromindHome();
 }
 
 function activeHomeScope(): "user" | "project" {
@@ -316,14 +316,14 @@ function artifactsDirectory(): string {
 }
 
 function settingsFilePath(): string {
-  return path.join(userPagentHome(), "pagent.toml");
+  return path.join(userElectromindHome(), "electromind.toml");
 }
 
 function threadsDirectory(): string {
-  return path.join(userPagentHome(), "threads");
+  return path.join(userElectromindHome(), "threads");
 }
 
-function pagentProjectRoot(): string {
+function electromindProjectRoot(): string {
   return path.join(__dirname, "..", "..", "..");
 }
 
@@ -716,7 +716,7 @@ function listProjectFiles(): string[] {
       if (results.length >= PROJECT_FILE_LIMIT) {
         return;
       }
-      if (entry.name.startsWith(".") && entry.name !== ".pagent") {
+      if (entry.name.startsWith(".") && entry.name !== ".electromind") {
         continue;
       }
       if (PROJECT_FILE_IGNORE.has(entry.name)) {
@@ -763,7 +763,7 @@ function listProjectTree(dir = projectPath, prefix = ""): ProjectTreeNode[] {
   });
   const nodes: ProjectTreeNode[] = [];
   for (const entry of entries) {
-    if (entry.name.startsWith(".") && entry.name !== ".pagent") {
+    if (entry.name.startsWith(".") && entry.name !== ".electromind") {
       continue;
     }
     if (PROJECT_FILE_IGNORE.has(entry.name)) {
@@ -942,14 +942,14 @@ function ensureBridge(): AgentTransport | undefined {
 }
 
 function buildWireBridge(): AgentBridge {
-  const wireInvocation = resolvePagentWireInvocation(pagentProjectRoot(), {
+  const wireInvocation = resolveElectromindWireInvocation(electromindProjectRoot(), {
     yolo: yoloMode,
   });
   return new AgentBridge({
     command: wireInvocation.command,
     args: wireInvocation.args,
     cwd: bridgeWorkingDirectory(),
-    env: { PAGENT_HOME: userPagentHome() },
+    env: { ELECTROMIND_HOME: userElectromindHome() },
     ...bridgeCallbacks("wire"),
   });
 }
@@ -1106,7 +1106,7 @@ function createWindow(): BrowserWindow {
     height: 900,
     minWidth: 1100,
     minHeight: 720,
-    title: "pagent Desktop",
+    title: "electromind Desktop",
     backgroundColor: "#0f1115",
     icon: appIconPath(),
     ...(process.platform === "darwin"
@@ -1126,13 +1126,13 @@ function createWindow(): BrowserWindow {
   window.loadFile(path.join(__dirname, "index.html"));
   window.webContents.on("did-fail-load", (_event, code, description, url) => {
     void dialog.showErrorBox(
-      "pagent Desktop",
+      "electromind Desktop",
       `页面加载失败 (${code}): ${description}\n${url}`,
     );
   });
   window.webContents.on("render-process-gone", (_event, details) => {
     void dialog.showErrorBox(
-      "pagent Desktop",
+      "electromind Desktop",
       `界面进程异常退出: ${details.reason}`,
     );
   });
@@ -1152,7 +1152,7 @@ function hideAppDuringQuit(): void {
 }
 
 app.whenReady().then(() => {
-  app.setName("pagent Desktop");
+  app.setName("electromind Desktop");
   applyAppIcon();
   mainWindow = createWindow();
 
@@ -1341,11 +1341,11 @@ ipcMain.handle("desktop:pick-directory", async (_event, defaultPath?: string) =>
 ipcMain.handle("desktop:get-new-session-options", async () => {
   return newSessionOptions();
 });
-ipcMain.handle("desktop:get-onboarding-state", async () => getOnboardingState());
+ipcMain.handle("desktop:get-onboarding-state", async () => getOnboardingState(electromindProjectRoot()));
 ipcMain.handle("desktop:refresh-environment-check", async () =>
-  getEnvironmentCheck({ includeDisk: true }),
+  getEnvironmentCheck({ includeDisk: true, projectRoot: electromindProjectRoot() }),
 );
-ipcMain.handle("desktop:install-pagent-cli", async () => installPagentCli());
+ipcMain.handle("desktop:install-electromind-cli", async () => installElectromindCli());
 ipcMain.handle("desktop:save-provider-setup", async (_event, setup) => {
   const saved = saveProviderSetup(setup);
   // wire 启动时缓存了旧配置；写入 Key 后丢掉进程，下次 ensureBridge 会重新加载。
@@ -1354,7 +1354,7 @@ ipcMain.handle("desktop:save-provider-setup", async (_event, setup) => {
   return saved;
 });
 ipcMain.handle("desktop:complete-onboarding", async (_event, options) => {
-  completeOnboarding(options);
+  completeOnboarding({ ...options, projectRoot: electromindProjectRoot() });
   disposeBridge();
   notifyRuntimeState();
 });

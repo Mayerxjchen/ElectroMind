@@ -4,7 +4,7 @@ from app.clean import (
     thread_is_useless,
     user_message_count,
 )
-from pagentv4.core.message import Message, Messages
+from electromind.core.message import Message, Messages
 
 
 def write_thread(

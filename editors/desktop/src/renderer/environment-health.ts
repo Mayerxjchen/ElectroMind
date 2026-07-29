@@ -1,6 +1,6 @@
 import type { EnvironmentCheck } from "../shared/protocol";
 
-export type HealthItemId = "uv" | "pagent" | "apiKey" | "runtime" | "image";
+export type HealthItemId = "uv" | "electromind" | "apiKey" | "runtime" | "image";
 
 export type HealthItem = {
   id: HealthItemId;
@@ -11,7 +11,7 @@ export type HealthItem = {
 };
 
 export const INSTALL_COMMANDS =
-  "curl -LsSf https://astral.sh/uv/install.sh | sh\nuv tool install --force pagent";
+  "curl -LsSf https://astral.sh/uv/install.sh | sh\nuv tool install --force electromind";
 
 function escapeHtml(value: string): string {
   return value
@@ -44,11 +44,11 @@ export function buildHealthItems(env: EnvironmentCheck): HealthItem[] {
       detail: env.uvInstalled ? (env.uvPath ?? "已安装") : "未找到",
     },
     {
-      id: "pagent",
-      label: "pagent CLI",
-      ok: env.pagentInstalled,
+      id: "electromind",
+      label: "electromind CLI",
+      ok: env.electromindInstalled,
       optional: false,
-      detail: env.pagentInstalled ? (env.pagentPath ?? "已安装") : "未找到",
+      detail: env.electromindInstalled ? (env.electromindPath ?? "已安装") : "未找到",
     },
     {
       id: "apiKey",
@@ -170,7 +170,7 @@ export function renderHealthPanel(env: EnvironmentCheck): string {
       ${renderDiskUsage(env)}
       <div class="health-actions">
         <button class="new-session-secondary" type="button" data-health-copy-cmd>复制安装命令</button>
-        <button class="new-session-secondary" type="button" data-health-install-pagent ${env.uvInstalled ? "" : "disabled"}>安装 pagent</button>
+        <button class="new-session-secondary" type="button" data-health-install-electromind ${env.uvInstalled ? "" : "disabled"}>安装 electromind</button>
       </div>
     </section>
   `;
@@ -189,7 +189,7 @@ export function bindHealthPanel(root: HTMLElement, handlers: HealthActionHandler
   root.querySelector<HTMLButtonElement>("[data-health-copy-cmd]")?.addEventListener("click", () => {
     void handlers.onCopyCommands();
   });
-  root.querySelector<HTMLButtonElement>("[data-health-install-pagent]")?.addEventListener("click", () => {
+  root.querySelector<HTMLButtonElement>("[data-health-install-electromind]")?.addEventListener("click", () => {
     void handlers.onInstallPagent();
   });
 }

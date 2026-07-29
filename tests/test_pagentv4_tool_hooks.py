@@ -2,7 +2,7 @@ import asyncio
 
 import pytest
 
-from pagentv4 import (
+from electromind import (
     FunctionTool,
     Runner,
     ToolCallBegin,
@@ -11,7 +11,7 @@ from pagentv4 import (
     ToolOutput,
     ToolResult,
 )
-from pagentv4.runtime.hooks import PostToolHookContext, ToolHookContext
+from electromind.runtime.hooks import PostToolHookContext, ToolHookContext
 
 
 class FakeStreamChunk:

@@ -4,7 +4,7 @@ import types
 
 import pytest
 
-from pagentv4 import Agent, ChatAgent, ChatRunner, RunEnd, TextDelta, tool
+from electromind import Agent, ChatAgent, ChatRunner, RunEnd, TextDelta, tool
 
 
 class FakeStreamChunk:
@@ -80,7 +80,7 @@ async def test_chat_runner_auto_thread_id(tmp_path):
 @pytest.mark.asyncio
 async def test_chat_runner_sqlite_backend(tmp_path):
     """backend="sqlite" 时 SQLite db 也在 thread 目录里。"""
-    from pagentv4.conversation import SqliteConversationStore
+    from electromind.conversation import SqliteConversationStore
 
     provider = FakeProvider([[FakeStreamChunk(content="sqlite")]])
     agent = Agent(provider, system="test")
@@ -199,7 +199,7 @@ async def test_flush_on_each_continuing(tmp_path):
 @pytest.mark.asyncio
 async def test_event_stream_with_tools(tmp_path):
     """带工具的事件流：ToolCallBegin + ToolResult + TextDelta。"""
-    from pagentv4 import ToolCallBegin, ToolResult
+    from electromind import ToolCallBegin, ToolResult
 
     tc = types.SimpleNamespace(
         index=0,

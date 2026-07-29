@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from pagentv4 import (
+from electromind import (
     Agent,
     AgentRunner,
     BaseRunner,
@@ -235,7 +235,7 @@ def test_run_state_initializing_is_active():
 
 
 def test_run_state_labels():
-    from pagentv4 import RUN_PHASE_LABELS, RunState
+    from electromind import RUN_PHASE_LABELS, RunState
 
     assert RUN_PHASE_LABELS["idle"] == "空闲"
     assert RUN_PHASE_LABELS["waking_sandbox"] == "正在唤醒沙箱"

@@ -4,14 +4,14 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from pagentv4 import Thread
-from pagentv4.conversation import (
+from electromind import Thread
+from electromind.conversation import (
     JsonlConversationStore,
     default_conversations_root,
 )
-from pagentv4.core.message import Messages
-from pagentv4.ithread import MESSAGES_CONVERSATION_ID, SPEC_FILENAME, WORKSPACES_DIRNAME
-from pagentv4.runtime.thread import default_threads_root
+from electromind.core.message import Messages
+from electromind.ithread import MESSAGES_CONVERSATION_ID, SPEC_FILENAME, WORKSPACES_DIRNAME
+from electromind.runtime.thread import default_threads_root
 
 
 @dataclass(slots=True)
@@ -67,14 +67,14 @@ def iter_thread_dirs(root: Path) -> list[Path]:
     ]
 
 
-def clean_pagent(
+def clean_electromind(
     *,
     threads_root: Path | str | None = None,
     conversations_root: Path | str | None = None,
     keep_thread_ids: set[str] | frozenset[str] = frozenset(),
     remove: bool = True,
 ) -> CleanReport:
-    """Remove empty threads and orphan conversations under `.pagent/`.
+    """Remove empty threads and orphan conversations under `.electromind/`.
 
     A thread is useless when it has no user messages and an empty workspace.
     A standalone conversation file is useless when empty or has no user messages.

@@ -9,7 +9,7 @@
 agent-in-the-pod 形态（一个 pod 服务一个会话）。server 跑在 uvicorn 的
 asyncio loop，``inbound.permit/deny/cancel`` 与 ``run`` 同 loop，无跨线程 marshal。
 
-依赖 fastapi / uvicorn，装 ``pagent[server]`` 才可用。
+依赖 fastapi / uvicorn，装 ``electromind[server]`` 才可用。
 """
 
 import asyncio
@@ -25,7 +25,7 @@ from .wire import (
     slash_commands_line,
 )
 
-AUTH_ENV = "PAGENT_SERVER_TOKEN"
+AUTH_ENV = "ELECTROMIND_SERVER_TOKEN"
 
 
 class WireHttpSession:
@@ -68,7 +68,7 @@ class WireHttpSession:
 
 
 def check_auth(header_value: str | None) -> bool:
-    """校验 Authorization: Bearer <token>。未设 PAGENT_SERVER_TOKEN 时放行。"""
+    """校验 Authorization: Bearer <token>。未设 ELECTROMIND_SERVER_TOKEN 时放行。"""
     token = os.getenv(AUTH_ENV, "").strip()
     if not token:
         return True
@@ -117,11 +117,16 @@ def build_app(config: ReplConfig):
         await session.close()
         sink.close()
 
-    app = FastAPI(title="pagent http backend", lifespan=lifespan)
+    app = FastAPI(title="electromind http backend", lifespan=lifespan)
 
     def require_auth(authorization: str | None) -> None:
         if not check_auth(authorization):
             raise HTTPException(status_code=401, detail="unauthorized")
+
+    @app.get("/health")
+    async def health():
+        """公共健康检查：不鉴权、不调模型、不读密钥、不创建线程。"""
+        return {"ok": True, "service": "electromind"}
 
     @app.get("/events")
     async def events(authorization: str | None = Header(default=None)):
@@ -149,7 +154,7 @@ def run_http(config: ReplConfig, *, host: str = "127.0.0.1", port: int = 8848) -
         import uvicorn
     except ModuleNotFoundError as exc:
         raise SystemExit(
-            "HTTP 后端需要 fastapi/uvicorn：安装 `pip install 'pagent[server]'`"
+            "HTTP 后端需要 fastapi/uvicorn：安装 `pip install 'electromind[server]'`"
         ) from exc
 
     if not os.getenv(AUTH_ENV, "").strip():

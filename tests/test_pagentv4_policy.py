@@ -6,7 +6,7 @@ import os
 
 import pytest
 
-from pagentv4.sandbox.policy import (
+from electromind.sandbox.policy import (
     check_backend_path,
     check_command,
     is_system_path,
@@ -109,7 +109,7 @@ def test_validate_command_policy():
 
 @pytest.mark.asyncio
 async def test_sandbox_workdir_policy_blocks_cd_chain(tmp_path):
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     async with await Sandbox.create(
         backend="local",
@@ -124,7 +124,7 @@ async def test_sandbox_workdir_policy_blocks_cd_chain(tmp_path):
 
 @pytest.mark.asyncio
 async def test_sandbox_workdir_policy_blocks_escape(tmp_path):
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     secret = tmp_path.parent / "secret.txt"
     secret.write_text("nope", encoding="utf-8")
@@ -142,7 +142,7 @@ async def test_sandbox_workdir_policy_blocks_escape(tmp_path):
 
 @pytest.mark.asyncio
 async def test_sandbox_workdir_policy_allows_mapped_home(tmp_path):
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     (tmp_path / "target.txt").write_text("payload", encoding="utf-8")
 
@@ -158,7 +158,7 @@ async def test_sandbox_workdir_policy_allows_mapped_home(tmp_path):
 
 @pytest.mark.asyncio
 async def test_sandbox_workdir_policy_allows_curl_url(tmp_path):
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     async with await Sandbox.create(
         backend="local",
@@ -174,7 +174,7 @@ async def test_sandbox_workdir_policy_allows_curl_url(tmp_path):
 
 @pytest.mark.asyncio
 async def test_sandbox_trusted_bypasses_policy(tmp_path):
-    from pagentv4 import Sandbox
+    from electromind import Sandbox
 
     outside = tmp_path.parent / "outside.txt"
     outside.write_text("ok", encoding="utf-8")

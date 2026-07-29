@@ -6,19 +6,19 @@ import tomllib
 from dataclasses import dataclass, replace
 from pathlib import Path
 
-from pagentv4.ithread import SubAgentSpec
-from pagentv4.paths import (
+from electromind.ithread import SubAgentSpec
+from electromind.paths import (
     activate_home,
-    default_pagent_home,
+    default_electromind_home,
     find_home_config,
     home_config_path,
 )
-from pagentv4.tools import HARNESS_WEB_TOOL_NAMES
+from electromind.tools import HARNESS_WEB_TOOL_NAMES
 
-BUNDLED_CONFIG = Path(__file__).with_name("pagent.toml")
-CONFIG_FILENAMES = ("pagent.toml",)
+BUNDLED_CONFIG = Path(__file__).with_name("electromind.toml")
+CONFIG_FILENAMES = ("electromind.toml",)
 # 兼容旧名：用户级 home 下的配置路径（未解析项目模式时）。
-USER_CONFIG_PATH = "~/.pagent/pagent.toml"
+USER_CONFIG_PATH = "~/.electromind/electromind.toml"
 # runner 进程自身跑在哪：local = 用户电脑（当前唯一支持）；cloud = 云端 pod（保留，未接线）。
 RUNNER_LOCATIONS = ("local", "cloud")
 
@@ -43,13 +43,15 @@ class ReplConfig:
     ssh_workdir: str | None = None
     skill_roots: tuple[str, ...] | None = None
     # 主 agent 的进程内（harness）工具白名单，冻结进新 thread.toml 的 [agent] tools。
-    # None 表示未在 pagent.toml 显式配置，回退到默认（web 工具）。
+    # None 表示未在 electromind.toml 显式配置，回退到默认（web 工具）。
     agent_tools: tuple[str, ...] | None = None
     # 命名子 agent：冻结进新 thread.toml 的 [sub.<name>]。None = 未配置。
     subs: dict[str, SubAgentSpec] | None = None
     user_label: str | None = None
     assistant_label: str | None = None
     permission_mode: str | None = None
+    # --resume without ID → interactive picker; resolved in main()
+    resume_interactive: bool = False
 
     def resolved_api_key(self) -> str | None:
         if self.api_key and self.api_key.strip():
@@ -74,7 +76,7 @@ class ReplConfig:
     def resolved_agent_tools(self) -> tuple[str, ...]:
         """冻结进 thread.toml 的 [agent] tools 白名单。
 
-        未在 pagent.toml 显式配置时默认给全套 web 工具（保持既有行为，只是从静默
+        未在 electromind.toml 显式配置时默认给全套 web 工具（保持既有行为，只是从静默
         挂载改成显式冻结）。显式配了（含空表）就照配置来。
         """
         if self.agent_tools is None:
@@ -85,12 +87,12 @@ class ReplConfig:
         """把 ``[skills] roots`` 展开成冻结进 thread.toml 的 ``[agent] skills``。
 
         ``roots`` 就是完整扫描列表，不隐式追加任何目录：写了才扫，删了就没有。
-        ``{pagent_home}``（兼容旧写法 ``{home}``）展开成当前生效的 pagent 数据根
-        （prod/dev/PAGENT_HOME 由 activate_home 决定），让模板不必写死绝对路径。
+        ``{electromind_home}``（兼容旧写法 ``{home}``）展开成当前生效的 pagent 数据根
+        （prod/dev/ELECTROMIND_HOME 由 activate_home 决定），让模板不必写死绝对路径。
         """
-        pagent_home = str(default_pagent_home())
+        electromind_home = str(default_electromind_home())
         return tuple(
-            root.replace("{pagent_home}", pagent_home).replace("{home}", pagent_home)
+            root.replace("{electromind_home}", electromind_home).replace("{home}", electromind_home)
             for root in self.resolved_skill_roots()
         )
 
@@ -99,8 +101,8 @@ class ReplConfig:
         return label or "you"
 
     def resolved_assistant_label(self) -> str:
-        label = (self.assistant_label or "pagent").strip()
-        return label or "pagent"
+        label = (self.assistant_label or "electromind").strip()
+        return label or "electromind"
 
     def resolved_permission_mode(self) -> str:
         mode = (self.permission_mode or "prompt").strip().lower()
@@ -123,7 +125,7 @@ class ReplConfig:
             kwargs["sandbox_tools"] = self.sandbox_tools
         # project_path 是本次会话冻结进 thread.toml 的 host_root：留空时在这里
         # 解析成启动时的 cwd 绝对路径，让 thread.toml 写具体值（resume 不漂移）。
-        # 全局 pagent.toml 里留空的语义仍是"用 cwd"，只是解析点前置到冻结时。
+        # 全局 electromind.toml 里留空的语义仍是"用 cwd"，只是解析点前置到冻结时。
         if self.project_path is not None and self.project_path != "":
             kwargs["project_path"] = os.path.abspath(
                 os.path.expanduser(self.project_path)
@@ -323,12 +325,12 @@ def parse_repl_config(data: dict) -> ReplConfig:
 
 
 def find_project_config(workdir: str | None = None) -> Path | None:
-    """当前 cwd 若为项目模式，返回其配置文件（含遗留 ``./pagent.toml``）。"""
+    """当前 cwd 若为项目模式，返回其配置文件（含遗留 ``./electromind.toml``）。"""
     return find_home_config(workdir)
 
 
 def find_user_config(workdir: str | None = None) -> Path | None:
-    """当前生效 home 下的 ``pagent.toml``；不存在则返回 None。"""
+    """当前生效 home 下的 ``electromind.toml``；不存在则返回 None。"""
     return find_home_config(workdir)
 
 
@@ -347,10 +349,10 @@ def merge_config(base: ReplConfig, override: ReplConfig) -> ReplConfig:
 
 
 def ensure_home_config(workdir: str | None = None) -> Path:
-    """定位当前 home 的 ``pagent.toml``；不存在就从包内模板物化一份写盘。
+    """定位当前 home 的 ``electromind.toml``；不存在就从包内模板物化一份写盘。
 
-    home 由入口的 ``activate_home`` 决定：``--dev`` → ``<root>/.pagent``，否则
-    ``~/.pagent``。种子取已打包的 ``src/app/pagent.toml``（``src/template`` 不进
+    home 由入口的 ``activate_home`` 决定：``--dev`` → ``<root>/.electromind``，否则
+    ``~/.electromind``。种子取已打包的 ``src/app/electromind.toml``（``src/template`` 不进
     wheel，安装版机器上没有），两份解析结果由测试锁死一致。
     """
     existing = find_home_config(workdir)
@@ -367,7 +369,7 @@ def load_config(
     config_path: Path | str | None = None,
     workdir: str | None = None,
 ) -> ReplConfig:
-    """从单一来源加载配置：当前 home 的 ``pagent.toml``（缺失则先从模板物化）。
+    """从单一来源加载配置：当前 home 的 ``electromind.toml``（缺失则先从模板物化）。
 
     ``--config <file>`` 若传入，作为显式覆盖再叠一层。未设字段回落 ReplConfig
     自身默认（与模板一致），因此手删部分字段的 home 配置仍可正常工作。
@@ -387,7 +389,7 @@ def load_config(
 def refresh_provider_from_disk(
     config: ReplConfig, *, workdir: str | None = None
 ) -> ReplConfig:
-    """从当前 home 的 ``pagent.toml`` 刷新 provider 字段。
+    """从当前 home 的 ``electromind.toml`` 刷新 provider 字段。
 
     wire 进程启动时会缓存一份 ReplConfig；宿主（Desktop / VS Code）事后写入
     API Key 时，打开 runner 前调用本函数即可读到新 Key，无需重启进程。
@@ -406,11 +408,11 @@ def refresh_provider_from_disk(
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="pagent interactive REPL")
+    parser = argparse.ArgumentParser(description="electromind interactive REPL")
     parser.add_argument(
         "--config",
         default=None,
-        help="extra config file over bundled + active home ({./.pagent|~/.pagent}/pagent.toml)",
+        help="extra config file over bundled + active home ({./.electromind|~/.electromind}/electromind.toml)",
     )
     parser.add_argument(
         "--thread-id",
@@ -472,10 +474,32 @@ def build_parser() -> argparse.ArgumentParser:
         const=".",
         default=None,
         metavar="ROOT",
-        help="开发模式：数据落到 <ROOT>/.pagent（默认 ./.pagent）；不带则生产模式用 ~/.pagent",
+        help="开发模式：数据落到 <ROOT>/.electromind（默认 ./.electromind）；不带则生产模式用 ~/.electromind",
     )
     parser.add_argument("--ssh-host", default=None, help="覆盖 SSH Host 别名")
     parser.add_argument("--ssh-config", default=None, help="覆盖 SSH config 路径")
+    parser.add_argument(
+        "--continue",
+        dest="continue_last",
+        action="store_true",
+        help="恢复当前项目最近一次对话",
+    )
+    parser.add_argument(
+        "--resume",
+        nargs="?",
+        const="",
+        default=None,
+        metavar="THREAD_ID",
+        help="恢复已有会话：无参数时打开选择器，指定 ID 时直接恢复",
+    )
+
+    # Subcommands (e.g. "electromind session list")
+    sub = parser.add_subparsers(dest="subcommand")
+    session_parser = sub.add_parser("session", help="管理会话")
+    session_parser.add_argument(
+        "action", nargs="?", default="list", choices=["list"], help="列出所有历史会话"
+    )
+
     return parser
 
 
@@ -503,6 +527,30 @@ def config_from_args(args: argparse.Namespace) -> ReplConfig:
         fields["ssh_host"] = args.ssh_host
     if args.ssh_config:
         fields["ssh_config"] = args.ssh_config
+
+    # --continue: find latest session for current project
+    if getattr(args, "continue_last", False):
+        from app.sessions import find_latest_session
+
+        latest = find_latest_session()
+        if latest:
+            fields["thread_id"] = latest.id
+        else:
+            raise SystemExit("没有找到可恢复的会话")
+
+    # --resume <id>: direct resume by thread ID
+    if getattr(args, "resume", None) is not None and args.resume != "":
+        from app.sessions import find_session_by_id
+
+        session = find_session_by_id(args.resume)
+        if session is None:
+            raise SystemExit(f"会话不存在: {args.resume}")
+        fields["thread_id"] = args.resume
+
+    # --resume without ID: interactive picker (deferred to main())
+    if getattr(args, "resume", None) == "":
+        fields["resume_interactive"] = True
+
     if fields:
         config = replace(config, **fields)
     return config

@@ -2,7 +2,7 @@ import asyncio
 import json
 
 from pagent import CompactingSession, RunEnd, compactor
-from pagent.tokens import count_tokens
+from electromind_legacy.tokens import count_tokens
 
 
 class FakeLLM:

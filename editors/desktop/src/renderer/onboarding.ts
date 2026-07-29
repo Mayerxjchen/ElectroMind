@@ -62,12 +62,12 @@ function renderStepEnv(env: EnvironmentCheck): string {
       detail: env.uvInstalled ? "已安装" : "需要安装",
     },
     {
-      ok: env.pagentInstalled,
-      label: "pagent CLI",
-      detail: env.pagentInstalled ? "已安装" : "需要安装",
+      ok: env.electromindInstalled,
+      label: "electromind CLI",
+      detail: env.electromindInstalled ? "已安装" : "需要安装",
     },
   ];
-  const ready = env.uvInstalled && env.pagentInstalled;
+  const ready = env.uvInstalled && env.electromindInstalled;
   return `
     <div class="setup-pane">
       <p class="setup-lead">确认本机已安装运行依赖。默认使用 <strong>local</strong> 沙箱，无需 Docker。</p>
@@ -92,7 +92,7 @@ function renderStepEnv(env: EnvironmentCheck): string {
           <pre class="setup-cmd">${escapeHtml(INSTALL_COMMANDS)}</pre>
           <div class="setup-fix-actions">
             <button class="new-session-secondary" type="button" data-setup-copy-cmd>复制命令</button>
-            <button class="new-session-secondary" type="button" data-setup-install-pagent ${env.uvInstalled ? "" : "disabled"}>安装 pagent</button>
+            <button class="new-session-secondary" type="button" data-setup-install-electromind ${env.uvInstalled ? "" : "disabled"}>安装 electromind</button>
             <button class="new-session-secondary" type="button" data-setup-refresh>重新检测</button>
           </div>
         </div>
@@ -186,7 +186,7 @@ function renderStepSandbox(draft: OnboardingDraft, env: EnvironmentCheck): strin
 }
 
 function isReady(env: EnvironmentCheck): boolean {
-  return env.pagentInstalled && env.apiKeyConfigured;
+  return env.electromindInstalled && env.apiKeyConfigured;
 }
 
 export function renderOnboardingBody(
@@ -324,7 +324,7 @@ export function mountOnboarding(options: {
     }
     if (!isReady(env)) {
       setBlocked(true);
-      showError("请先安装 pagent 并配置 API Key。");
+      showError("请先安装 electromind 并配置 API Key。");
       paint();
       return;
     }
@@ -353,10 +353,10 @@ export function mountOnboarding(options: {
         showError("已复制安装命令");
       })();
     });
-    body.querySelector<HTMLButtonElement>("[data-setup-install-pagent]")?.addEventListener("click", () => {
+    body.querySelector<HTMLButtonElement>("[data-setup-install-electromind]")?.addEventListener("click", () => {
       void (async () => {
-        showError("正在安装 pagent…");
-        const result = await window.desktop.installPagentCli();
+        showError("正在安装 electromind…");
+        const result = await window.desktop.installElectromindCli();
         if (!result.ok) {
           showError(result.error ?? "安装失败");
           return;
@@ -378,8 +378,8 @@ export function mountOnboarding(options: {
         readDraftFromForm();
         showError("");
         if (draft.step === 1) {
-          if (!env.pagentInstalled) {
-            showError("请先安装 pagent CLI。");
+          if (!env.electromindInstalled) {
+            showError("请先安装 electromind CLI。");
             return;
           }
           draft = { ...draft, step: 2 };

@@ -36,7 +36,7 @@ RSYNC_EXCLUDES := \
 	--exclude dist \
 	--exclude docs/node_modules \
 	--exclude docs/.vitepress/cache \
-	--exclude .pagent \
+	--exclude .electromind \
 	--exclude artifacts \
 	--exclude .DS_Store
 

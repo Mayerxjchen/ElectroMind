@@ -21,7 +21,7 @@ import os
 
 import pytest
 
-from pagentv4 import (
+from electromind import (
     DeepSeek,
     RunEnd,
     Runner,
@@ -82,4 +82,4 @@ async def test_live_agent_runs_full_loop_with_sandbox_tools(tmp_path, monkeypatc
     assert begins or any(isinstance(e, TextDelta) for e in events), "模型无任何产出"
 
     # 5) 对话落盘
-    assert (tmp_path / ".pagent" / "threads" / "e2e-live" / "messages.jsonl").is_file()
+    assert (tmp_path / ".electromind" / "threads" / "e2e-live" / "messages.jsonl").is_file()

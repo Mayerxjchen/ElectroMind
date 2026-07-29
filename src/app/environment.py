@@ -1,4 +1,4 @@
-"""服务端环境自检：backend 可用性、pagent home 路径与占用、api_key 是否配置。
+"""服务端环境自检：backend 可用性、electromind home 路径与占用、api_key 是否配置。
 
 desktop 现在在 Electron 主进程用 execFileSync 探测本机（docker/podman/uv/home 占用）。
 搬到远程后前端够不到 server 的机器，改由 server 执行本自检，经 ``environment_check``
@@ -10,7 +10,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-from pagentv4.paths import resolve_pagent_home
+from electromind.paths import resolve_electromind_home
 
 from .config import load_config
 
@@ -40,7 +40,7 @@ def dir_size_bytes(path: Path) -> int:
 
 def environment_check(*, include_disk: bool = False) -> dict:
     """收集 server 机器环境。include_disk 统计 home 占用（偏慢，按需开）。"""
-    home = resolve_pagent_home()
+    home = resolve_electromind_home()
     config = load_config()
     check = {
         "uv_installed": cli_on_path("uv"),

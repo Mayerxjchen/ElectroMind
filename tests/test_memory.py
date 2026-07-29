@@ -3,7 +3,7 @@ import json
 
 import pytest
 
-from pagent.memory import Memory
+from electromind_legacy.memory import Memory
 
 
 def test_add_len_clear():

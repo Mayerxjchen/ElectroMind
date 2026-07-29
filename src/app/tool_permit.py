@@ -5,8 +5,8 @@ from __future__ import annotations
 import asyncio
 import json
 
-from pagentv4 import Runner, ToolCallBegin, ToolDecision, ToolHooks
-from pagentv4.runtime.hooks import ToolHookContext
+from electromind import Runner, ToolCallBegin, ToolDecision, ToolHooks
+from electromind.runtime.hooks import ToolHookContext
 
 from .terminal import emit, emit_prompt
 

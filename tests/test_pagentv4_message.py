@@ -1,4 +1,4 @@
-from pagentv4 import Message, Messages
+from electromind import Message, Messages
 
 
 def test_messages_jsonl_round_trip(tmp_path):

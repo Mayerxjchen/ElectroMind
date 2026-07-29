@@ -1,6 +1,6 @@
 import pytest
 
-from pagentv4 import FunctionTool, RunEnd, Runner, ToolCallBegin, TurnEnd
+from electromind import FunctionTool, RunEnd, Runner, ToolCallBegin, TurnEnd
 
 
 class FakeStreamChunk:

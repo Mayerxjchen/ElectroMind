@@ -10,9 +10,9 @@ import pytest
 
 from app import wire
 from app.config import ReplConfig
-from pagentv4.core.events import TextDelta
-from pagentv4.core.message import ToolCall
-from pagentv4.core.turn_result import TurnResult
+from electromind.core.events import TextDelta
+from electromind.core.message import ToolCall
+from electromind.core.turn_result import TurnResult
 
 
 def test_format_exc_system_exit_message():
@@ -194,13 +194,13 @@ async def test_history_without_runner_does_not_open(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_list_threads_uses_pagent_home(tmp_path, monkeypatch):
+async def test_list_threads_uses_electromind_home(tmp_path, monkeypatch):
     home = tmp_path / "home"
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.chdir(tmp_path)
 
-    thread_dir = home / ".pagent" / "threads" / "thread-demo"
+    thread_dir = home / ".electromind" / "threads" / "thread-demo"
     thread_dir.mkdir(parents=True)
     (thread_dir / "thread.toml").write_text('[sandbox]\nbackend = "local"\n')
     (thread_dir / "metainfo.json").write_text(
@@ -224,7 +224,7 @@ async def test_list_threads_uses_pagent_home(tmp_path, monkeypatch):
     assert result is None
     payload = json.loads(lines[0])
     assert payload["method"] == "ThreadList"
-    assert payload["params"]["home"] == str((home / ".pagent").resolve())
+    assert payload["params"]["home"] == str((home / ".electromind").resolve())
     assert payload["params"]["threads"] == [
         {
             "id": "thread-demo",
@@ -241,13 +241,13 @@ async def test_list_threads_uses_project_home(tmp_path, monkeypatch):
     home.mkdir()
     monkeypatch.setenv("HOME", str(home))
     project = tmp_path / "proj"
-    (project / ".pagent" / "threads" / "thread-proj").mkdir(parents=True)
-    (project / ".pagent" / "threads" / "thread-proj" / "thread.toml").write_text(
+    (project / ".electromind" / "threads" / "thread-proj").mkdir(parents=True)
+    (project / ".electromind" / "threads" / "thread-proj" / "thread.toml").write_text(
         '[sandbox]\nbackend = "local"\n',
         encoding="utf-8",
     )
     monkeypatch.chdir(project)
-    from pagentv4.paths import activate_home
+    from electromind.paths import activate_home
 
     activate_home("dev", project)
 
@@ -261,7 +261,7 @@ async def test_list_threads_uses_project_home(tmp_path, monkeypatch):
         {"turn": None},
     )
     payload = json.loads(lines[0])
-    assert payload["params"]["home"] == str((project / ".pagent").resolve())
+    assert payload["params"]["home"] == str((project / ".electromind").resolve())
     assert payload["params"]["threads"][0]["id"] == "thread-proj"
 
 

@@ -1,9 +1,9 @@
-"""pagent --wire —— stdio NDJSON 后端，供外部前端（如 VS Code 插件）驱动 Agent。
+"""electromind --wire —— stdio NDJSON 后端，供外部前端（如 VS Code 插件）驱动 Agent。
 
 三条流各司其职：
 
 - **stdout**：每行一个事件（Wire 协议）。透传 ``runner.run(return_type="event")``
-  产出的事件，用 ``pagentv4/adapters/acp.py`` 的 ``encode_event_line`` 序列化；
+  产出的事件，用 ``electromind/adapters/acp.py`` 的 ``encode_event_line`` 序列化；
   需审批的工具再补一条 ``PermitRequest`` 控制事件；失败时发 ``Error`` 控制事件
   （前端撤 loading 并展示错误气泡）。
 - **stdin**：每行一个 JSON 命令，驱动 Agent。
@@ -21,7 +21,7 @@
                                                   可选字段：project_path / backend /
                                                   image / ssh_host / ssh_config / ssh_workdir
     {"cmd": "resume", "thread_id": "..."}         切到已有 thread，回放其历史
-    {"cmd": "list_threads"}                       列出当前 pagent home 下可恢复会话
+    {"cmd": "list_threads"}                       列出当前 electromind home 下可恢复会话
     {"cmd": "delete_thread", "thread_id": "..."}  软删除：metainfo 打 deleted_at，列表隐藏
     {"cmd": "cancel"}                             取消当前运行中的 Agent 任务
 
@@ -48,16 +48,16 @@ import tomllib
 from dataclasses import fields, replace
 from datetime import datetime
 
-from pagentv4 import ToolCallBegin
-from pagentv4.adapters.acp import encode_event_line, json_value
-from pagentv4.core.context_limit import DEFAULT_CONTEXT_LIMIT, resolve_context_limit
-from pagentv4.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
-from pagentv4.core.turn_result import TurnResult
-from pagentv4.ithread import SPEC_FILENAME, ThreadSpec
-from pagentv4.paths import resolve_pagent_home
-from pagentv4.runtime.thread import Thread, default_threads_root
+from electromind import ToolCallBegin
+from electromind.adapters.acp import encode_event_line, json_value
+from electromind.core.context_limit import DEFAULT_CONTEXT_LIMIT, resolve_context_limit
+from electromind.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
+from electromind.core.turn_result import TurnResult
+from electromind.ithread import SPEC_FILENAME, ThreadSpec
+from electromind.paths import resolve_electromind_home
+from electromind.runtime.thread import Thread, default_threads_root
 
-from .clean import clean_pagent, format_clean_report, iter_thread_dirs
+from .clean import clean_electromind, format_clean_report, iter_thread_dirs
 from .config import ReplConfig, load_config, refresh_provider_from_disk
 from .config_view import config_to_public_dict
 from .environment import environment_check
@@ -327,38 +327,21 @@ def soft_delete_thread(thread_id: str) -> None:
 
 
 def list_thread_entries(project_path: str | None = None) -> list[dict[str, str]]:
-    """按当前 cwd 解析的 pagent home 列出可恢复 thread（与落盘同一判定）。"""
+    """按当前 cwd 解析的 electromind home 列出可恢复 thread（与落盘同一判定）。
+
+    委托给 ``app.sessions.list_sessions``，再把 SessionInfo 转成前端 wire 协议需要的 dict。
+    """
+    from app.sessions import list_sessions
+
+    sessions = list_sessions()
     entries: list[dict[str, str]] = []
-    for thread_dir in sorted(
-        iter_thread_dirs(default_threads_root()),
-        key=lambda path: path.name,
-        reverse=True,
-    ):
-        title = ""
-        meta: dict = {}
-        meta_path = thread_dir / "metainfo.json"
-        if meta_path.is_file():
-            try:
-                loaded = json.loads(meta_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
-                loaded = {}
-            if isinstance(loaded, dict):
-                meta = loaded
-            raw = meta.get("title", "")
-            title = raw if isinstance(raw, str) else ""
-        if thread_is_soft_deleted(meta):
-            continue
-        spec = thread_spec(thread_dir)
+    for s in sessions:
         entries.append(
             {
-                "id": thread_dir.name,
-                "title": title,
-                "project_path": (
-                    spec.project_path
-                    if spec and spec.project_path
-                    else project_path or ""
-                ),
-                "backend": spec.backend if spec else "local",
+                "id": s.id,
+                "title": s.title,
+                "project_path": s.project_path or project_path or "",
+                "backend": s.backend,
             }
         )
     return entries
@@ -366,7 +349,7 @@ def list_thread_entries(project_path: str | None = None) -> list[dict[str, str]]
 
 def emit_thread_list(project_path: str | None = None) -> None:
     """下发 ThreadList：home / threads_root 与 threads，供前端「恢复会话」。"""
-    home = resolve_pagent_home()
+    home = resolve_electromind_home()
     threads_root = default_threads_root()
     payload = {
         "jsonrpc": "2.0",
@@ -611,6 +594,8 @@ SLASH_COMMANDS: list[dict[str, str]] = [
     {"name": "help", "summary": "列出所有可用的 slash 命令"},
     {"name": "skills", "summary": "已加载的技能及其描述"},
     {"name": "history", "summary": "当前会话的消息概览"},
+    {"name": "sessions", "summary": "列出所有历史会话"},
+    {"name": "resume", "summary": "切换会话（无参数列出，指定 ID 直接切换）"},
     {"name": "pwd", "summary": "沙箱当前工作目录"},
     {"name": "ls", "summary": "列出沙箱主目录下的文件"},
 ]
@@ -725,6 +710,10 @@ async def run_slash_command(name: str, runner) -> None:
         entries = await runner.sandbox.files.list(runner.sandbox.home)
         lines = [f"{'d' if entry.is_dir else 'f'} {entry.name}" for entry in entries]
         emit_slash_result("ls", "\n".join(lines) or "(空目录)")
+        return
+
+    if name in ("sessions", "resume"):
+        emit_thread_list()
         return
 
     emit_slash_result(name, f"未知命令：/{name}", ok=False)
@@ -854,7 +843,7 @@ async def open_fresh_runner(config: ReplConfig, project_path: str | None = None)
 
 def clean_empty_threads(*, keep_thread_ids: set[str] | frozenset[str] = frozenset()):
     """清理没有用户消息的空会话，供 reset/退出路径复用。"""
-    report = clean_pagent(keep_thread_ids=keep_thread_ids)
+    report = clean_electromind(keep_thread_ids=keep_thread_ids)
     clean_message = format_clean_report(report)
     if clean_message:
         log(f"[wire] {clean_message}")
@@ -1154,13 +1143,17 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             log("[wire] user command missing text")
             return runner
         # 以 / 开头的走 slash 命令：本地只读能力，不跑 Agent、不进对话历史。
+        # 只有已知命令才拦截；未知的 /xxx（含绝对路径）按普通文本交给 Agent。
         if text.lstrip().startswith("/"):
-            try:
-                await run_slash_command(text.strip().lstrip("/").split()[0], runner)
-            except Exception as exc:
-                log(f"[wire] slash failed: {exc}")
-                emit_error(format_exc(exc), where="slash")
-            return runner
+            cmd_name = text.strip().lstrip("/").split()[0]
+            known_commands = {item["name"] for item in SLASH_COMMANDS}
+            if cmd_name in known_commands:
+                try:
+                    await run_slash_command(cmd_name, runner)
+                except Exception as exc:
+                    log(f"[wire] slash failed: {exc}")
+                    emit_error(format_exc(exc), where="slash")
+                return runner
         if turn_active(state):
             log("[wire] 上一轮还在跑，忽略新 user（一次一轮）")
             return runner

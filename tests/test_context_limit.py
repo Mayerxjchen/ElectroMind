@@ -1,4 +1,4 @@
-from pagentv4.core.context_limit import (
+from electromind.core.context_limit import (
     DEFAULT_CONTEXT_LIMIT,
     resolve_context_limit,
 )

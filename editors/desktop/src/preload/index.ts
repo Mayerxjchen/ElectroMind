@@ -75,8 +75,8 @@ const desktopApi: DesktopApi = {
   refreshEnvironmentCheck() {
     return ipcRenderer.invoke("desktop:refresh-environment-check");
   },
-  installPagentCli() {
-    return ipcRenderer.invoke("desktop:install-pagent-cli");
+  installElectromindCli() {
+    return ipcRenderer.invoke("desktop:install-electromind-cli");
   },
   saveProviderSetup(setup) {
     return ipcRenderer.invoke("desktop:save-provider-setup", setup);

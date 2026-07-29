@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import asyncio
 import sys
+from dataclasses import replace
 
-from pagentv4 import Runner
+from electromind import Runner
 
 from .config import ReplConfig
 from .layout_terminal import LayoutTerminal
@@ -170,48 +171,67 @@ async def run_concurrent_repl(config: ReplConfig, *, color: bool | None = None) 
 
         return await run_blocking_repl(config, color=use_color)
 
-    from .clean import clean_pagent, format_clean_report
+    from .clean import clean_electromind, format_clean_report
+    from . import repl as repl_module
 
     runner: Runner | None = None
     exit_code = 0
     had_user_turn = False
     try:
         runner = await open_runner(config)
-        run_state: dict = {"active": False, "permit": None, "status": "空闲"}
-        sync_run_state_ui(runner, run_state)
-        terminal = LayoutTerminal(color=use_color)
-        app = terminal.build_application(run_state=run_state, runner=runner)
 
-        token = layout_terminal.set(terminal)
-        try:
-            terminal.write(format_banner(runner, color=use_color))
-            terminal.write(
-                c(
-                    "输入行固定在最底；run 中 Enter=steer"
-                    + ("" if config.permission_auto() else "，危险工具需 permit> 审批")
-                    + "，Esc/Ctrl+C=cancel",
-                    DIM,
-                    on=use_color,
-                )
-            )
+        while True:
+            run_state: dict = {"active": False, "permit": None, "status": "空闲"}
+            sync_run_state_ui(runner, run_state)
+            terminal = LayoutTerminal(color=use_color)
+            app = terminal.build_application(run_state=run_state, runner=runner)
 
-            loop_task = asyncio.create_task(
-                run_layout_loop(
-                    runner,
-                    terminal,
-                    run_state,
-                    color=use_color,
-                    user_label=config.resolved_user_label(),
-                    assistant_label=config.resolved_assistant_label(),
-                    permit_auto=config.permission_auto(),
+            token = layout_terminal.set(terminal)
+            try:
+                terminal.write(format_banner(runner, color=use_color))
+                terminal.write(
+                    c(
+                        "输入行固定在最底；run 中 Enter=steer"
+                        + ("" if config.permission_auto() else "，危险工具需 permit> 审批")
+                        + "，Esc/Ctrl+C=cancel",
+                        DIM,
+                        on=use_color,
+                    )
                 )
-            )
-            app_task = asyncio.create_task(app.run_async())
-            had_user_turn = await loop_task
-            app.exit()
-            await app_task
-        finally:
-            layout_terminal.reset(token)
+
+                loop_task = asyncio.create_task(
+                    run_layout_loop(
+                        runner,
+                        terminal,
+                        run_state,
+                        color=use_color,
+                        user_label=config.resolved_user_label(),
+                        assistant_label=config.resolved_assistant_label(),
+                        permit_auto=config.permission_auto(),
+                    )
+                )
+                app_task = asyncio.create_task(app.run_async())
+                had_user_turn = await loop_task
+                app.exit()
+                await app_task
+            finally:
+                layout_terminal.reset(token)
+
+            # Check for thread switch request from /resume
+            if repl_module._pending_thread_switch:
+                new_thread_id = repl_module._pending_thread_switch
+                repl_module._pending_thread_switch = None
+                config = replace(config, thread_id=new_thread_id)
+                # Close old runner before opening new one
+                if runner is not None:
+                    try:
+                        await runner.close()
+                    except BaseException:
+                        pass
+                runner = await open_runner(config)
+                terminal.write(c(f"已切换到: {new_thread_id}", DIM, on=use_color))
+                continue
+            break
     except BaseException as exc:
         if isinstance(exc, SystemExit):
             raise
@@ -234,7 +254,7 @@ async def run_concurrent_repl(config: ReplConfig, *, color: bool | None = None) 
                     emit(c(message, RED, on=use_color), file=sys.stderr, flush=True)
                     exit_code = 1
             keep = {runner.thread.id} if had_user_turn else set()
-            report = clean_pagent(keep_thread_ids=keep)
+            report = clean_electromind(keep_thread_ids=keep)
             clean_message = format_clean_report(report)
             if clean_message:
                 emit(c(clean_message, DIM, on=use_color), flush=True)

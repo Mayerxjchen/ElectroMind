@@ -3,13 +3,17 @@ from __future__ import annotations
 import asyncio
 import os
 import sys
+from dataclasses import replace
 from datetime import datetime
 
 from prompt_toolkit.formatted_text import ANSI
 
-from pagentv4 import DeepSeek, Runner
+from electromind import DeepSeek, Runner
 
-from .clean import clean_pagent, format_clean_report
+# Module-level signal: set by /resume handler, consumed by REPL loops
+_pending_thread_switch: str | None = None
+
+from .clean import clean_electromind, format_clean_report
 from .config import (
     ReplConfig,
     build_parser,
@@ -31,8 +35,13 @@ from .terminal import emit, emit_prompt
 from .tool_permit import build_app_tool_hooks
 
 EXTRA_SYSTEM = (
-    "你是 pagent，一名严谨的工程师。回答保持简洁、直接、准确；不要输出表情符号；"
+    "你是 electromind，一名严谨的工程师。回答保持简洁、直接、准确；不要输出表情符号；"
     "不要使用寒暄、口号或不必要的解释。"
+    "\n\n"
+    "目录区分："
+    "\n- 用户的项目目录（host_root）是界面右侧展示的文件夹，用 list_host_files 查看。"
+    "\n- 沙箱工作区（workspace）是临时的执行环境，用 list_dir 查看。"
+    "\n- 当用户说「当前目录」「项目目录」「右侧目录」「我的文件」「绑定目录」时，默认指 host_root。"
 )
 
 
@@ -47,8 +56,8 @@ async def open_runner(config: ReplConfig) -> Runner:
     api_key = config.resolved_api_key()
     if not api_key:
         raise SystemExit(
-            "需要 API Key：运行交互式 pagent 完成 setup，"
-            "或写入 ~/.pagent/pagent.toml，或 export DEEPSEEK_API_KEY"
+            "需要 API Key：运行交互式 electromind 完成 setup，"
+            "或写入 ~/.electromind/electromind.toml，或 export DEEPSEEK_API_KEY"
         )
 
     thread_id = config.thread_id or f"thread-{datetime.now():%Y%m%d-%H%M%S}"
@@ -147,6 +156,58 @@ async def handle_command(cmd: str, runner: Runner, *, color: bool) -> bool:
             preview = str(message.content)[:80].replace("\n", " ")
             emit(f"  [{message.role}] {preview}")
         return False
+    if cmd == "/sessions":
+        from .sessions import format_session_table, list_sessions
+
+        emit(format_session_table(list_sessions()))
+        return False
+    if cmd.startswith("/resume"):
+        global _pending_thread_switch
+        from .sessions import (
+            find_session_by_id,
+            list_sessions,
+        )
+
+        parts = cmd.split(maxsplit=1)
+
+        # /resume <thread_id>
+        if len(parts) > 1 and parts[1].strip():
+            target = find_session_by_id(parts[1].strip())
+            if target is None:
+                # Try numeric index
+                try:
+                    idx = int(parts[1].strip()) - 1
+                    sessions = list_sessions()
+                    if 0 <= idx < len(sessions):
+                        target = sessions[idx]
+                except ValueError:
+                    pass
+            if target is None:
+                emit(f"会话不存在: {parts[1].strip()}")
+                return False
+            chosen_id = target.id
+
+        # /resume without arguments → interactive picker with arrow-key support
+        elif len(parts) == 1 and cmd.startswith("/resume"):
+            from .sessions import interactive_session_picker
+
+            sessions = list_sessions()
+            if not sessions:
+                emit("没有可恢复的会话")
+                return False
+            chosen_id = await asyncio.to_thread(
+                interactive_session_picker,
+                sessions,
+                current_id=runner.thread.id,
+            )
+            if chosen_id is None:
+                return False
+        else:
+            return False
+
+        _pending_thread_switch = chosen_id
+        emit(f"正在切换到: {chosen_id}")
+        return True  # signal REPL loop to restart with new thread
     emit(f"unknown command: {cmd}")
     return False
 
@@ -183,21 +244,22 @@ def format_fatal_error(exc: BaseException, *, phase: str) -> str:
             if phase == "start"
             else "SSH 连接可能已断开。"
         )
-        return f"pagent {label}失败（SSH 沙箱）: {text}\n  {hint}"
+        return f"electromind {label}失败（SSH 沙箱）: {text}\n  {hint}"
     lowered = text.lower()
     if "docker" in lowered or "podman" in lowered:
         return (
-            f"pagent {label}失败（容器沙箱）: {text}\n"
+            f"electromind {label}失败（容器沙箱）: {text}\n"
             "  请确认 Docker/Podman 已启动，且镜像已构建。"
         )
     if isinstance(exc, (FileNotFoundError, KeyError, ValueError)):
-        return f"pagent {label}失败: {text}"
+        return f"electromind {label}失败: {text}"
     if isinstance(exc, OSError):
-        return f"pagent {label}失败: {text}"
-    return f"pagent {label}失败: {name}: {text}"
+        return f"electromind {label}失败: {text}"
+    return f"electromind {label}失败: {name}: {text}"
 
 
 async def run_blocking_repl(config: ReplConfig, *, color: bool | None = None) -> int:
+    global _pending_thread_switch
     use_color = sys.stdout.isatty() if color is None else color
     runner: Runner | None = None
     exit_code = 0
@@ -218,10 +280,27 @@ async def run_blocking_repl(config: ReplConfig, *, color: bool | None = None) ->
             if await handle_prefixed_command(line, runner, color=use_color):
                 continue
             if line.startswith("/"):
-                if await handle_command(line, runner, color=use_color):
-                    say_goodbye(color=use_color)
-                    break
-                continue
+                cmd_name = line.split()[0] if line.strip() else ""
+                known = {
+                    "/exit", "/quit", "/pwd", "/ls",
+                    "/skills", "/history", "/sessions",
+                }
+                # /resume and its variants
+                is_known = cmd_name in known or cmd_name.startswith("/resume")
+                if is_known:
+                    exit_requested = await handle_command(line, runner, color=use_color)
+                    if _pending_thread_switch:
+                        new_thread_id = _pending_thread_switch
+                        _pending_thread_switch = None
+                        config = replace(config, thread_id=new_thread_id)
+                        runner = await open_runner(config)
+                        emit(format_banner(runner, color=use_color), flush=True)
+                        continue
+                    if exit_requested:
+                        say_goodbye(color=use_color)
+                        break
+                    continue
+                # 未知 /xxx（含绝对路径）不拦截，交给 Agent 处理
             try:
                 await render_turn(
                     runner,
@@ -258,7 +337,7 @@ async def run_blocking_repl(config: ReplConfig, *, color: bool | None = None) ->
                     emit(c(message, RED, on=use_color), file=sys.stderr, flush=True)
                     exit_code = 1
             keep = {runner.thread.id} if had_user_turn else set()
-            report = clean_pagent(keep_thread_ids=keep)
+            report = clean_electromind(keep_thread_ids=keep)
             clean_message = format_clean_report(report)
             if clean_message:
                 emit(c(clean_message, DIM, on=use_color), flush=True)
@@ -277,9 +356,31 @@ async def run_repl(config: ReplConfig, *, color: bool | None = None) -> int:
 def main(argv: list[str] | None = None) -> None:
     parser = build_parser()
     args = parser.parse_args(argv)
+
+    # --- subcommand: session list ---
+    if getattr(args, "subcommand", None) == "session" and args.action == "list":
+        from .sessions import format_session_table, list_sessions
+
+        print(format_session_table(list_sessions()))
+        raise SystemExit(0)
+
     config = config_from_args(args)
+
+    # --- --resume (interactive picker) ---
+    if config.resume_interactive:
+        from .sessions import interactive_session_picker, list_sessions
+
+        sessions = list_sessions()
+        if not sessions:
+            print("没有可恢复的会话")
+            raise SystemExit(1)
+        chosen = interactive_session_picker(sessions)
+        if chosen is None:
+            raise SystemExit(0)
+        config = replace(config, thread_id=chosen, resume_interactive=False)
+
     if not config.resolved_api_key() and not args.wire and not args.http:
-        # 交互 REPL：缺 Key 时引导写入 ~/.pagent；--wire/--http 由宿主先做 setup。
+        # 交互 REPL：缺 Key 时引导写入 ~/.electromind；--wire/--http 由宿主先做 setup。
         from .setup import interactive_setup
 
         interactive_setup()

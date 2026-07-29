@@ -1,9 +1,9 @@
-pagent Desktop — macOS 打开说明
+electromind Desktop — macOS 打开说明
 ================================
 
 从浏览器下载的 zip 可能带有「隔离」标记。若提示：
 
-  「"pagent Desktop" 已损坏，无法打开。您应该将它移到废纸篓。」
+  「"electromind Desktop" 已损坏，无法打开。您应该将它移到废纸篓。」
 
 这是系统拦截未签名应用，应用本身通常没有坏。
 
@@ -12,22 +12,22 @@ pagent Desktop — macOS 打开说明
 方式 A（推荐）— 终端去掉隔离标记
 ---------------------------------
 
-1. 把「pagent Desktop」拖进「应用程序」文件夹。
+1. 把「electromind Desktop」拖进「应用程序」文件夹。
 2. 打开「终端」，执行（路径按实际安装位置改）：
 
-   xattr -cr "/Applications/pagent Desktop.app"
+   xattr -cr "/Applications/electromind Desktop.app"
 
 3. 再双击打开应用。
 
 方式 B — 右键打开
 -----------------
 
-在 Finder 里右键「pagent Desktop」→「打开」→ 点「打开」。
+在 Finder 里右键「electromind Desktop」→「打开」→ 点「打开」。
 若仍提示已损坏，请用方式 A。
 
 方式 C — 暂不安装，用 VS Code 插件
 -----------------------------------
 
-https://synclionpaw.github.io/pagent/zh/vscode
+https://synclionpaw.github.io/electromind/zh/vscode
 
-文档：https://synclionpaw.github.io/pagent/zh/desktop
+文档：https://synclionpaw.github.io/electromind/zh/desktop

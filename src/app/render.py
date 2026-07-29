@@ -7,7 +7,7 @@ import sys
 import unicodedata
 from dataclasses import dataclass, field
 
-from pagentv4 import (
+from electromind import (
     RUN_PHASE_LABELS,
     ReasoningDelta,
     Runner,
@@ -106,23 +106,23 @@ def box_line_width() -> int:
     return INNER + 2
 
 
-# pagent 字符画 logo（standard figlet 风格），最宽 34 列，放在 banner box 上方。
+# electromind 字符画 logo（standard figlet 风格），放在 banner box 上方。
 LOGO_LINES = (
-    r" _ __   __ _  __ _  ___ _ __ | |_ ",
-    r"| '_ \ / _` |/ _` |/ _ \ '_ \| __|",
-    r"| |_) | (_| | (_| |  __/ | | | |_ ",
-    r"| .__/ \__,_|\__, |\___|_| |_|\__|",
-    r"|_|          |___/               ",
+    r" _____ _           _                       _           _ ",
+    r"|  ___| | ___  ___| |_ _ __ ___  _ __ ___ (_)_ __   __| |",
+    r"| |__ | |/ _ \/ __| __| '__/ _ \| '_ ` _ \| | '_ \ / _` |",
+    r"|  __|| |  __/ (__| |_| | | (_) | | | | | | | | | | (_| |",
+    r"|_|   |_|\___|\___|\__|_|  \___/|_| |_| |_|_|_| |_|\__,_|",
 )
 
 
 def format_logo(*, color: bool) -> str:
-    """pagent 字符画 logo，青色，与 banner box 同色系。"""
+    """electromind 字符画 logo，青色，与 banner box 同色系。"""
     return "\n".join(c(line, CYAN, on=color) for line in LOGO_LINES)
 
 
 def box_top(*, color: bool) -> str:
-    prefix = "╭─ pagent "
+    prefix = "╭─ electromind "
     bar = "─" * (box_line_width() - display_width(prefix) - 1)
     return c(f"{prefix}{bar}╮", CYAN, on=color)
 
@@ -140,7 +140,7 @@ def emit_user_line(text: str, *, color: bool, user_label: str = "you") -> None:
 
 
 def format_assistant_line(
-    body: str, *, color: bool, assistant_label: str = "pagent"
+    body: str, *, color: bool, assistant_label: str = "electromind"
 ) -> str:
     line = f"{assistant_label}> {body}"
     return c(line, GREEN, on=color) if color else line
@@ -319,7 +319,7 @@ def format_banner(runner: Runner, *, color: bool) -> str:
         note = shorten(f"spec 已冻结，忽略：{ignored}", INNER)
         lines.append(c(f"  {note}", DIM, on=color))
 
-    lines.append(c("  /exit  /pwd  /ls  /skills  /history", BLUE, on=color))
+    lines.append(c("  /exit  /resume  /sessions  /pwd  /ls  /skills  /history", BLUE, on=color))
     lines.append(c("  !!cmd sandbox  ·  !cmd host", BLUE, on=color))
     lines.append("")
     return "\n".join(lines)
@@ -363,7 +363,7 @@ class ToolBlock:
 class RenderState:
     color: bool
     user_label: str = "you"
-    assistant_label: str = "pagent"
+    assistant_label: str = "electromind"
     reasoning_parts: list[str] = field(default_factory=list)
     text_parts: list[str] = field(default_factory=list)
     previous_kind: str = ""
@@ -508,6 +508,21 @@ async def consume_run(
                 await prompt_permit_blocking(runner, event, color=state.color)
     state.finish()
 
+    # Update session metainfo after each successful run
+    try:
+        from datetime import datetime as _dt
+
+        meta = runner.thread.load_metainfo()
+        now = _dt.now().isoformat(timespec="seconds")
+        meta.setdefault("created_at", now)
+        if not meta.get("title"):
+            meta["title"] = user_input[:40] + ("…" if len(user_input) > 40 else "")
+        meta["updated_at"] = now
+        meta["message_count"] = len(runner.messages.data)
+        runner.thread.save_metainfo(meta)
+    except Exception:
+        pass  # metainfo is best-effort
+
 
 async def render_turn(
     runner: Runner,
@@ -516,7 +531,7 @@ async def render_turn(
     color: bool,
     state: RenderState | None = None,
     user_label: str = "you",
-    assistant_label: str = "pagent",
+    assistant_label: str = "electromind",
     permit_auto: bool = False,
 ) -> RenderState:
     if state is None:

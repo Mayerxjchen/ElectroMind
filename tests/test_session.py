@@ -3,7 +3,7 @@ import json
 import pytest
 
 from pagent import Session, SlidingWindowSession
-from pagent.tokens import count_tokens, tools_tokens
+from electromind_legacy.tokens import count_tokens, tools_tokens
 
 
 def test_session_starts_with_system():

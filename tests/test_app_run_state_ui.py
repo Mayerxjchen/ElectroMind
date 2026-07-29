@@ -2,7 +2,7 @@ from types import SimpleNamespace
 
 from app.layout_terminal import LayoutTerminal
 from app.render import format_status_label, sync_run_state_ui
-from pagentv4 import RunState, ToolCallBegin
+from electromind import RunState, ToolCallBegin
 
 
 def test_format_status_label_uses_runner_phase():

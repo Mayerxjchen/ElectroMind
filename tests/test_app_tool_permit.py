@@ -9,7 +9,7 @@ from app.tool_permit import (
     parse_permit_answer,
     summarize_tool_args,
 )
-from pagentv4 import ToolCallBegin
+from electromind import ToolCallBegin
 
 
 def test_permit_tools():

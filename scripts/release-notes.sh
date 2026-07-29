@@ -20,7 +20,7 @@ fi
 awk -v ver="$VER" '
   $0 ~ "^## " ver " " {
     found = 1
-    print "# pagent v" ver
+    print "# electromind v" ver
     print ""
     next
   }
