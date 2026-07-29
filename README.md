@@ -1,7 +1,18 @@
-# ElectroMind
+<div align="center">
+
+# ⚡ ElectroMind
+
 <img width="500" alt="ElectroMind banner" src="https://github.com/user-attachments/assets/c40443ce-679f-4d78-90b5-2cba92f39a07" />
 
-ElectroMind 是一个面向**科学计算与机器学习势函数（MLIP）工作流**的 AI Agent。它整合了第一性原理计算软件（VASP、CP2K、LAMMPS、DeepMD 等）的领域知识，能够在 local / Docker / Podman / SSH 多种 Sandbox 中执行计算任务、处理输入输出文件、分析结果，并通过可扩展的 Skills 系统持续积累科学工作流。
+[![Python](https://img.shields.io/badge/Python-≥3.11-blue?logo=python)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green)](./LICENSE)
+[![uv](https://img.shields.io/badge/build-uv-orange?logo=uv)](https://docs.astral.sh/uv/)
+
+**面向科学计算与机器学习势函数（MLIP）工作流的 AI Agent**
+
+</div>
+
+ElectroMind 整合了第一性原理计算软件（VASP、CP2K、LAMMPS、DeepMD 等）的领域知识，能够在 local / Docker / Podman / SSH 多种 Sandbox 中执行计算任务、处理输入输出文件、分析结果，并通过可扩展的 Skills 系统持续积累科学工作流。
 
 **核心能力：**
 
