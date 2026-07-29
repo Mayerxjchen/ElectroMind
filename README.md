@@ -1,5 +1,5 @@
 # ElectroMind
-
+![Uploading 389E1A46BDB72E3616DE0BFCF519CEB5.png…]()
 ElectroMind 是一个面向**科学计算与机器学习势函数（MLIP）工作流**的 AI Agent。它整合了第一性原理计算软件（VASP、CP2K、LAMMPS、DeepMD 等）的领域知识，能够在 local / Docker / Podman / SSH 多种 Sandbox 中执行计算任务、处理输入输出文件、分析结果，并通过可扩展的 Skills 系统持续积累科学工作流。
 
 **核心能力：**
@@ -34,7 +34,7 @@ uv sync
 
 ---
 
-## 五分钟快速开始
+## 快速开始
 
 ```bash
 # 1. 首次运行，按引导配置 API Key
