@@ -2,6 +2,14 @@
 
 from __future__ import annotations
 
+from .discovery import (
+    SkillCatalogSnapshot,
+    SkillDiagnostic,
+    SkillMount,
+    SkillSource,
+    discover_skill_sources,
+    load_skill_catalog,
+)
 from .skill import (
     PROJECT_LOCAL_SKILLS_DIR,
     USER_SKILLS_DIR,
@@ -21,12 +29,18 @@ __all__ = [
     "PROJECT_LOCAL_SKILLS_DIR",
     "USER_SKILLS_DIR",
     "Skill",
+    "SkillCatalogSnapshot",
+    "SkillDiagnostic",
     "SkillDiscoveryError",
+    "SkillMount",
     "SkillRegistry",
+    "SkillSource",
     "build_skills_system_prompt",
     "collect_resources",
     "default_skill_roots",
+    "discover_skill_sources",
     "load_skill",
+    "load_skill_catalog",
     "load_skills_from_root",
     "make_use_skill_tool",
     "parse_skill_md",

@@ -13,6 +13,10 @@ from electromind import (
     load_skills_from_root,
     make_use_skill_tool,
 )
+from electromind.skills.discovery import (
+    discover_skill_sources,
+    load_skill_catalog,
+)
 from electromind.skills.skill import (
     collect_resources,
     parse_skill_md,
@@ -327,3 +331,237 @@ async def test_use_skill_tool_falls_back_to_host_root_without_mount(tmp_path):
     payload = json.loads(result.content)
     # 没传 mount 时回退到宿主机 skill 根目录
     assert payload["root"].endswith("alpha")
+
+
+# ---------------------------------------------------------------------------
+# Task 1: discovery tests
+# ---------------------------------------------------------------------------
+
+
+def make_aicc_bundle(root: Path) -> None:
+    """Create a minimal AICC-shaped skill bundle at `root`.
+
+    Structure::
+
+        <root>/
+        ├── AGENTS.md
+        ├── procedures/
+        │   └── workflow/
+        │       └── SKILL.md
+        ├── tools/
+        │   └── hpc-submit/
+        │       └── SKILL.md
+        └── knowledge/
+            └── reference.md
+    """
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "AGENTS.md").write_text("# Global AICC instructions\nAlways do X.\n", encoding="utf-8")
+    wf = root / "procedures" / "workflow"
+    wf.mkdir(parents=True)
+    (wf / "SKILL.md").write_text(
+        "---\nname: workflow\ndescription: 标准工作流\n---\n执行标准工作流。\n", encoding="utf-8"
+    )
+    tool = root / "tools" / "hpc-submit"
+    tool.mkdir(parents=True)
+    (tool / "SKILL.md").write_text(
+        "---\nname: hpc-submit\ndescription: HPC 提交\n---\n提交 HPC 作业。\n", encoding="utf-8"
+    )
+    kn = root / "knowledge"
+    kn.mkdir(parents=True)
+    (kn / "reference.md").write_text("# Reference\nKnowledge base entry.\n", encoding="utf-8")
+
+
+def make_standard_skill(root: Path, name: str, description: str, body: str) -> Path:
+    """Create a standard skill directory (not AICC)."""
+    d = root / name
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "SKILL.md").write_text(
+        f"---\nname: {name}\ndescription: {description}\n---\n{body}\n", encoding="utf-8"
+    )
+    return d
+
+
+# ---- discovery source tests ----
+
+
+def test_discover_project_aicc_bundle_without_configuration(tmp_path):
+    """A project with a skills/ dir in AICC shape is discovered automatically."""
+    project = tmp_path / "project"
+    project.mkdir()
+    make_aicc_bundle(project / "skills")
+
+    sources = discover_skill_sources(str(project))
+    aicc = [s for s in sources if s.kind == "aicc"]
+    assert len(aicc) == 1
+    assert aicc[0].scope == "project"
+    assert aicc[0].root == (project / "skills").resolve()
+
+
+def test_discover_standard_project_skills(tmp_path):
+    """A project with .agents/skills/ and .electromind/skills/ is discovered."""
+    project = tmp_path / "project"
+    project.mkdir()
+
+    agents_dir = project / ".agents" / "skills"
+    agents_dir.mkdir(parents=True)
+    make_standard_skill(agents_dir, "agent-helper", "agent skill", "body\n")
+
+    em_dir = project / ".electromind" / "skills"
+    em_dir.mkdir(parents=True)
+    make_standard_skill(em_dir, "em-helper", "em skill", "body\n")
+
+    sources = discover_skill_sources(str(project))
+    standard = [s for s in sources if s.kind == "standard"]
+    # project sources: .agents/skills, .electromind/skills
+    agent_src = [s for s in standard if ".agents" in str(s.root)]
+    em_src = [s for s in standard if ".electromind" in str(s.root)]
+    assert len(agent_src) == 1
+    assert len(em_src) == 1
+
+
+def test_project_skill_wins_duplicate_user_skill_with_diagnostic(tmp_path):
+    """When a project skill and a user skill share a name, the project one wins
+    and a diagnostic is emitted."""
+    project = tmp_path / "project"
+    project.mkdir()
+    # Place the project skill in .agents/skills (standard project discovery path)
+    project_skills = project / ".agents" / "skills"
+    make_standard_skill(project_skills, "shared-skill", "project version", "project body\n")
+
+    user_home = tmp_path / "home"
+    user_home.mkdir()
+    user_skills = user_home / ".electromind" / "skills"
+    user_skills.mkdir(parents=True)
+    make_standard_skill(user_skills, "shared-skill", "user version", "user body\n")
+
+    sources = discover_skill_sources(str(project), user_home=user_home)
+    catalog = load_skill_catalog(sources)
+
+    skill = catalog.registry.get("shared-skill")
+    assert skill is not None
+    assert skill.description == "project version"
+    dupe_diags = [d for d in catalog.diagnostics if d.code == "duplicate_skill_name"]
+    assert len(dupe_diags) >= 1
+
+
+def test_aicc_knowledge_is_not_registered_as_skill(tmp_path):
+    """AICC `knowledge/` entries are NOT registered as Skills."""
+    project = tmp_path / "project"
+    project.mkdir()
+    make_aicc_bundle(project / "skills")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    names = catalog.registry.names()
+    assert "workflow" in names
+    assert "hpc-submit" in names
+    # knowledge/ should never be a skill name
+    assert "reference" not in names
+    assert "knowledge" not in names
+
+
+def test_project_skill_symlink_escape_is_rejected(tmp_path):
+    """Skill candidates that resolve outside their source root are rejected."""
+    project = tmp_path / "project"
+    project.mkdir()
+    skills_dir = project / ".agents" / "skills"
+    skills_dir.mkdir(parents=True)
+
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    make_standard_skill(outside, "escape-artist", "tries to escape", "body\n")
+
+    # Create a symlink that escapes
+    symlink = skills_dir / "escape-artist"
+    symlink.symlink_to(outside / "escape-artist")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    # The escaped skill should not be registered
+    assert catalog.registry.get("escape-artist") is None
+    escape_diags = [d for d in catalog.diagnostics if d.code == "skill_resolves_outside_root"]
+    assert len(escape_diags) >= 1
+
+
+def test_catalog_fingerprint_changes_when_skill_md_changes(tmp_path):
+    """The fingerprint must change when a SKILL.md body or AGENTS.md changes."""
+    project = tmp_path / "project"
+    project.mkdir()
+    make_aicc_bundle(project / "skills")
+
+    sources = discover_skill_sources(str(project))
+    catalog1 = load_skill_catalog(sources)
+    fp1 = catalog1.fingerprint
+
+    # Change a SKILL.md
+    (project / "skills" / "tools" / "hpc-submit" / "SKILL.md").write_text(
+        "---\nname: hpc-submit\ndescription: HPC 提交 v2\n---\n修改后的指令。\n",
+        encoding="utf-8",
+    )
+    catalog2 = load_skill_catalog(sources)
+    fp2 = catalog2.fingerprint
+
+    assert fp1 != fp2
+
+    # Change AGENTS.md
+    (project / "skills" / "AGENTS.md").write_text(
+        "# Updated global instructions\nDo Y instead.\n", encoding="utf-8"
+    )
+    catalog3 = load_skill_catalog(sources)
+    fp3 = catalog3.fingerprint
+
+    assert fp2 != fp3
+
+
+def test_discover_sources_includes_user_home_by_default(tmp_path, monkeypatch):
+    """When not given a project, user home sources are still discovered."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    user_skills = home / ".electromind" / "skills"
+    user_skills.mkdir(parents=True)
+    make_standard_skill(user_skills, "user-skill", "a user skill", "body\n")
+
+    sources = discover_skill_sources(None, user_home=home)
+    user_srcs = [s for s in sources if s.scope == "user"]
+    assert len(user_srcs) >= 1
+
+
+def test_source_ordering_is_deterministic(tmp_path):
+    """The source list must be ordered: project-aicc, project-agents, project-em,
+    configured, user-em, user-agents."""
+    project = tmp_path / "project"
+    project.mkdir()
+    make_aicc_bundle(project / "skills")
+
+    # Create .agents/skills and .electromind/skills in project
+    (project / ".agents" / "skills").mkdir(parents=True, exist_ok=True)
+    (project / ".electromind" / "skills").mkdir(parents=True, exist_ok=True)
+
+    # Create configured root
+    configured = tmp_path / "configured-skills"
+    configured.mkdir(parents=True, exist_ok=True)
+
+    home = tmp_path / "home"
+    home.mkdir()
+    (home / ".electromind" / "skills").mkdir(parents=True, exist_ok=True)
+    (home / ".agents" / "skills").mkdir(parents=True, exist_ok=True)
+
+    sources = discover_skill_sources(
+        str(project),
+        configured_roots=(str(configured),),
+        user_home=home,
+    )
+
+    order = [f"{s.scope}-{s.kind}" for s in sources]
+    assert order == [
+        "project-aicc",
+        "project-standard",
+        "project-standard",
+        "configured-standard",
+        "user-standard",
+        "user-standard",
+    ]

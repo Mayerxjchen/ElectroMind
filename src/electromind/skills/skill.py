@@ -39,6 +39,20 @@ class Skill:
     instructions: str
     root: Path
     resources: tuple[str, ...] = field(default_factory=tuple)
+    source_id: str = ""
+    skill_root: Path | None = None
+    bundle_root: Path | None = None
+    sha256: str = ""
+
+    def __post_init__(self) -> None:
+        # Ensure root is always set, using skill_root as fallback for compat.
+        if self.skill_root is None:
+            object.__setattr__(self, "skill_root", self.root)
+        if not self.sha256:
+            h = __import__("hashlib").sha256()
+            h.update(self.instructions.encode("utf-8"))
+            h.update(self.description.encode("utf-8"))
+            object.__setattr__(self, "sha256", h.hexdigest())
 
 
 class SkillDiscoveryError(Exception):
