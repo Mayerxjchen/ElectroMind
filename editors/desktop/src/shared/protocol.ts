@@ -73,6 +73,7 @@ export type Skill = {
     name: string;
     description: string;
     path: string;
+};
 
 export type SkillStateItem = {
     name: string;

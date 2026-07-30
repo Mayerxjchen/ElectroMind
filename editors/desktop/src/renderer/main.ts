@@ -2517,7 +2517,6 @@ async function start(): Promise<void> {
     // ── loaded ──
     const loaded = state.skills.filter((s) => s.status === "loaded");
     if (loaded.length > 0 || state.loaded.length > 0) {
-      const loadedNames = new Set(state.loaded);
       const displayLoaded = loaded.length > 0 ? loaded : state.loaded.map((n) => ({ name: n, description: "", source: "", sha256: "", status: "loaded" as const }));
       html += `<div class="skill-section-label">本任务已加载</div>`;
       for (const skill of displayLoaded) {
@@ -3117,7 +3116,7 @@ async function start(): Promise<void> {
     }
 
     if (event.method === "SkillsState") {
-      const state = event.params as SkillsStatePayload;
+      const state = event.params as unknown as SkillsStatePayload;
       // Only apply if this event is for the active task
       if (state.thread_id && state.thread_id === uiState.runtime.currentThreadId) {
         uiState.skillsState = state;
