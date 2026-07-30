@@ -57,7 +57,7 @@ from electromind.ithread import SPEC_FILENAME, ThreadSpec
 from electromind.paths import resolve_electromind_home
 from electromind.runtime.thread import Thread, default_threads_root
 
-from .clean import clean_electromind, format_clean_report, iter_thread_dirs
+from .clean import clean_electromind, format_clean_report
 from .config import ReplConfig, load_config, refresh_provider_from_disk
 from .config_view import config_to_public_dict
 from .environment import environment_check
@@ -112,6 +112,7 @@ def command_project_path(command: dict) -> str | None:
 
 # reset 可携带的 ThreadSpec / ReplConfig 覆盖字段（字符串，空值忽略）。
 _RESET_OVERRIDE_KEYS = (
+    "execution_mode",
     "backend",
     "image",
     "ssh_host",
@@ -294,6 +295,35 @@ def emit_current_thread(runner) -> None:
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
+def emit_execution_state(runner) -> None:
+    """下发当前执行模式解析结果，供前端渲染状态栏。"""
+    execution = getattr(runner, "_execution", None)
+    if execution is None:
+        return
+    params = execution.to_dict()
+    params["thread_id"] = runner.thread.id
+    payload = {
+        "jsonrpc": "2.0",
+        "method": "ExecutionState",
+        "params": params,
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def emit_execution_state_cleared() -> None:
+    """清除执行状态（Resume 时先清空，待新 Runner 打开后重新发送）。"""
+    emit_line(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "ExecutionState",
+                "params": {"mode": None, "resolved_backend": None, "isolated": False, "warning": None, "diagnostics": [], "thread_id": None},
+            }
+        )
+        + "\n"
+    )
+
+
 def thread_spec(thread_dir) -> ThreadSpec | None:
     """读取 thread.toml；配置损坏时忽略该配置。"""
     spec_path = thread_dir / SPEC_FILENAME
@@ -365,18 +395,9 @@ def emit_thread_list(project_path: str | None = None) -> None:
 
 def resolved_backend_name(runner) -> str:
     """返回当前运行 sandbox 的真实 backend 名称。"""
-    backend = runner.sandbox.backend
-    inner = getattr(backend, "inner", backend)
-    class_name = inner.__class__.__name__
-    if class_name == "LocalBackend":
-        return "local"
-    if class_name == "DockerBackend":
-        return "docker"
-    if class_name == "PodmanBackend":
-        return "podman"
-    if class_name == "SshBackend":
-        return "ssh"
-    return runner.thread.spec.backend
+    from electromind.sandbox import backend_type_name
+
+    return backend_type_name(runner.sandbox.backend)
 
 
 def emit_sandbox_status_payload(
@@ -401,23 +422,43 @@ def emit_sandbox_status_payload(
 
 
 def emit_skills(runner) -> None:
-    """下发当前会话已加载的 skills 列表，供前端渲染技能面板。"""
-    skills = runner.skills.list() if runner else []
-    payload = {
-        "jsonrpc": "2.0",
-        "method": "Skills",
-        "params": {
+    """下发当前会话的 skill 目录快照，供前端渲染技能面板。
+
+    优先使用 ``SkillRuntime.state_payload()`` 产出结构化状态（含
+    可用/已加载/诊断三分区）；fallback 到旧的 ``runner.skills.list()``。
+    """
+    skill_runtime = getattr(runner, "skill_runtime", None)
+    if skill_runtime is not None:
+        payload = skill_runtime.state_payload(thread_id=getattr(runner.thread, "id", ""))
+    else:
+        skills = runner.skills.list() if runner else []
+        payload = {
+            "thread_id": getattr(runner.thread, "id", "") if runner else "",
+            "fingerprint": "",
             "skills": [
                 {
-                    "name": skill.name,
-                    "description": skill.description,
-                    "path": str(skill.root),
+                    "name": s.name,
+                    "description": s.description,
+                    "source": "",
+                    "sha256": getattr(s, "sha256", ""),
+                    "status": "available",
                 }
-                for skill in skills
+                for s in skills
             ],
-        },
-    }
-    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+            "loaded": [],
+            "diagnostics": [],
+        }
+    emit_line(
+        json.dumps(
+            {
+                "jsonrpc": "2.0",
+                "method": "SkillsState",
+                "params": payload,
+            },
+            ensure_ascii=False,
+        )
+        + "\n"
+    )
 
 
 async def emit_sandbox_status(runner) -> None:
@@ -877,7 +918,15 @@ async def ensure_runner(runner, config: ReplConfig, state: dict):
             thread_id,
             project_path if isinstance(project_path, str) else None,
         )
-    return await open_fresh_runner(config)
+    # 如果上一次 reset 失败并保留了 pending_config，沿用用户选择的
+    # execution mode 等参数，而不是静默回退到进程启动时的原始配置。
+    # 注意：不敢先 pop，否则 open_fresh_runner 再次失败时配置永久丢失，
+    # 下一次 ensure_runner 又会回退到默认 sandbox。
+    effective_config = state.get("pending_config", config)
+    runner = await open_fresh_runner(effective_config)
+    # 成功创建后清除 pending_config，避免脏状态残留。
+    state.pop("pending_config", None)
+    return runner
 
 
 def emit_empty_history_replay() -> None:
@@ -1071,6 +1120,7 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             runner = None
         state["thread_id"] = thread.id
         state["project_path"] = project_path
+        emit_execution_state_cleared()
         emit_thread_history_replay(thread)
         return None
 
@@ -1098,6 +1148,9 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             log(f"[wire] reset failed: {exc}")
             state["thread_id"] = None
             state["project_path"] = project_path
+            # 保存本次 reset 的配置，避免后续 ensure_runner 回退到
+            # 进程启动时的原始配置（例如从 local 切回默认 sandbox）。
+            state["pending_config"] = reset_config
             # Thread.open 已落盘，沙箱启动失败时清掉这个空会话，避免列表里留僵尸 thread。
             clean_empty_threads()
             emit_empty_history_replay()
@@ -1105,7 +1158,9 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             return None
         state["thread_id"] = runner.thread.id
         state["project_path"] = project_path
+        state.pop("pending_config", None)
         emit_history_replay(runner)
+        emit_execution_state(runner)
         log(
             "[wire] reset：已开新会话"
             + (f" backend={reset_config.backend}" if reset_config.backend else "")
@@ -1136,6 +1191,8 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
     if opened_runner:
         state["thread_id"] = runner.thread.id
         emit_current_thread(runner)
+        emit_execution_state(runner)
+        emit_history_replay(runner)
 
     if cmd == "user":
         text = command.get("text", "")

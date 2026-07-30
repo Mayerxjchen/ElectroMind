@@ -5,6 +5,15 @@ export type AppInfo = {
     userName: string;
 };
 
+export type ExecutionStatePayload = {
+    mode: "local" | "sandbox" | "ssh" | null;
+    resolved_backend: "local" | "docker" | "podman" | "ssh" | null;
+    isolated: boolean;
+    warning: string | null;
+    diagnostics: Array<{ code: string; severity: string; message: string }>;
+    thread_id?: string | null;
+};
+
 export type RuntimeState = {
     projectPath: string;
     activeHomePath: string;
@@ -18,6 +27,8 @@ export type RuntimeState = {
     transport: "wire" | "http";
     status: "idle" | "starting" | "ready" | "error";
     lastError?: string;
+    /** 执行模式状态（来自后端 ExecutionState 事件）。 */
+    executionState?: ExecutionStatePayload;
 };
 
 export type ThreadSummary = {
@@ -62,6 +73,28 @@ export type Skill = {
     name: string;
     description: string;
     path: string;
+
+export type SkillStateItem = {
+    name: string;
+    description: string;
+    source: string;
+    sha256: string;
+    status: "available" | "loaded" | "unavailable";
+};
+
+export type SkillDiagnosticPayload = {
+    code: string;
+    message: string;
+    path: string;
+    severity: "warning" | "error";
+};
+
+export type SkillsStatePayload = {
+    thread_id: string;
+    fingerprint: string;
+    skills: SkillStateItem[];
+    loaded: string[];
+    diagnostics: SkillDiagnosticPayload[];
 };
 
 export type AppSettings = {

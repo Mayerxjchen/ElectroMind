@@ -159,6 +159,74 @@ function formatMetaValue(value: string | number | undefined): string {
   return String(value);
 }
 
+/** Normalize a project-relative path string. Returns null for absolute paths
+ *  or paths that attempt to escape the project root via `..` segments. */
+function normalizeProjectRelativePath(raw: string): string | null {
+  if (!raw) {
+    return null;
+  }
+  // Absolute paths (Unix or Windows) are not valid relative paths.
+  if (raw.startsWith("/") || /^[A-Za-z]:[/\\]/.test(raw)) {
+    return null;
+  }
+  const segments = raw.replace(/\\/g, "/").split("/");
+  const resolved: string[] = [];
+  for (const segment of segments) {
+    if (segment === "" || segment === ".") {
+      continue;
+    }
+    if (segment === "..") {
+      if (resolved.length === 0) {
+        return null; // escaping project root
+      }
+      resolved.pop();
+    } else {
+      resolved.push(segment);
+    }
+  }
+  return resolved.join("/");
+}
+
+/** Build an absolute path by joining the project root with a normalized
+ *  relative path. Returns null if the result does not sit under the root. */
+function buildAbsolutePath(projectPath: string, relativePath: string): string | null {
+  if (!projectPath) {
+    return null;
+  }
+  const normalized = normalizeProjectRelativePath(relativePath);
+  if (normalized === null) {
+    return null;
+  }
+
+  const sep = projectPath.includes("\\") ? "\\" : "/";
+  const trimmed = projectPath.replace(/[/\\]+$/, "");
+
+  // Reconstitute a proper root when stripping left an incomplete prefix:
+  //   "/"        → trimmed ""   → root "/"
+  //   "C:\\"     → trimmed "C:" → root "C:\\"
+  //   "/project" → trimmed "/project" → root "/project"
+  let root: string;
+  if (!trimmed) {
+    root = sep;
+  } else if (/^[A-Za-z]:$/.test(trimmed)) {
+    root = `${trimmed}${sep}`;
+  } else {
+    root = trimmed;
+  }
+
+  if (!normalized) {
+    return root;
+  }
+
+  const absolute = `${root}${root.endsWith(sep) ? "" : sep}${normalized.replace(/\//g, sep)}`;
+  // Safety: verify the result starts with the canonical root (trimmed or reconstructed).
+  const checkRoot = trimmed || root;
+  if (!absolute.startsWith(checkRoot)) {
+    return null;
+  }
+  return absolute;
+}
+
 function artifactIcon(name: string): DesktopIconName {
   if (/\.(html?|css|jsx?|tsx?|py|sh)$/i.test(name)) {
     return "code-xml";
@@ -486,10 +554,11 @@ function renderNewSessionForm(
     image: string;
   },
 ): string {
-  const backends = options.availableBackends.length > 0
-    ? options.availableBackends
-    : (["local"] as SandboxBackendOption[]);
-  const backend = backends.includes(draft.backend) ? draft.backend : backends[0];
+  // 始终展示全部三种模式；不可用模式标记为 disabled，container 不可用时阻塞但不切 local。
+  const allBackends: SandboxBackendOption[] = ["container", "local", "ssh"];
+  const availableSet = new Set(options.availableBackends);
+  const backend = draft.backend;
+  const containerUnavailable = backend === "container" && !availableSet.has("container");
   const sshHosts = options.sshHosts;
   const images = options.availableImages.length > 0
     ? options.availableImages
@@ -499,15 +568,20 @@ function renderNewSessionForm(
     : (images.includes(options.defaultImage) ? options.defaultImage : images[0]);
   const isContainer =
     backend === "container" || backend === "docker" || backend === "podman";
-  const backendCards = backends
+  const backendCards = allBackends
     .map((item) => {
+      const available = availableSet.has(item);
       const active = item === backend ? " active" : "";
+      const disabled = !available ? " disabled" : "";
+      const sub = available
+        ? sandboxBackendOptionSub(item)
+        : (item === "container" ? "Docker/Podman 不可用" : "当前不可用");
       return `
-        <button class="new-session-backend${active}" type="button" data-backend="${escapeHtml(item)}">
+        <button class="new-session-backend${active}" type="button" data-backend="${escapeHtml(item)}"${disabled}>
           <span class="new-session-backend-icon" aria-hidden="true">${renderIcon(sessionSandboxIconName(item))}</span>
           <span class="new-session-backend-copy">
             <span class="new-session-backend-label">${escapeHtml(sandboxBackendOptionLabel(item))}</span>
-            <span class="new-session-backend-sub">${escapeHtml(sandboxBackendOptionSub(item))}</span>
+            <span class="new-session-backend-sub">${escapeHtml(sub)}</span>
           </span>
         </button>
       `;
@@ -568,8 +642,12 @@ function renderNewSessionForm(
     <div class="new-session-form">
       <div class="new-session-field">
         <span class="new-session-label">沙箱类型</span>
-        <div class="new-session-backends" data-backend-list style="--backend-count: ${backends.length}">${backendCards}</div>
-        <div class="new-session-hint" data-backend-hint>${escapeHtml(sandboxBackendOptionHint(backend))}</div>
+        <div class="new-session-backends" data-backend-list style="--backend-count: ${allBackends.length}">${backendCards}</div>
+        ${
+          containerUnavailable
+            ? `<div class="new-session-blocking">Docker/Podman 不可用。Sandbox 是默认执行目标，安装或启动容器运行时后重试，或手动选择 Local 并确认风险。</div>`
+            : `<div class="new-session-hint" data-backend-hint>${escapeHtml(sandboxBackendOptionHint(backend))}</div>`
+        }
       </div>
       ${imageBlock}
       <label class="new-session-field">
@@ -583,7 +661,7 @@ function renderNewSessionForm(
       ${sshBlock}
       <div class="new-session-actions">
         <button class="new-session-secondary" type="button" data-new-session-cancel>取消</button>
-        <button class="new-session-primary" type="button" data-new-session-confirm>创建会话</button>
+        <button class="new-session-primary" type="button" data-new-session-confirm${containerUnavailable ? " disabled" : ""}>${containerUnavailable ? "容器不可用" : "创建会话"}</button>
       </div>
     </div>
   `;
@@ -646,6 +724,7 @@ function renderTreeRows(
               class="tree-row tree-row-dir"
               type="button"
               data-tree-toggle="${escapeHtml(node.id)}"
+              data-node-path="${escapeHtml(node.id)}"
               style="--tree-indent:${indent}px"
             >
               <span class="tree-cell tree-cell-arrow">
@@ -662,7 +741,7 @@ function renderTreeRows(
         `;
       }
       return `
-        <div class="tree-row tree-row-file" style="--tree-indent:${indent}px">
+        <div class="tree-row tree-row-file" data-node-path="${escapeHtml(node.id)}" style="--tree-indent:${indent}px">
           <span class="tree-cell tree-cell-arrow"></span>
           <span class="tree-cell tree-cell-icon">
             ${renderIcon("file")}
@@ -832,6 +911,10 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
   root.innerHTML = `
     <div class="desktop-root">
     <div class="desktop-shell ${platformClass(appInfo)}" data-shell>
+      <div class="execution-risk-bar" data-execution-risk-bar hidden>
+        <span class="execution-risk-icon" aria-hidden="true">⚠</span>
+        <span class="execution-risk-text" data-execution-risk-text>本地执行：命令直接以当前用户权限运行，无隔离。</span>
+      </div>
       <div class="desktop-titlebar">
         <div class="titlebar-left">
           <div class="titlebar-switch" data-titlebar-switch role="button" tabindex="0" title="切换主题" aria-label="切换主题">
@@ -1379,6 +1462,14 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           </div>
         </section>
       </div>
+      <div class="tree-context-menu" data-tree-context-menu hidden role="menu">
+        <button class="tree-context-item" type="button" data-context-copy="absolute" role="menuitem">
+          <span class="tree-context-item-label">复制绝对路径</span>
+        </button>
+        <button class="tree-context-item" type="button" data-context-copy="relative" role="menuitem">
+          <span class="tree-context-item-label">复制项目相对路径</span>
+        </button>
+      </div>
     </div>
   `;
 }
@@ -1533,6 +1624,7 @@ async function start(): Promise<void> {
   const skillsList = findRequired<HTMLElement>("[data-skills-list]");
   const fileTree = findRequired<HTMLElement>("[data-file-tree]");
   const projectTree = findRequired<HTMLElement>("[data-project-tree]");
+  const treeContextMenu = findRequired<HTMLElement>("[data-tree-context-menu]");
   const terminalPanel = findRequired<HTMLElement>("[data-terminal-panel]");
   const artifactsList = findRequired<HTMLElement>("[data-artifacts-list]");
   const artifactsPanel = findRequired<HTMLElement>("[data-artifacts-panel]");
@@ -1624,6 +1716,7 @@ async function start(): Promise<void> {
     artifacts: [] as ArtifactSummary[],
     sessions: [] as ThreadSummary[],
     skills: [] as Skill[],
+    skillsState: null as SkillsStatePayload | null,
     runtime: initialRuntime,
   };
   const historyDockButton = findRequired<HTMLButtonElement>("[data-history-dock]");
@@ -1637,6 +1730,7 @@ async function start(): Promise<void> {
   const refreshProjectButton = findRequired<HTMLButtonElement>("[data-refresh-project]");
   let keepSidebarOpen = false;
   let artifactPreviewPath = "";
+  let contextNodePath = "";
 
   renderArtifactList();
 
@@ -1739,7 +1833,7 @@ async function start(): Promise<void> {
   let newSessionModalCloseTimer = 0;
   let newSessionRequestId = 0;
   let newSessionDraft = {
-    backend: "local" as SandboxBackendOption,
+    backend: "container" as SandboxBackendOption,
     projectPath: "",
     sshHost: "",
     sshWorkdir: "~/electromind",
@@ -2243,9 +2337,11 @@ async function start(): Promise<void> {
         return;
       }
       newSessionOptionsCache = options;
+      // 安全规则：容器不可用时保持 container 选择（不自动降级为 local）。
+      // 用户必须明确选择 local 并确认风险。
       const backends = options.availableBackends;
-      if (!backends.includes(newSessionDraft.backend)) {
-        newSessionDraft.backend = backends[0] ?? "local";
+      if (!backends.includes(newSessionDraft.backend) && newSessionDraft.backend !== "container") {
+        newSessionDraft.backend = "container";
       }
       newSessionDraft.projectPath = options.projectPath || uiState.runtime.projectPath;
       if (
@@ -2280,6 +2376,13 @@ async function start(): Promise<void> {
     }
     if (newSessionDraft.backend === "ssh" && !newSessionDraft.sshHost) {
       return;
+    }
+    // 安全规则：container 不可用时不允许创建会话，除非用户显式选择了 local
+    if (newSessionDraft.backend === "container") {
+      const available = newSessionOptionsCache?.availableBackends ?? [];
+      if (!available.includes("container")) {
+        return; // 按钮应为 disabled，这里做最后一道防线
+      }
     }
     const options: ResetSessionOptions = {
       backend: newSessionDraft.backend,
@@ -2346,26 +2449,101 @@ async function start(): Promise<void> {
     applyHeader();
   }
 
+  interface SkillStateItem {
+    name: string;
+    description: string;
+    source: string;
+    sha256: string;
+    status: "available" | "loaded" | "unavailable";
+  }
+
+  interface SkillDiagnosticPayload {
+    code: string;
+    message: string;
+    path: string;
+    severity: "warning" | "error";
+  }
+
+  interface SkillsStatePayload {
+    thread_id: string;
+    fingerprint: string;
+    skills: SkillStateItem[];
+    loaded: string[];
+    diagnostics: SkillDiagnosticPayload[];
+  }
+
   function renderSkillList(): void {
-    if (uiState.skills.length === 0) {
+    const state = uiState.skillsState;
+    // Fallback to old skills list
+    if (!state && uiState.skills.length > 0) {
+      skillsList.innerHTML = uiState.skills
+        .map(
+          (skill) => `
+            <div class="skill-item" title="${escapeHtml(skill.path)}">
+              <span class="skill-name">${escapeHtml(skill.name)}</span>
+              <span class="skill-desc">${escapeHtml(skill.description)}</span>
+            </div>
+          `,
+        )
+        .join("");
+      return;
+    }
+
+    if (!state || (state.skills.length === 0 && state.diagnostics.length === 0)) {
       skillsList.innerHTML = `
         <div class="session-empty">
-          <div class="session-empty-title">暂无 Skills</div>
-          <div class="session-empty-copy">在 ~/.electromind/skills/ 目录下放置技能即可。</div>
+          <div class="session-empty-title">暂无可用 Skill</div>
+          <div class="session-empty-copy">当前项目和用户目录中未发现可用 Skill。支持项目 skills/、.agents/skills、.electromind/skills。</div>
         </div>
       `;
       return;
     }
-    skillsList.innerHTML = uiState.skills
-      .map(
-        (skill) => `
-          <div class="skill-item" title="${escapeHtml(skill.path)}">
+
+    let html = "";
+
+    // ── available ──
+    const available = state.skills.filter((s) => s.status === "available");
+    if (available.length > 0) {
+      html += `<div class="skill-section-label">可用</div>`;
+      for (const skill of available) {
+        html += `
+          <div class="skill-item" title="来源: ${escapeHtml(skill.source)}">
             <span class="skill-name">${escapeHtml(skill.name)}</span>
             <span class="skill-desc">${escapeHtml(skill.description)}</span>
-          </div>
-        `,
-      )
-      .join("");
+          </div>`;
+      }
+    }
+
+    // ── loaded ──
+    const loaded = state.skills.filter((s) => s.status === "loaded");
+    if (loaded.length > 0 || state.loaded.length > 0) {
+      const loadedNames = new Set(state.loaded);
+      const displayLoaded = loaded.length > 0 ? loaded : state.loaded.map((n) => ({ name: n, description: "", source: "", sha256: "", status: "loaded" as const }));
+      html += `<div class="skill-section-label">本任务已加载</div>`;
+      for (const skill of displayLoaded) {
+        html += `
+          <div class="skill-item skill-loaded" title="已激活">
+            <span class="skill-name">${escapeHtml(skill.name)}</span>
+            <span class="skill-desc">${escapeHtml(skill.description)}</span>
+            <span class="skill-badge">✓</span>
+          </div>`;
+      }
+    }
+
+    // ── diagnostics ──
+    if (state.diagnostics.length > 0) {
+      html += `<div class="skill-section-label">诊断</div>`;
+      for (const d of state.diagnostics) {
+        const icon = d.severity === "error" ? "✗" : "⚠";
+        html += `
+          <div class="skill-item skill-diag skill-diag-${d.severity}" title="${escapeHtml(d.path)}">
+            <span class="skill-name">${icon} ${escapeHtml(d.code)}</span>
+            <span class="skill-desc">${escapeHtml(d.message)}</span>
+          </div>`;
+      }
+    }
+
+    skillsList.innerHTML = html;
   }
 
   function toggleSkillsPanel(show: boolean): void {
@@ -2410,7 +2588,79 @@ async function start(): Promise<void> {
     )}`;
   }
 
+  function showTreeContextMenu(event: MouseEvent): void {
+    event.preventDefault();
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const row = target.closest<HTMLElement>(".tree-row");
+    if (!row) {
+      return;
+    }
+    const nodePath = row.dataset.nodePath;
+    const normalizedPath = nodePath ? normalizeProjectRelativePath(nodePath) : null;
+    if (!nodePath || !normalizedPath) {
+      return;
+    }
+
+    // Close any existing menu first, then set the path so hideTreeContextMenu
+    // doesn't clear the new value.
+    hideTreeContextMenu();
+    contextNodePath = normalizedPath;
+
+    // Position at pointer within the viewport.
+    const rect = treeContextMenu.getBoundingClientRect();
+    const menuWidth = rect.width || 180;
+    const menuHeight = rect.height || 80;
+    let left = event.clientX;
+    let top = event.clientY;
+    if (left + menuWidth > window.innerWidth) {
+      left = window.innerWidth - menuWidth - 8;
+    }
+    if (top + menuHeight > window.innerHeight) {
+      top = window.innerHeight - menuHeight - 8;
+    }
+    treeContextMenu.style.left = `${Math.max(0, left)}px`;
+    treeContextMenu.style.top = `${Math.max(0, top)}px`;
+    treeContextMenu.hidden = false;
+  }
+
+  function hideTreeContextMenu(): void {
+    treeContextMenu.hidden = true;
+    contextNodePath = "";
+  }
+
+  async function copyContextPath(mode: "absolute" | "relative"): Promise<void> {
+    const projectPath = uiState.runtime.projectPath;
+    // contextNodePath is always a normalized relative path or "" (project root).
+    const rel = contextNodePath || ".";
+
+    let path: string | null;
+    if (mode === "relative") {
+      path = rel;
+    } else {
+      path = buildAbsolutePath(projectPath, rel);
+    }
+
+    if (!path) {
+      toast("路径无效", { type: "error" });
+      hideTreeContextMenu();
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(path);
+      const label = mode === "absolute" ? "绝对路径" : "相对路径";
+      toast(`已复制${label}：${path}`, { type: "success" });
+    } catch {
+      toast("复制失败，请重试", { type: "error" });
+    }
+    hideTreeContextMenu();
+  }
+
   function renderProjectTree(): void {
+    hideTreeContextMenu();
     const header = renderPathRootCard(uiState.runtime.projectPath, "本机路径");
     if (uiState.projectTreeNodes.length === 0) {
       projectTree.innerHTML = `
@@ -2663,6 +2913,29 @@ async function start(): Promise<void> {
     applyHeader();
     applyActivityState();
     applyYoloButton();
+    applyExecutionRiskBar(state);
+  }
+
+  function applyExecutionRiskBar(state: RuntimeState): void {
+    const bar = document.querySelector<HTMLElement>("[data-execution-risk-bar]");
+    if (!bar) return;
+    const es = state.executionState;
+    // 无数据、已清除、或 thread_id 不匹配当前会话 → 隐藏
+    if (!es || !es.mode) {
+      bar.hidden = true;
+      return;
+    }
+    if (es.thread_id && es.thread_id !== state.currentThreadId) {
+      bar.hidden = true;
+      return;
+    }
+    if (es.mode === "local") {
+      bar.hidden = false;
+      const text = bar.querySelector<HTMLElement>("[data-execution-risk-text]");
+      if (text) text.textContent = es.warning ?? "本地执行：命令直接以当前用户权限运行，无隔离。";
+    } else {
+      bar.hidden = true;
+    }
   }
 
   async function cancelRun(): Promise<void> {
@@ -2822,7 +3095,35 @@ async function start(): Promise<void> {
     }
 
     if (event.method === "Skills") {
-      uiState.skills = (event.params.skills as Skill[] | undefined) ?? [];
+      // Legacy compatibility: normalize to SkillsState
+      const skillsParam = event.params.skills as Skill[] | undefined;
+      uiState.skills = skillsParam ?? [];
+      if (skillsParam && skillsParam.length > 0) {
+        uiState.skillsState = {
+          thread_id: "",
+          fingerprint: "",
+          skills: skillsParam.map((s) => ({
+            name: s.name,
+            description: s.description,
+            source: "",
+            sha256: "",
+            status: "available" as const,
+          })),
+          loaded: [],
+          diagnostics: [],
+        };
+      }
+      renderSkillList();
+    }
+
+    if (event.method === "SkillsState") {
+      const state = event.params as SkillsStatePayload;
+      // Only apply if this event is for the active task
+      if (state.thread_id && state.thread_id === uiState.runtime.currentThreadId) {
+        uiState.skillsState = state;
+      } else if (!state.thread_id) {
+        uiState.skillsState = state;
+      }
       renderSkillList();
     }
 
@@ -3305,6 +3606,28 @@ async function start(): Promise<void> {
     setUserMenuOpen(false);
   });
 
+  document.addEventListener("mousedown", (event) => {
+    if (treeContextMenu.hidden) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof Node)) {
+      return;
+    }
+    if (treeContextMenu.contains(target)) {
+      return;
+    }
+    // Allow right-click on project tree rows to reposition the menu
+    // without dismissing it first.
+    if (
+      target instanceof Element &&
+      target.closest("[data-project-tree] .tree-row")
+    ) {
+      return;
+    }
+    hideTreeContextMenu();
+  });
+
   shortcutsOpenButton.addEventListener("click", () => {
     openShortcutsModal();
   });
@@ -3524,6 +3847,10 @@ async function start(): Promise<void> {
         setUserMenuOpen(false);
         return;
       }
+      if (!treeContextMenu.hidden) {
+        hideTreeContextMenu();
+        return;
+      }
       const sshMenu = newSessionBody.querySelector<HTMLElement>("[data-ssh-dropdown-menu]");
       if (!newSessionModal.hidden && sshMenu && !sshMenu.hidden) {
         closeSshHostDropdown();
@@ -3608,6 +3935,25 @@ async function start(): Promise<void> {
       uiState.expandedProjectTree.add(treeId);
     }
     renderProjectTree();
+  });
+
+  projectTree.addEventListener("contextmenu", (event) => {
+    showTreeContextMenu(event);
+  });
+
+  treeContextMenu.addEventListener("click", (event) => {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const item = target.closest<HTMLElement>("[data-context-copy]");
+    if (!item) {
+      return;
+    }
+    const mode = item.dataset.contextCopy as "absolute" | "relative" | undefined;
+    if (mode === "absolute" || mode === "relative") {
+      void copyContextPath(mode);
+    }
   });
 
   artifactsList.addEventListener("click", (event) => {
@@ -3710,6 +4056,10 @@ async function start(): Promise<void> {
     disposeAgentEvents();
     disposeRuntimeState();
     window.clearInterval(sandboxStatusTimer);
+  });
+
+  window.addEventListener("blur", () => {
+    hideTreeContextMenu();
   });
 
   applyTheme();
