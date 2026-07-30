@@ -14,6 +14,7 @@ from electromind import (
     make_use_skill_tool,
 )
 from electromind.skills.discovery import (
+    SkillMount,
     discover_skill_sources,
     load_skill_catalog,
 )
@@ -565,3 +566,136 @@ def test_source_ordering_is_deterministic(tmp_path):
         "user-standard",
         "user-standard",
     ]
+
+
+# ---------------------------------------------------------------------------
+# Task 3: progressive disclosure and activation metadata
+# ---------------------------------------------------------------------------
+
+
+def test_global_agents_instructions_precede_skill_catalog(tmp_path):
+    """Global instructions from AICC AGENTS.md appear before the Skill catalog."""
+    project = tmp_path / "project"
+    project.mkdir()
+    make_aicc_bundle(project / "skills")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    prompt = build_skills_system_prompt(catalog)
+    assert "<!-- electromind:skills:start -->" in prompt
+    assert "<!-- electromind:skills:end -->" in prompt
+    # Global instructions must be present
+    assert "Always do X" in prompt
+    # Instructions must appear before the skills catalog section
+    assert prompt.index("Always do X") < prompt.index("<!-- electromind:skills:start -->")
+
+
+def test_initial_prompt_excludes_skill_body(tmp_path):
+    """The initial system prompt lists skill names/descriptions but NOT SKILL.md body."""
+    project = tmp_path / "project"
+    project.mkdir()
+    agents_skills = project / ".agents" / "skills"
+    agents_skills.mkdir(parents=True)
+    make_standard_skill(agents_skills, "secret-keeper", "keeps secrets", "SENSITIVE BODY\nDo not show.\n")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    prompt = build_skills_system_prompt(catalog)
+    assert "secret-keeper" in prompt
+    assert "keeps secrets" in prompt
+    # Body must NOT be in the initial prompt
+    assert "SENSITIVE BODY" not in prompt
+    assert "Do not show" not in prompt
+
+
+@pytest.mark.asyncio
+async def test_use_skill_returns_skill_and_bundle_roots(tmp_path):
+    """use_skill returns skill_root and bundle_root from the mounts."""
+    project = tmp_path / "project"
+    project.mkdir()
+    make_aicc_bundle(project / "skills")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    mounts = {
+        "hpc-submit": SkillMount(
+            source_root="project-aicc",
+            skill_root="/home/agent/.skills/project-aicc/tools/hpc-submit",
+            bundle_root="/home/agent/.skills/project-aicc",
+        ),
+    }
+    tool = make_use_skill_tool(catalog, mounts)
+    result = await tool.acall({"name": "hpc-submit"})
+    payload = json.loads(result.content)
+    assert payload["ok"] is True
+    assert payload["name"] == "hpc-submit"
+    assert payload["skill_root"] == "/home/agent/.skills/project-aicc/tools/hpc-submit"
+    assert payload["bundle_root"] == "/home/agent/.skills/project-aicc"
+
+
+@pytest.mark.asyncio
+async def test_use_skill_returns_resources_and_sha256(tmp_path):
+    """use_skill payload includes resources list and sha256."""
+    project = tmp_path / "project"
+    project.mkdir()
+    agents_skills = project / ".agents" / "skills"
+    agents_skills.mkdir(parents=True)
+    d = agents_skills / "rich-skill"
+    d.mkdir()
+    (d / "SKILL.md").write_text(
+        "---\nname: rich-skill\ndescription: Has resources\n---\nInstructions here.\n",
+        encoding="utf-8",
+    )
+    (d / "script.sh").write_text("#!/bin/sh\necho run\n")
+    (d / "data.json").write_text('{"key": "val"}')
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    tool = make_use_skill_tool(catalog)
+    result = await tool.acall({"name": "rich-skill"})
+    payload = json.loads(result.content)
+    assert payload["ok"] is True
+    assert "resources" in payload
+    assert "script.sh" in payload["resources"]
+    assert "data.json" in payload["resources"]
+    assert "sha256" in payload
+    assert len(payload["sha256"]) == 64
+
+
+@pytest.mark.asyncio
+async def test_use_skill_notifies_activation_observer(tmp_path):
+    """on_activate callback is called when use_skill succeeds."""
+    project = tmp_path / "project"
+    project.mkdir()
+    agents_skills = project / ".agents" / "skills"
+    agents_skills.mkdir(parents=True)
+    make_standard_skill(agents_skills, "event-skill", "triggers event", "Event body.\n")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    activated = []
+
+    def on_activate(skill: Skill) -> None:
+        activated.append(skill.name)
+
+    tool = make_use_skill_tool(catalog, on_activate=on_activate)
+    result = await tool.acall({"name": "event-skill"})
+    payload = json.loads(result.content)
+    assert payload["ok"] is True
+    assert activated == ["event-skill"]
+
+
+def test_build_skills_system_prompt_with_catalog_empty_returns_markers(tmp_path):
+    """An empty catalog produces the markers block with no skills listed."""
+    catalog = load_skill_catalog(())
+    prompt = build_skills_system_prompt(catalog)
+    assert "<!-- electromind:skills:start -->" in prompt
+    assert "<!-- electromind:skills:end -->" in prompt
+    assert "暂无可用 skill" in prompt
+    # No skill names should be listed
+    assert "hpc-submit" not in prompt

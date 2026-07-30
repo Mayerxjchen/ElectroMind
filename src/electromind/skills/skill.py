@@ -20,12 +20,15 @@ import json
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Callable
 
 import yaml
 
 from ..core.tool import FunctionTool
 from ..paths import default_electromind_home
+
+if TYPE_CHECKING:
+    from .discovery import SkillCatalogSnapshot, SkillMount
 
 # 兼容旧引用；实际加载走 default_electromind_home()/skills。
 PROJECT_LOCAL_SKILLS_DIR = ".electromind/skills"
@@ -214,18 +217,32 @@ def collect_resources(skill_root: Path) -> list[str]:
 
 
 def make_use_skill_tool(
-    registry: SkillRegistry,
-    mount: dict[str, str] | None = None,
+    registry_or_snapshot: SkillRegistry | "SkillCatalogSnapshot",
+    mount: dict[str, str] | dict[str, "SkillMount"] | None = None,
+    *,
+    on_activate: "Callable[[Skill], None] | None" = None,
 ) -> FunctionTool:
     """构造 `use_skill` 工具。
 
-    `mount` 是 `name -> agent 视角路径` 的映射，通常由 `Sandbox.install_skills`
-    产出。传了以后，返回的 `root` 就是 agent 电脑上的路径，agent 可以直接对它
-    用 read_file / run_command。没传时 `root` 仍然是宿主机的绝对路径（只是给
-    agent 读的字符串，不代表它能访问）。
+    Accepts either a ``SkillRegistry`` (legacy) or a ``SkillCatalogSnapshot``.
+
+    When given a snapshot, the ``on_activate`` callback is invoked after a
+    successful skill load (only after the payload has been constructed).
+
+    ``mount`` is ``name -> agent 视角路径`` (legacy) or ``name -> SkillMount``.
     """
 
+    # ── resolve the registry ──────────────────────────────────────────
+    if isinstance(registry_or_snapshot, SkillRegistry):
+        registry = registry_or_snapshot
+        snapshot = None
+    else:
+        snapshot = registry_or_snapshot
+        registry = snapshot.registry
+
     async def use_skill(name: str) -> str:
+        from .discovery import SkillMount as _SkillMount
+
         skill = registry.get(name)
         if not skill:
             return json.dumps(
@@ -236,24 +253,43 @@ def make_use_skill_tool(
                 },
                 ensure_ascii=False,
             )
-        location = (mount or {}).get(skill.name) or str(skill.root)
-        return json.dumps(
-            {
-                "ok": True,
-                "name": skill.name,
-                "description": skill.description,
-                "instructions": skill.instructions,
-                "root": location,
-                "resources": list(skill.resources),
-            },
-            ensure_ascii=False,
-        )
+
+        # Build the payload
+        sm: "_SkillMount | None" = None
+        if mount and skill.name in mount:
+            sm = mount[skill.name]
+
+        if isinstance(sm, _SkillMount):
+            skill_root = sm.skill_root
+            bundle_root = sm.bundle_root
+        else:
+            # Legacy: mount is dict[str, str]
+            skill_root = (mount or {}).get(skill.name) or str(skill.root)
+            bundle_root = None
+
+        payload = {
+            "ok": True,
+            "name": skill.name,
+            "description": skill.description,
+            "instructions": skill.instructions,
+            "skill_root": skill_root,
+            "bundle_root": bundle_root,
+            "resources": list(skill.resources),
+            "sha256": skill.sha256,
+        }
+        # Legacy compat: include "root" field for old callers
+        payload["root"] = skill_root
+
+        if on_activate is not None:
+            on_activate(skill)
+
+        return json.dumps(payload, ensure_ascii=False)
 
     names_hint = ", ".join(f"`{n}`" for n in registry.names()) or "(暂无可用 skill)"
     mount_hint = (
-        "返回的 `root` 是你电脑上的路径，可以直接对它 read_file / run_command。"
+        "返回的 `skill_root` 是你电脑上的路径，可以直接对它 read_file / run_command。"
         if mount
-        else "返回的 `root` 只作参考路径。"
+        else "返回的 `skill_root` 只作参考路径。"
     )
     return FunctionTool(
         name="use_skill",
@@ -261,7 +297,7 @@ def make_use_skill_tool(
             "加载一个 skill 的完整说明书和资源清单。"
             "每个 skill 都是一份现成的操作手册，里面告诉你怎么完成一类任务、可以用哪些脚本。"
             f"当前可用：{names_hint}。"
-            "返回 JSON：{name, description, instructions, root, resources[]}。"
+            "返回 JSON：{ok, name, description, instructions, skill_root, bundle_root, resources[], sha256}。"
             f"{mount_hint}"
         ),
         parameters={
@@ -280,8 +316,75 @@ def make_use_skill_tool(
 
 
 def build_skills_system_prompt(
-    registry: SkillRegistry,
-    mount: dict[str, str] | None = None,
+    registry_or_snapshot: SkillRegistry | "SkillCatalogSnapshot",
+    mount: dict[str, str] | dict[str, "SkillMount"] | None = None,
 ) -> str:
-    """给主 system prompt 追加的一段。空注册表时返回空串。"""
-    return registry.summary(mount=mount)
+    """Build the system-prompt block for Skills.
+
+    When given a ``SkillCatalogSnapshot``:
+    - Global instructions (AICC AGENTS.md) appear first.
+    - Only skill name, description, source, and mounted root are rendered;
+      the SKILL.md instruction body is NOT included.
+    - Output is wrapped in ``<!-- electromind:skills:start -->`` /
+      ``<!-- electromind:skills:end -->`` markers.
+
+    When given a ``SkillRegistry`` (legacy), the old ``registry.summary()``
+    output is returned unchanged.
+    """
+    from .discovery import SkillCatalogSnapshot  # noqa: F811
+
+    if isinstance(registry_or_snapshot, SkillCatalogSnapshot):
+        return _build_snapshot_prompt(registry_or_snapshot, mount)
+    return registry_or_snapshot.summary(mount=mount)
+
+
+def _build_snapshot_prompt(
+    snapshot: "SkillCatalogSnapshot",
+    mount: dict[str, str] | dict[str, "SkillMount"] | None = None,
+) -> str:
+    """Render the Skill section from a catalog snapshot."""
+    from .discovery import SkillMount
+
+    lines: list[str] = []
+
+    # Global instructions first
+    for gi in snapshot.global_instructions:
+        gi_clean = gi.strip()
+        if gi_clean:
+            lines.append(gi_clean)
+
+    lines.append("<!-- electromind:skills:start -->")
+
+    if snapshot.registry.skills:
+        lines.append("你可以按需加载这些 skill：")
+        for skill in snapshot.registry.list():
+            sm = mount.get(skill.name) if mount else None
+            if isinstance(sm, SkillMount):
+                location = sm.skill_root
+                bundle = sm.bundle_root
+            elif isinstance(sm, str):
+                location = sm
+                bundle = None
+            else:
+                location = str(skill.root)
+                bundle = None
+
+            extra = ""
+            if bundle:
+                extra = f"，bundle: {bundle}"
+            lines.append(
+                f"- `{skill.name}`（from {skill.source_id}）：{skill.description}"
+                + (f" @ {location}{extra}" if location else "")
+            )
+        lines.append(
+            "调 `use_skill(name)` 会把对应 skill 的完整说明书和资源清单加载进来。"
+        )
+        if mount:
+            lines.append(
+                "资源就放在你自己电脑上，可以用 read_file / run_command 直接访问。"
+            )
+    else:
+        lines.append("(暂无可用 skill)")
+
+    lines.append("<!-- electromind:skills:end -->")
+    return "\n".join(lines) + "\n"
