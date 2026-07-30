@@ -38,6 +38,7 @@ from ..skills.discovery import (
     discover_skill_sources,
     load_skill_catalog,
 )
+from ..skills.runtime import SkillRuntime
 from .loop_adapter import LoopAdapter
 from .run_state import RunState
 from .thread import Thread
@@ -203,16 +204,33 @@ class BaseRunner(LoopAdapter):
         messages: Messages | None = None,
         sandbox: Sandbox | None = None,
         skills: SkillRegistry | None = None,
+        skill_runtime: SkillRuntime | None = None,
     ):
         super().__init__(agent, messages)
         self.thread = thread
         self.spec = thread.spec
         self.sandbox = sandbox
         self.skills = skills or SkillRegistry()
+        self.skill_runtime = skill_runtime
 
         self.store = store or thread.open_store()
         self.conversation_id = thread.messages_conversation_id
         self.messages = messages if messages is not None else thread.load_messages()
+
+    async def before_user_turn(self, user_input: str) -> None:
+        """Refresh the Skill catalog before every user turn."""
+        await super().before_user_turn(user_input)
+        if self.skill_runtime is None:
+            return
+        changed = await self.skill_runtime.refresh_if_changed()
+        if changed and self.sandbox is not None:
+            # Install the new catalog into the sandbox
+            if self.skill_runtime.snapshot is not None:
+                self.skill_runtime.mounts = await self.sandbox.install_skill_catalog(
+                    self.skill_runtime.snapshot
+                )
+        if changed:
+            self.skill_runtime.apply_to_agent(self.agent)
 
     async def after_continuing(self, *, turn: int) -> None:
         del turn
@@ -264,6 +282,17 @@ class BaseRunner(LoopAdapter):
             run_state=run_state,
         )
 
+        skill_runtime = SkillRuntime(
+            thread.spec.project_path,
+            configured_roots=tuple(thread.spec.skills) + tuple(skill_roots),
+        )
+        # Sync the initial state from assemble_run_resources
+        configured = tuple(thread.spec.skills) + tuple(skill_roots)
+        sources = discover_skill_sources(
+            thread.spec.project_path, configured_roots=configured
+        )
+        skill_runtime.snapshot = load_skill_catalog(sources)
+
         runner = cls(
             Agent(
                 provider,
@@ -274,6 +303,7 @@ class BaseRunner(LoopAdapter):
             thread,
             sandbox=resources.sandbox,
             skills=resources.skills,
+            skill_runtime=skill_runtime,
         )
         runner.run_state = run_state
         return runner

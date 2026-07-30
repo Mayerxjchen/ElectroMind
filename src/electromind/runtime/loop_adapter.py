@@ -187,6 +187,14 @@ class LoopAdapter:
                 ok=output.ok,
             )
 
+    async def before_user_turn(self, user_input: str) -> None:
+        """Hook called before appending the user message and running the agent.
+
+        Subclasses (e.g. ``BaseRunner``) override this to refresh Skills
+        or other per-turn resources.
+        """
+        del user_input
+
     async def after_continuing(self, *, turn: int) -> None:
         del turn
 
@@ -219,6 +227,7 @@ class LoopAdapter:
             raise ValueError(f"unknown return_type: {return_type!r}")
 
         self.run_state = RunState(phase="initializing")
+        await self.before_user_turn(user_input)
         ensure_system(self.messages, self.agent.system)
         turn_id = self.messages.max_turn_id() + 1
         self.run_state.turn_id = turn_id

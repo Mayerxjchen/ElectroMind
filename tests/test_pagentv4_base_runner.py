@@ -444,3 +444,203 @@ async def test_empty_skills_still_produces_empty_catalog_when_project_has_no_ski
 
     resources = await assemble_run_resources(thread)
     assert resources.skills.names() == []
+
+
+# ---------------------------------------------------------------------------
+# Task 5: skill refresh tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_skill_added_between_turns_is_available_next_turn(tmp_path, monkeypatch):
+    """When a new skill is added to the project between turns, it appears on the next turn."""
+    project = tmp_path / "project"
+    project.mkdir()
+    agents_skills = project / ".agents" / "skills"
+    agents_skills.mkdir(parents=True)
+
+    provider = FakeProvider([
+        [FakeStreamChunk(content="turn1")],
+        [FakeStreamChunk(content="turn2")],
+    ])
+
+    # Create runner without skills
+    runner = await BaseRunner.from_spec(
+        "refresh-test",
+        ThreadSpec(backend="none", project_path=str(project)),
+        provider,
+        root=tmp_path,
+    )
+    try:
+        # Turn 1 – no skills yet
+        async for _ in runner.run("hi"):
+            pass
+        assert runner.skill_runtime is not None
+        snapshot1 = runner.skill_runtime.snapshot
+        # Should be empty
+        assert snapshot1 is None or snapshot1.registry.names() == []
+
+        # Add a skill between turns
+        d = agents_skills / "added-later"
+        d.mkdir()
+        (d / "SKILL.md").write_text(
+            "---\nname: added-later\ndescription: added later\n---\nbody\n",
+            encoding="utf-8",
+        )
+
+        # Turn 2 – skill should be discovered via before_user_turn
+        async for _ in runner.run("again"):
+            pass
+
+        assert runner.skill_runtime.snapshot is not None
+        assert "added-later" in runner.skill_runtime.snapshot.registry.names()
+    finally:
+        await runner.close()
+
+
+@pytest.mark.asyncio
+async def test_skill_change_does_not_mutate_active_turn(tmp_path, monkeypatch):
+    """Skills loaded for a turn must not be mutated during the active turn."""
+    project = tmp_path / "project"
+    project.mkdir()
+    agents_skills = project / ".agents" / "skills"
+    agents_skills.mkdir(parents=True)
+    d = agents_skills / "stable-skill"
+    d.mkdir()
+    (d / "SKILL.md").write_text(
+        "---\nname: stable-skill\ndescription: stable\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    provider = FakeProvider([
+        [FakeStreamChunk(content="hello")],
+        [FakeStreamChunk(content="world")],
+    ])
+    runner = await BaseRunner.from_spec(
+        "stable-test",
+        ThreadSpec(backend="none", project_path=str(project)),
+        provider,
+        root=tmp_path,
+    )
+    try:
+        # Run a turn to load skills
+        async for _ in runner.run("hi"):
+            pass
+
+        # Capture the snapshot used during the turn
+        snapshot_during = runner.skill_runtime.snapshot
+        assert snapshot_during is not None
+
+        # Modify skill file on disk
+        (d / "SKILL.md").write_text(
+            "---\nname: stable-skill\ndescription: modified\n---\nchanged body\n",
+            encoding="utf-8",
+        )
+
+        # The captured snapshot should be unchanged (immutable)
+        skill = snapshot_during.registry.get("stable-skill")
+        assert skill is not None
+        assert skill.description == "stable"
+
+        # Next turn should pick up the change
+        async for _ in runner.run("next"):
+            pass
+        new_skill = runner.skill_runtime.snapshot.registry.get("stable-skill")
+        assert new_skill is not None
+        assert new_skill.description == "modified"
+    finally:
+        await runner.close()
+
+
+@pytest.mark.asyncio
+async def test_failed_refresh_keeps_previous_snapshot(tmp_path, monkeypatch):
+    """When refresh_if_changed fails, the previous snapshot is preserved."""
+    project = tmp_path / "project"
+    project.mkdir()
+    agents_skills = project / ".agents" / "skills"
+    agents_skills.mkdir(parents=True)
+    d = agents_skills / "persistent"
+    d.mkdir()
+    (d / "SKILL.md").write_text(
+        "---\nname: persistent\ndescription: persists\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    provider = FakeProvider([
+        [FakeStreamChunk(content="t1")],
+        [FakeStreamChunk(content="t2")],
+    ])
+    runner = await BaseRunner.from_spec(
+        "fail-test",
+        ThreadSpec(backend="none", project_path=str(project)),
+        provider,
+        root=tmp_path,
+    )
+    try:
+        async for _ in runner.run("hi"):
+            pass
+
+        snapshot_before = runner.skill_runtime.snapshot
+        assert snapshot_before is not None
+        assert "persistent" in snapshot_before.registry.names()
+
+        # Corrupt the skill file
+        (d / "SKILL.md").write_text("not valid yaml at all --- \n???\n", encoding="utf-8")
+
+        # Refresh: should fail gracefully (SKILL.md frontmatter missing description)
+        changed = await runner.skill_runtime.refresh_if_changed()
+        assert changed is False  # failed refresh returns False
+        # The key invariant: previous snapshot data is accessible
+        assert runner.skill_runtime.snapshot is not None
+
+        # Turn should still run
+        async for _ in runner.run("next"):
+            pass
+    finally:
+        await runner.close()
+
+
+@pytest.mark.asyncio
+async def test_resume_rebuilds_catalog_from_current_project(tmp_path, monkeypatch):
+    """When resuming, the catalog is rebuilt from the current project state."""
+    project = tmp_path / "project"
+    project.mkdir()
+    _make_aicc_bundle(project / "skills")
+
+    provider = FakeProvider([
+        [FakeStreamChunk(content="t1")],
+        [FakeStreamChunk(content="t2")],
+    ])
+
+    runner1 = await BaseRunner.from_spec(
+        "resume-test",
+        ThreadSpec(backend="none", project_path=str(project)),
+        provider,
+        root=tmp_path,
+    )
+    try:
+        async for _ in runner1.run("first"):
+            pass
+
+        assert runner1.skill_runtime is not None
+        assert "hpc-submit" in runner1.skill_runtime.snapshot.registry.names()
+    finally:
+        await runner1.close()
+
+    # Simulate a new runner for the same thread (resume)
+    runner2 = await BaseRunner.from_spec(
+        "resume-test",
+        ThreadSpec(backend="none", project_path=str(project)),
+        provider,
+        root=tmp_path,
+    )
+    try:
+        # Catalog must be rebuilt from current project
+        assert runner2.skill_runtime is not None
+        # Initial load in assemble_run_resources gives initial snapshot
+        assert runner2.skill_runtime.snapshot is not None
+        assert "hpc-submit" in runner2.skill_runtime.snapshot.registry.names()
+        async for _ in runner2.run("second"):
+            pass
+    finally:
+        await runner2.close()

@@ -10,6 +10,7 @@ from .discovery import (
     discover_skill_sources,
     load_skill_catalog,
 )
+from .runtime import SkillRuntime
 from .skill import (
     PROJECT_LOCAL_SKILLS_DIR,
     USER_SKILLS_DIR,
@@ -34,6 +35,7 @@ __all__ = [
     "SkillDiscoveryError",
     "SkillMount",
     "SkillRegistry",
+    "SkillRuntime",
     "SkillSource",
     "build_skills_system_prompt",
     "collect_resources",

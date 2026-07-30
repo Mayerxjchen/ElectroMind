@@ -281,7 +281,20 @@ def _load_standard_source(
     diagnostics: list[SkillDiagnostic] = []
     loaded: list[Skill] = []
 
-    for skill in load_skills_from_root(source.root):
+    try:
+        raw_skills = load_skills_from_root(source.root)
+    except Exception as exc:
+        diagnostics.append(
+            SkillDiagnostic(
+                code="skill_source_load_error",
+                message=f"failed to scan source {source.root}: {exc}",
+                path=str(source.root),
+                severity="error",
+            )
+        )
+        return loaded, diagnostics
+
+    for skill in raw_skills:
         try:
             resolved = skill.root.resolve()
             if not _path_is_within_root(resolved, source.root):

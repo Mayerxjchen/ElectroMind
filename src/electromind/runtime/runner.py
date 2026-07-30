@@ -24,6 +24,7 @@ from ..core.provider import ProviderProtocol
 from ..core.tool import FunctionTool, ToolOutput
 from ..sandbox import Sandbox
 from ..skills import SkillRegistry
+from ..skills.runtime import SkillRuntime
 from .base_runner import BaseRunner, assemble_run_resources
 from .helper import append_message
 from .hooks import PostToolHookContext, ToolHookContext, ToolHooks
@@ -60,6 +61,7 @@ class Runner(BaseRunner):
         inbound: InboundMailbox | None = None,
         checkpoint_policy: CheckpointPolicy | None = None,
         tool_hooks: ToolHooks | None = None,
+        skill_runtime: SkillRuntime | None = None,
     ):
         super().__init__(
             agent,
@@ -68,6 +70,7 @@ class Runner(BaseRunner):
             messages=messages,
             sandbox=sandbox,
             skills=skills,
+            skill_runtime=skill_runtime,
         )
         self.conversation_id = conversation_id
         self.inbound = inbound or InboundMailbox()
@@ -252,6 +255,11 @@ class Runner(BaseRunner):
         conversation_id = thread.messages_conversation_id
         messages = thread.load_messages()
 
+        skill_runtime = SkillRuntime(
+            thread.spec.project_path,
+            configured_roots=tuple(thread.spec.skills) + tuple(skill_roots),
+        )
+
         runner = cls(
             thread=thread,
             sandbox=resources.sandbox,
@@ -266,6 +274,7 @@ class Runner(BaseRunner):
             skills=resources.skills,
             conversation_id=conversation_id,
             tool_hooks=tool_hooks,
+            skill_runtime=skill_runtime,
         )
         runner.run_state = run_state
         return runner

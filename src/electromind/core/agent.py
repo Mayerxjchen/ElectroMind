@@ -32,6 +32,33 @@ class AgentCore:
         self.max_turns = max_turns
         self.last_usage: dict | None = None
 
+    def replace_runtime_context(
+        self,
+        *,
+        system: str | None = None,
+        tools: list[FunctionTool] | None = None,
+    ) -> None:
+        """Atomically replace the system prompt and/or tools.
+
+        All replacement values are built before assigning, so a validation
+        failure leaves the old values intact.
+
+        Raises:
+            ValueError: if *tools* contains duplicate names.
+        """
+        new_tools = tools if tools is not None else self.tools
+        schemas = to_openai_tools(new_tools) or None
+        names = [tool.name for tool in new_tools]
+        if len(names) != len(set(names)):
+            raise ValueError(f"duplicate tool names: {names}")
+        tool_map = {tool.name: tool for tool in new_tools}
+
+        if system is not None:
+            self.system = system
+        self.tools = new_tools
+        self.tool_schemas = schemas
+        self.tool_map = tool_map
+
     async def generate_messages(
         self,
         messages: Messages,

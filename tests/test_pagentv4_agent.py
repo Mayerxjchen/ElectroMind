@@ -3,6 +3,7 @@ from types import SimpleNamespace
 import pytest
 
 from electromind import Agent, AgentCore, Runner, ThreadAgent
+from electromind.core.tool import FunctionTool
 from electromind.core.turn_result import TurnResult
 
 
@@ -319,3 +320,84 @@ async def test_turn_result_usage_none_without_usage_chunk(tmp_path, monkeypatch)
 
     assert len(turn_results) == 1
     assert turn_results[0].usage is None
+
+
+# ---------------------------------------------------------------------------
+# Task 5: atomic runtime context replacement
+# ---------------------------------------------------------------------------
+
+
+def _make_dummy_tool(name: str) -> FunctionTool:
+    async def noop() -> str:
+        return ""
+
+    return FunctionTool(
+        name=name,
+        description=f"Tool {name}",
+        parameters={"type": "object", "properties": {}, "additionalProperties": False},
+        func=noop,
+    )
+
+
+class FakeProviderForContext:
+    def __init__(self):
+        self.calls = []
+
+    async def complete(self, messages, tools=None, **run_kwargs):
+        self.calls.append({"tools": tools, **run_kwargs})
+
+        async def stream():
+            if False:
+                yield
+
+        return stream()
+
+
+def test_agent_replace_runtime_context_rebuilds_tool_schema_and_map():
+    """replace_runtime_context updates tool_schemas and tool_map atomically."""
+    t1 = _make_dummy_tool("alpha")
+    t2 = _make_dummy_tool("beta")
+    agent = AgentCore(FakeProviderForContext(), tools=[t1])
+
+    agent.replace_runtime_context(tools=[t1, t2])
+    assert sorted(agent.tool_map) == ["alpha", "beta"]
+    assert agent.tool_schemas is not None
+    schemas = agent.tool_schemas
+    assert len(schemas) == 2
+
+
+def test_agent_replace_runtime_context_rejects_duplicate_tools_atomically():
+    """Duplicate tool names raise ValueError without mutating agent state."""
+    t1 = _make_dummy_tool("dup")
+    t2 = _make_dummy_tool("dup2")
+    agent = AgentCore(FakeProviderForContext(), tools=[t1, t2])
+
+    old_system = agent.system
+    old_tools = list(agent.tools)
+    old_map = dict(agent.tool_map)
+    old_schemas = agent.tool_schemas
+
+    dupe_a = _make_dummy_tool("dup")
+    dupe_b = _make_dummy_tool("dup")  # same name
+    with pytest.raises(ValueError, match="duplicate tool names"):
+        agent.replace_runtime_context(tools=[t1, t2, dupe_a, dupe_b])
+
+    # State must be unchanged after error
+    assert agent.system is old_system
+    assert agent.tools == old_tools
+    assert agent.tool_map == old_map
+    assert agent.tool_schemas is old_schemas
+
+
+def test_agent_replace_runtime_context_replaces_system():
+    """replace_runtime_context with system= updates the system prompt."""
+    agent = AgentCore(FakeProviderForContext(), system="old system")
+    agent.replace_runtime_context(system="new system")
+    assert agent.system == "new system"
+
+
+def test_agent_replace_runtime_context_preserves_unchanged_system():
+    """When system is None, the system prompt is left intact."""
+    agent = AgentCore(FakeProviderForContext(), system="keep me")
+    agent.replace_runtime_context(system=None)
+    assert agent.system == "keep me"
