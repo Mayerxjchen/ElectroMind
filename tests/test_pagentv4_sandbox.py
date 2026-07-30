@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+from pathlib import Path
 
 import pytest
 
@@ -1131,3 +1132,197 @@ async def test_sandbox_describe_local(tmp_path):
     assert str(tmp_path.resolve()) in text
     assert "/home/agent" in text
     assert "run_command" in text
+
+
+# ---------------------------------------------------------------------------
+# Task 2: catalog-aware sandbox installation
+# ---------------------------------------------------------------------------
+
+
+def _make_aicc_bundle(root: Path) -> None:
+    """Create a minimal AICC-shaped skill bundle at ``root``."""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "AGENTS.md").write_text("# Global instructions\nDo X.\n", encoding="utf-8")
+
+    wf = root / "procedures" / "workflow"
+    wf.mkdir(parents=True)
+    (wf / "SKILL.md").write_text(
+        "---\nname: workflow\ndescription: A standard workflow\n---\nExecute the workflow.\n",
+        encoding="utf-8",
+    )
+
+    tool = root / "tools" / "hpc-submit"
+    tool.mkdir(parents=True)
+    (tool / "SKILL.md").write_text(
+        "---\nname: hpc-submit\ndescription: Submit HPC jobs\n---\nSubmit a job.\n",
+        encoding="utf-8",
+    )
+
+    (root / "tools" / "hpc-submit" / "submit.sh").write_text("#!/bin/sh\necho submit\n")
+
+    kn = root / "knowledge"
+    kn.mkdir(parents=True)
+    (kn / "reference.md").write_text("# Reference\n", encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_install_aicc_catalog_preserves_bundle_tree(tmp_path):
+    """An AICC catalog installed into the sandbox preserves the complete bundle tree."""
+    from electromind.skills.discovery import discover_skill_sources, load_skill_catalog
+
+    project = tmp_path / "project"
+    project.mkdir()
+    _make_aicc_bundle(project / "skills")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    async with await Sandbox.create(backend="local", workdir=str(tmp_path / "box")) as box:
+        mounts = await box.install_skill_catalog(catalog)
+
+    # All AICC skills should be mounted
+    assert "workflow" in mounts
+    assert "hpc-submit" in mounts
+
+    # The AICC bundle tree is preserved under .skills/<source-id>/
+    source_id = [s for s in sources if s.kind == "aicc"][0].id
+    bundle_base = f".skills/{source_id}"
+
+    # Check AGENTS.md was copied
+    agents_path = box.resolve(f"/home/agent/{bundle_base}/AGENTS.md")
+    assert os.path.isfile(agents_path)
+
+    # Check tools/hpc-submit/SKILL.md and submit.sh
+    assert os.path.isfile(box.resolve(f"/home/agent/{bundle_base}/tools/hpc-submit/SKILL.md"))
+    assert os.path.isfile(box.resolve(f"/home/agent/{bundle_base}/tools/hpc-submit/submit.sh"))
+
+    # Check procedures/workflow/SKILL.md
+    assert os.path.isfile(box.resolve(f"/home/agent/{bundle_base}/procedures/workflow/SKILL.md"))
+
+    # Check knowledge/ is preserved (even though not a skill)
+    assert os.path.isfile(box.resolve(f"/home/agent/{bundle_base}/knowledge/reference.md"))
+
+    # Mount points: each skill's bundle_root should point to the AICC root
+    assert mounts["hpc-submit"].bundle_root is not None
+    assert mounts["workflow"].bundle_root is not None
+
+
+@pytest.mark.asyncio
+async def test_install_standard_skill_uses_source_and_skill_directory(tmp_path):
+    """Standard skills use <source-id>/<skill-name>/ layout."""
+    from electromind.skills.discovery import discover_skill_sources, load_skill_catalog
+
+    project = tmp_path / "project"
+    project.mkdir()
+    agents_skills = project / ".agents" / "skills"
+    agents_skills.mkdir(parents=True)
+
+    d = agents_skills / "my-helper"
+    d.mkdir()
+    (d / "SKILL.md").write_text(
+        "---\nname: my-helper\ndescription: A helper\n---\nDo helpful things.\n",
+        encoding="utf-8",
+    )
+    (d / "lib.py").write_text("def help():\n    pass\n")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    async with await Sandbox.create(backend="local", workdir=str(tmp_path / "box")) as box:
+        mounts = await box.install_skill_catalog(catalog)
+
+    assert "my-helper" in mounts
+    source_id = [s for s in sources if s.kind == "standard" and s.scope == "project"][0].id
+    expected_base = f"/home/agent/.skills/{source_id}/my-helper"
+    assert mounts["my-helper"].skill_root == expected_base
+
+    # Verify files are in the sandbox
+    assert os.path.isfile(box.resolve(f"{expected_base}/SKILL.md"))
+    assert os.path.isfile(box.resolve(f"{expected_base}/lib.py"))
+
+
+@pytest.mark.asyncio
+async def test_install_catalog_returns_skill_and_bundle_roots(tmp_path):
+    """install_skill_catalog returns SkillMount with skill_root and bundle_root."""
+    from electromind.skills.discovery import discover_skill_sources, load_skill_catalog
+
+    project = tmp_path / "project"
+    project.mkdir()
+    _make_aicc_bundle(project / "skills")
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    async with await Sandbox.create(backend="local", workdir=str(tmp_path / "box")) as box:
+        mounts = await box.install_skill_catalog(catalog)
+
+    source_id = [s for s in sources if s.kind == "aicc"][0].id
+    hpc_mount = mounts["hpc-submit"]
+    assert hpc_mount.skill_root == f"/home/agent/.skills/{source_id}/tools/hpc-submit"
+    assert hpc_mount.bundle_root == f"/home/agent/.skills/{source_id}"
+    assert hpc_mount.source_root == source_id
+
+    wf_mount = mounts["workflow"]
+    assert wf_mount.skill_root == f"/home/agent/.skills/{source_id}/procedures/workflow"
+    assert wf_mount.bundle_root == f"/home/agent/.skills/{source_id}"
+
+
+@pytest.mark.asyncio
+async def test_install_catalog_rejects_resource_symlink_escape(tmp_path):
+    """Symlinks that escape the source root must be rejected during installation."""
+    from electromind.skills.discovery import discover_skill_sources, load_skill_catalog
+
+    project = tmp_path / "project"
+    project.mkdir()
+
+    agents_skills = project / ".agents" / "skills"
+    agents_skills.mkdir(parents=True)
+    skill_dir = agents_skills / "safe-skill"
+    skill_dir.mkdir()
+    (skill_dir / "SKILL.md").write_text(
+        "---\nname: safe-skill\ndescription: Should be safe\n---\nSafe body.\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "notes.txt").write_text("safe note")
+
+    # Create a symlink resource that points outside the source root
+    outside = tmp_path / "secret"
+    outside.mkdir()
+    (outside / "leak.txt").write_text("top secret")
+
+    escape_link = skill_dir / "escape"
+    escape_link.symlink_to(outside)
+
+    sources = discover_skill_sources(str(project))
+    catalog = load_skill_catalog(sources)
+
+    async with await Sandbox.create(backend="local", workdir=str(tmp_path / "box")) as box:
+        mounts = await box.install_skill_catalog(catalog)
+
+    # The safe skill should be installed
+    assert "safe-skill" in mounts
+    # The symlink resource must not have been followed to outside files
+    source_id = [s for s in sources if s.scope == "project"][0].id
+    skill_base = box.resolve(f"/home/agent/.skills/{source_id}/safe-skill")
+    assert not os.path.exists(os.path.join(skill_base, "escape", "leak.txt"))
+
+
+@pytest.mark.asyncio
+async def test_unchanged_catalog_is_not_rewritten(tmp_path):
+    """When the fingerprint is unchanged, the catalog should not be reinstalled."""
+    from electromind.skills.discovery import discover_skill_sources, load_skill_catalog
+
+    project = tmp_path / "project"
+    project.mkdir()
+    _make_aicc_bundle(project / "skills")
+
+    sources = discover_skill_sources(str(project))
+    catalog1 = load_skill_catalog(sources)
+
+    async with await Sandbox.create(backend="local", workdir=str(tmp_path / "box")) as box:
+        mounts1 = await box.install_skill_catalog(catalog1)
+        # Second call with same fingerprint should skip writes
+        mounts2 = await box.install_skill_catalog(catalog1)
+
+    # Mounts should be identical
+    assert mounts1 == mounts2

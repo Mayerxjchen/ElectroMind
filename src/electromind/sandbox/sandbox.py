@@ -21,6 +21,7 @@ import posixpath
 import shutil
 import tarfile
 import tempfile
+from pathlib import Path
 from typing import TYPE_CHECKING, Protocol
 
 from .base import (
@@ -38,6 +39,8 @@ from .workspace import resolve_workdir
 
 if TYPE_CHECKING:
     from types import TracebackType
+
+    from electromind.skills.discovery import SkillMount
 
 
 class Commands:
@@ -181,6 +184,8 @@ class Sandbox:
         self.commands = Commands(self)
         self.files = Files(self)
         self._started = False
+        self._last_catalog_fingerprint: str | None = None
+        self._last_catalog_mounts: dict[str, SkillMount] = {}
 
     @classmethod
     async def create(
@@ -477,6 +482,99 @@ class Sandbox:
             mount[skill.name] = base
         return mount
 
+    async def install_skill_catalog(self, snapshot) -> dict[str, "SkillMount"]:
+        """Install every source in a ``SkillCatalogSnapshot`` into the sandbox.
+
+        Layout rules:
+
+        - **Standard source** target: ``<home>/.skills/<source-id>/<skill-name>/``.
+        - **AICC source** target: ``<home>/.skills/<source-id>/``, copied once as a
+          complete bundle (AGENTS.md, procedures/, tools/, knowledge/).
+        - All writes go through ``self.files.write``; no shell, tar, or cp.
+        - Symlinks that resolve outside the declared source root are rejected.
+        - When the fingerprint matches the last successful install, mounts are
+          returned without rewriting files.
+
+        Returns:
+            ``{public_skill_name: SkillMount}`` mapping.
+        """
+        from electromind.skills.discovery import SkillMount
+
+        # Cache hit — fingerprint unchanged
+        if self._last_catalog_fingerprint == snapshot.fingerprint:
+            return dict(self._last_catalog_mounts)
+
+        mounts: dict[str, SkillMount] = {}
+
+        for source in snapshot.sources:
+            source_root = source.root
+            source_id = source.id
+
+            if source.kind == "aicc":
+                # Copy the complete AICC bundle
+                bundle_target = posixpath.join(self.home, self.SKILLS_DIRNAME, source_id)
+                await self._copy_directory_tree(source_root, bundle_target, source_root)
+                # Build mounts for each AICC skill
+                for skill in snapshot.registry.list():
+                    if getattr(skill, "source_id", "") != source_id:
+                        continue
+                    skill_dir = getattr(skill, "skill_root", None) or skill.root
+                    rel = skill_dir.resolve().relative_to(source_root.resolve()).as_posix()
+                    skill_target = posixpath.join(bundle_target, rel)
+                    mounts[skill.name] = SkillMount(
+                        source_root=source_id,
+                        skill_root=skill_target,
+                        bundle_root=bundle_target,
+                    )
+            else:
+                # Standard: one directory per skill, copied under <source-id>/
+                sandbox_parent = posixpath.join(
+                    self.home, self.SKILLS_DIRNAME, source_id
+                )
+                for skill in snapshot.registry.list():
+                    if getattr(skill, "source_id", "") != source_id:
+                        continue
+                    # _copy_directory_tree copies the directory *as* its basename
+                    # into sandbox_parent, using host_dir.parent for relative resolution.
+                    host_dir = skill.root.resolve()
+                    await self._copy_directory_tree(
+                        host_dir, sandbox_parent, host_dir.parent
+                    )
+                    skill_target = posixpath.join(sandbox_parent, host_dir.name)
+                    mounts[skill.name] = SkillMount(
+                        source_root=source_id,
+                        skill_root=skill_target,
+                        bundle_root=None,
+                    )
+
+        self._last_catalog_fingerprint = snapshot.fingerprint
+        self._last_catalog_mounts = dict(mounts)
+        return mounts
+
+    async def _copy_directory_tree(
+        self, host_dir: Path, sandbox_target: str, allowed_root: Path
+    ) -> None:
+        """Recursively copy *host_dir* into *sandbox_target* using ``self.files.write``.
+
+        Rejects any file or symlink that resolves outside *allowed_root*.
+        """
+        for dirpath, dirnames, filenames in os.walk(host_dir):
+            dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+            for filename in sorted(filenames):
+                if filename.startswith("."):
+                    continue
+                full = Path(dirpath) / filename
+                # Resolve symlinks and reject escapes
+                try:
+                    resolved = full.resolve()
+                except OSError:
+                    continue
+                if not _is_within(resolved, allowed_root.resolve()):
+                    continue
+                rel = resolved.relative_to(allowed_root.resolve()).as_posix()
+                target = posixpath.join(sandbox_target, rel)
+                await self.files.write(target, resolved.read_bytes())
+
     async def describe(self) -> str:
         """自报家门：拼一段 system prompt 描述这台电脑。
 
@@ -523,6 +621,15 @@ class Sandbox:
 
 
 CONTAINER_CLI_PREFERENCE = ("docker", "podman")
+
+
+def _is_within(path: Path, root: Path) -> bool:
+    """Return True if *path* equals *root* or is a descendant."""
+    try:
+        path.relative_to(root)
+        return True
+    except ValueError:
+        return False
 
 
 def detect_container_cli() -> str:
