@@ -6,6 +6,7 @@ import pytest
 
 from electromind import Agent, BaseRunner, RunEnd, TextDelta, Thread, tool
 from electromind.ithread import ThreadSpec
+from electromind.runtime.base_runner import assemble_run_resources
 
 
 class FakeStreamChunk:
@@ -302,3 +303,144 @@ async def test_run_state_closing_on_close(tmp_path, monkeypatch):
     assert "closing" in observed
     assert runner.run_state.phase == "idle"
     assert sandbox.closed is True
+
+
+# ---------------------------------------------------------------------------
+# Task 4: project skill discovery
+# ---------------------------------------------------------------------------
+
+
+def _make_aicc_bundle(root):
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "AGENTS.md").write_text("# Global\nDo X.\n", encoding="utf-8")
+    wf = root / "procedures" / "workflow"
+    wf.mkdir(parents=True)
+    (wf / "SKILL.md").write_text(
+        "---\nname: workflow\ndescription: A workflow\n---\nRun it.\n",
+        encoding="utf-8",
+    )
+    tool = root / "tools" / "hpc-submit"
+    tool.mkdir(parents=True)
+    (tool / "SKILL.md").write_text(
+        "---\nname: hpc-submit\ndescription: Submit HPC jobs\n---\nSubmit.\n",
+        encoding="utf-8",
+    )
+    (root / "knowledge").mkdir(parents=True, exist_ok=True)
+
+
+@pytest.mark.asyncio
+async def test_runner_discovers_project_skills_from_thread_project_path(tmp_path):
+    """Runner discovers project skills when thread.spec.project_path points to a project."""
+    project = tmp_path / "project"
+    project.mkdir()
+    _make_aicc_bundle(project / "skills")
+
+    thread = Thread.open(
+        "disc-test",
+        root=tmp_path,
+        overrides=ThreadSpec(backend="none", project_path=str(project)).__dict__,
+    )
+
+    resources = await assemble_run_resources(thread)
+    assert resources.skills is not None
+    assert "hpc-submit" in resources.skills.names()
+    assert "workflow" in resources.skills.names()
+
+
+@pytest.mark.asyncio
+async def test_runner_treats_thread_skills_as_additional_legacy_roots(tmp_path):
+    """thread.spec.skills entries remain available as additional legacy roots."""
+    project = tmp_path / "project"
+    project.mkdir()
+    legacy_dir = tmp_path / "legacy-skills"
+    legacy_dir.mkdir()
+    (legacy_dir / "legacy-helper").mkdir()
+    (legacy_dir / "legacy-helper" / "SKILL.md").write_text(
+        "---\nname: legacy-helper\ndescription: legacy skill\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    thread = Thread.open(
+        "legacy-test",
+        root=tmp_path,
+        overrides=ThreadSpec(
+            backend="none",
+            project_path=str(project),
+            skills=(str(legacy_dir),),
+        ).__dict__,
+    )
+
+    resources = await assemble_run_resources(thread)
+    assert "legacy-helper" in resources.skills.names()
+
+
+@pytest.mark.asyncio
+async def test_runner_project_skill_overrides_legacy_duplicate(tmp_path):
+    """A project skill wins over a legacy root skill with the same name."""
+    project = tmp_path / "project"
+    project.mkdir()
+    _make_aicc_bundle(project / "skills")
+
+    legacy = tmp_path / "legacy"
+    legacy.mkdir()
+    (legacy / "hpc-submit").mkdir()
+    (legacy / "hpc-submit" / "SKILL.md").write_text(
+        "---\nname: hpc-submit\ndescription: legacy version\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    thread = Thread.open(
+        "override-test",
+        root=tmp_path,
+        overrides=ThreadSpec(
+            backend="none",
+            project_path=str(project),
+            skills=(str(legacy),),
+        ).__dict__,
+    )
+
+    resources = await assemble_run_resources(thread)
+    skill = resources.skills.get("hpc-submit")
+    assert skill is not None
+    assert skill.description == "Submit HPC jobs"  # project version wins
+
+
+@pytest.mark.asyncio
+async def test_runner_without_project_still_discovers_user_skills(tmp_path, monkeypatch):
+    """Without a project, user home skills are still discovered."""
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+
+    user_skills = home / ".electromind" / "skills"
+    user_skills.mkdir(parents=True)
+    (user_skills / "user-helper").mkdir()
+    (user_skills / "user-helper" / "SKILL.md").write_text(
+        "---\nname: user-helper\ndescription: user skill\n---\nbody\n",
+        encoding="utf-8",
+    )
+
+    thread = Thread.open(
+        "user-test",
+        root=tmp_path,
+        overrides=ThreadSpec(backend="none").__dict__,
+    )
+
+    resources = await assemble_run_resources(thread)
+    assert "user-helper" in resources.skills.names()
+
+
+@pytest.mark.asyncio
+async def test_empty_skills_still_produces_empty_catalog_when_project_has_no_skills(tmp_path):
+    """An empty thread.spec.skills with a project without skills should produce an empty catalog."""
+    project = tmp_path / "project"
+    project.mkdir()
+
+    thread = Thread.open(
+        "empty-test",
+        root=tmp_path,
+        overrides=ThreadSpec(backend="none", project_path=str(project)).__dict__,
+    )
+
+    resources = await assemble_run_resources(thread)
+    assert resources.skills.names() == []

@@ -144,8 +144,9 @@ class ThreadSpec:
     # 这是唯一事实来源——不列就没有，不再从别处静默挂载。列了 delegate_to_subagent
     # 还需配 [sub.*] 才真正启用委派。空表示不挂任何 harness 工具。
     agent_tools: tuple[str, ...] = toml_field("agent", "tools", ())
-    # skill 搜索目录白名单：thread.toml 里 [agent] skills 写了哪些目录就扫哪些，
-    # 这是唯一事实来源——不写就没有 skills，不再隐式追加 electromind home 下的 skills/。
+    # skill 搜索目录白名单：作为额外的 skill 搜索根目录，拼在项目/用户自动发现之后。
+    # 保留作为 legacy 兼容入口；新项目建议使用标准的 skills/、.agents/skills/ 或
+    # .electromind/skills/ 目录让 skills 自动被发现。
     skills: tuple[str, ...] = toml_field("agent", "skills", ())
 
     # [lock]：thread.toml 冻结时写入的自描述信息，首次创建落盘。

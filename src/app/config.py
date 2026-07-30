@@ -52,6 +52,7 @@ class ReplConfig:
     permission_mode: str | None = None
     # --resume without ID → interactive picker; resolved in main()
     resume_interactive: bool = False
+    execution_mode: str | None = None  # local | sandbox | ssh
 
     def resolved_api_key(self) -> str | None:
         if self.api_key and self.api_key.strip():
@@ -140,8 +141,9 @@ class ReplConfig:
             kwargs["ssh_workdir"] = self.ssh_workdir
         if self.model is not None:
             kwargs["model"] = self.model
-        # SSOT：把 harness 工具白名单与 skills 目录冻结进新 thread.toml，
-        # 让 [agent] tools / [agent] skills 成为运行时唯一事实来源。
+        # 把 harness 工具白名单与额外 skills 目录冻结进新 thread.toml。
+        # [agent] skills 作为 legacy 兼容入口；项目 skills 自动发现由
+        # thread.spec.project_path 驱动，不再依赖此配置。
         kwargs["agent_tools"] = self.resolved_agent_tools()
         kwargs["skills"] = self.resolved_skill_dirs()
         if self.subs:
@@ -300,6 +302,15 @@ def parse_repl_config(data: dict) -> ReplConfig:
         if permission_mode not in ("prompt", "auto"):
             raise ValueError("permission.mode must be 'prompt' or 'auto'")
 
+    execution = data.get("execution", {})
+    execution_mode = execution.get("mode")
+    if execution_mode is not None:
+        if not isinstance(execution_mode, str):
+            raise ValueError("execution.mode must be a string")
+        execution_mode = execution_mode.strip().lower()
+        if execution_mode not in ("local", "sandbox", "ssh"):
+            raise ValueError("execution.mode must be 'local', 'sandbox', or 'ssh'")
+
     return ReplConfig(
         model=model,
         api_key=api_key,
@@ -321,6 +332,7 @@ def parse_repl_config(data: dict) -> ReplConfig:
         user_label=user_label,
         assistant_label=assistant_label,
         permission_mode=permission_mode,
+        execution_mode=execution_mode,
     )
 
 
@@ -458,6 +470,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="--http 监听端口（默认 8848）",
     )
     parser.add_argument(
+        "--execution-mode",
+        choices=("local", "sandbox", "ssh"),
+        default=None,
+        help="执行模式：local（宿主）| sandbox（容器，默认）| ssh（远程）",
+    )
+    parser.add_argument(
         "--backend",
         choices=("local", "container", "docker", "podman", "ssh"),
         default=None,
@@ -518,6 +536,8 @@ def config_from_args(args: argparse.Namespace) -> ReplConfig:
         fields["permission_mode"] = args.permission_mode
     if args.auto:
         fields["permission_mode"] = "auto"
+    if args.execution_mode:
+        fields["execution_mode"] = args.execution_mode
     if args.backend:
         fields["backend"] = args.backend
     if args.project:

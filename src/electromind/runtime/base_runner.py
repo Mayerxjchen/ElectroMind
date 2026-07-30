@@ -33,6 +33,11 @@ from ..skills import (
     build_skills_system_prompt,
     make_use_skill_tool,
 )
+from ..skills.discovery import (
+    SkillMount,
+    discover_skill_sources,
+    load_skill_catalog,
+)
 from .loop_adapter import LoopAdapter
 from .run_state import RunState
 from .thread import Thread
@@ -103,11 +108,12 @@ async def assemble_run_resources(
     收尾三段按序拼接；system 收尾取值优先级：``thread.spec.system`` > ``extra_system``
     > ``agent_system``。
 
-    工具与 skills 都以 thread.toml（``spec``）为单一事实来源：
+    工具与 skills 都以 thread.toml（``spec``）为来源：
 
     - harness 工具（web_search / fetch_url / delegate_to_subagent）由 ``[agent] tools``
       白名单决定，见 :func:`assemble_harness_tools`。
-    - skills 目录取 ``[agent] skills``（不再隐式追加 electromind home 下的 skills/）。
+    - skills 通过 ``discover_skill_sources(project_path)`` 自动发现项目/用户目录；
+      ``[agent] skills`` 和 ``skill_roots`` 作为额外的 configured roots 追加。
 
     Args:
         thread: 已打开的 thread，提供 spec 与 open_sandbox。
@@ -134,15 +140,31 @@ async def assemble_run_resources(
     combined_tools.extend(tools)
     combined_tools.extend(assemble_harness_tools(thread.spec))
 
-    skills = SkillRegistry.from_dirs(*thread.spec.skills, *skill_roots)
-    mount: dict = {}
+    # Discover skill sources: project, configured (spec.skills + skill_roots), user.
+    configured = tuple(thread.spec.skills) + tuple(skill_roots)
+    sources = discover_skill_sources(
+        thread.spec.project_path,
+        configured_roots=configured,
+    )
+    catalog = load_skill_catalog(sources)
+    skills = catalog.registry
+
+    mounts: dict[str, SkillMount] = {}
     if skills.names():
         if sandbox is not None:
-            mount = await sandbox.install_skills(skills)
-        combined_tools.append(make_use_skill_tool(skills, mount))
+            mounts = await sandbox.install_skill_catalog(catalog)
+        else:
+            # Build simple mounts from skill roots for non-sandbox mode
+            for skill in skills.list():
+                mounts[skill.name] = SkillMount(
+                    source_root=skill.source_id,
+                    skill_root=str(skill.skill_root or skill.root),
+                    bundle_root=str(skill.bundle_root) if skill.bundle_root else None,
+                )
+        combined_tools.append(make_use_skill_tool(catalog, mounts))
 
     system_tail = thread.spec.system or extra_system or agent_system
-    skills_prompt = build_skills_system_prompt(skills, mount)
+    skills_prompt = build_skills_system_prompt(catalog, mounts)
     system_prompt = "\n".join(
         part for part in (computer_desc, skills_prompt, system_tail) if part
     )
