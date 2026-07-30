@@ -366,14 +366,16 @@ def _build_snapshot_prompt(
                 location = sm
                 bundle = None
             else:
-                location = str(skill.root)
+                location = ""
                 bundle = None
 
             extra = ""
             if bundle:
                 extra = f"，bundle: {bundle}"
+            # Show a short source label without full filesystem paths
+            source_label = _short_source_label(skill.source_id)
             lines.append(
-                f"- `{skill.name}`（from {skill.source_id}）：{skill.description}"
+                f"- `{skill.name}`（{source_label}）：{skill.description}"
                 + (f" @ {location}{extra}" if location else "")
             )
         lines.append(
@@ -388,3 +390,15 @@ def _build_snapshot_prompt(
 
     lines.append("<!-- electromind:skills:end -->")
     return "\n".join(lines) + "\n"
+
+
+def _short_source_label(source_id: str) -> str:
+    """Return a short human-readable label from a source id.
+
+    ``source_id`` format is ``{scope}-{kind}-{root_path}``.
+    We strip the filesystem path and return just ``scope/kind``.
+    """
+    parts = source_id.split("-", 2)
+    if len(parts) >= 2:
+        return f"{parts[0]}/{parts[1]}"
+    return source_id
