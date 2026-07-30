@@ -108,13 +108,49 @@ def test_prompt_contains_no_hardcoded_filesystem_paths(repo_catalog):
 
 
 def test_skill_registration_does_not_execute_anything(repo_catalog):
-    """Loading the catalog must not execute any Skill script or side-effect."""
-    # The act of discovery and catalog loading is purely filesystem scanning.
-    # If we got here without network, subprocess, or file-modification side
-    # effects, the test passes.
+    """Loading the catalog must not execute any Skill script or produce
+    subprocess / network / file-write side effects.
+
+    We re-run discovery under instrumentation to prove this, rather than
+    only asserting on the already-loaded catalog object.
+    """
+    import builtins
+    import subprocess
+
+    subprocess_calls: list = []
+    open_writes: list = []
+
+    real_popen = subprocess.Popen
+    real_open = builtins.open
+
+    def _fake_popen(*args, **kwargs):
+        subprocess_calls.append((args, kwargs))
+        return real_popen(*args, **kwargs)
+
+    def _fake_open(file, mode="r", *args, **kwargs):
+        if "w" in mode or "a" in mode or "+" in mode:
+            open_writes.append((file, mode))
+        return real_open(file, mode, *args, **kwargs)
+
+    try:
+        subprocess.Popen = _fake_popen  # type: ignore[assignment]
+        builtins.open = _fake_open  # type: ignore[assignment]
+        sources = discover_skill_sources(str(REPO_ROOT))
+        load_skill_catalog(sources)
+    finally:
+        subprocess.Popen = real_popen  # type: ignore[assignment]
+        builtins.open = real_open  # type: ignore[assignment]
+
+    assert len(subprocess_calls) == 0, (
+        f"Catalog loading must not spawn subprocesses; got {subprocess_calls}"
+    )
+    # open(…, 'w') calls during discovery must be zero
+    assert len(open_writes) == 0, (
+        f"Catalog loading must not write files; got {open_writes}"
+    )
+    # The loaded catalog itself is still valid
     assert repo_catalog.registry is not None
     assert isinstance(repo_catalog.fingerprint, str)
-    # Registration is read-only by construction — no SKILL.md is ever executed.
 
 
 def test_skill_registration_does_not_grant_tool_permissions(repo_catalog):

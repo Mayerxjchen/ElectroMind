@@ -8,6 +8,8 @@
     "scripts": {
         "compile": "node esbuild.js",
         "check": "tsc --noEmit",
+        "test:layout": "node --test scripts/renderer-layout.test.mjs",
+        "test:skills-state": "node --test scripts/skills-state.test.mjs",
         "start": "npm run compile && electron --no-sandbox --disable-gpu .",
         "package": "node scripts/package.js",
         "generate-icons": "cd assets && python3 -m venv .venv && .venv/bin/pip install -q Pillow && .venv/bin/python3 generate_icons.py"
