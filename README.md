@@ -12,7 +12,7 @@
 
 </div>
 
-ElectroMind 整合了第一性原理计算软件（VASP、CP2K、LAMMPS、DeepMD 等）的领域知识，能够在 local / Docker / Podman / SSH 多种 Sandbox 中执行计算任务、处理输入输出文件、分析结果，并通过可扩展的 Skills 系统持续积累科学工作流。
+ElectroMind 整合了第一性原理计算软件（VASP、CP2K、LAMMPS、DeepMD 等）的领域知识，能够在 local / Docker / Podman / SSH 多种 Sandbox 中执行计算任务，并通过可扩展的 Skills 系统持续积累科学工作流。
 
 **核心能力：**
 
