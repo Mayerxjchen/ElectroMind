@@ -8,6 +8,7 @@ import pytest
 from electromind.skills.builtin import (
     builtin_kind_for,
     builtin_roots,
+    builtin_skill_roots,
 )
 from electromind.skills.scopes import discover_candidate_sources, load_candidates
 
@@ -17,7 +18,6 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 def _make_bundle(root: Path) -> Path:
     """Create a minimal builtin bundle (procedures/ + tools/ + knowledge/)."""
     root.mkdir(parents=True, exist_ok=True)
-    (root / "AGENTS.md").write_text("# Builtin\n", encoding="utf-8")
     tool = root / "tools" / "cp2k"
     tool.mkdir(parents=True)
     (tool / "SKILL.md").write_text(
@@ -36,22 +36,65 @@ def _make_bundle(root: Path) -> Path:
     return root
 
 
-class TestBuiltinRoots:
-    def test_repo_bundle_found_in_dev(self):
-        """开发环境：仓库根 skills/ 作为 builtin root 回退被发现。"""
-        roots = builtin_roots()
-        assert len(roots) >= 1
-        # One of the roots is the repo bundle
-        assert any((r / "procedures").is_dir() for r in roots)
+def _flat_roots(bundle: Path) -> tuple[Path, Path]:
+    return (bundle / "procedures", bundle / "tools")
 
-    def test_installed_venv_location(self, tmp_path, monkeypatch):
-        """安装产物：<sys.prefix>/skills 优先被发现（uv_build data 安装位）。"""
+
+class TestBuiltinRoots:
+    def test_no_agents_md_marker_branch_in_src(self):
+        """A+ W5：src 下不得存在 AGENTS.md marker 发现分支（唯一发现协议）。"""
+        import re
+
+        src = REPO_ROOT / "src"
+        marker_patterns = [
+            re.compile(r'\(root\s*/\s*"AGENTS\.md"\)\.exists\(\)'),
+            re.compile(r'\(root\s*/\s*"AGENTS\.md"\)\.is_file\(\)'),
+            re.compile(r"STRUCTURED_MARKER"),
+        ]
+        hits: list[str] = []
+        for path in src.rglob("*.py"):
+            text = path.read_text(encoding="utf-8")
+            for pattern in marker_patterns:
+                if pattern.search(text):
+                    hits.append(f"{path.relative_to(REPO_ROOT)}")
+        assert hits == [], f"AGENTS.md marker 发现分支残留: {hits}"
+
+    def test_builtin_skill_roots_shape(self, tmp_path):
+        """A+ W5：内置 skills 提供两个普通扁平根，无 marker 要求。"""
+        roots = builtin_skill_roots(tmp_path)
+        assert roots == (
+            tmp_path / "skills" / "procedures",
+            tmp_path / "skills" / "tools",
+        )
+
+    def test_repo_bundle_found_in_dev(self):
+        """开发环境：仓库根 skills/ 的扁平根作为 builtin root 被发现。"""
+        roots = builtin_roots()
+        assert len(roots) >= 2
+        assert any(r.name == "procedures" for r in roots)
+        assert any(r.name == "tools" for r in roots)
+
+    def test_flat_roots_need_no_agents_marker(self, tmp_path, monkeypatch):
+        """A+ W5：没有 AGENTS.md marker 也能发现扁平根。"""
         bundle = _make_bundle(tmp_path / "skills")
         import sys
 
         monkeypatch.setattr(sys, "prefix", str(tmp_path))
         roots = builtin_roots()
-        assert bundle.resolve() in roots
+        procedures, tools = _flat_roots(bundle)
+        assert procedures.resolve() in roots
+        assert tools.resolve() in roots
+
+    def test_installed_venv_location(self, tmp_path, monkeypatch):
+        """安装产物：<sys.prefix>/skills 的扁平根被发现（uv_build data 位）。"""
+        bundle = _make_bundle(tmp_path / "skills")
+        import sys
+
+        monkeypatch.setattr(sys, "prefix", str(tmp_path))
+        roots = builtin_roots()
+        procedures, tools = _flat_roots(bundle)
+        assert procedures.resolve() in roots
+        assert tools.resolve() in roots
 
     def test_empty_environment_no_roots(self, tmp_path, monkeypatch):
         """空环境：无任何 bundle 时返回空 tuple（发现测试）。"""
@@ -60,7 +103,7 @@ class TestBuiltinRoots:
         monkeypatch.setattr(sys, "prefix", str(tmp_path / "noprefix"))
         # Remove repo fallback by hiding the real source tree
         monkeypatch.setattr(
-            "electromind.skills.builtin._candidate_builtin_roots",
+            "electromind.skills.builtin._candidate_builtin_bases",
             lambda: [tmp_path / "none", tmp_path / "skills_data"],
         )
         assert builtin_roots() == ()
@@ -68,8 +111,8 @@ class TestBuiltinRoots:
     def test_wheel_data_layout_venv_root(self, tmp_path, monkeypatch):
         """真实 wheel 布局：uv_build data 把 bundle 内容散装到 venv 根。
 
-        构建出的 wheel 其 ``<pkg>.data/data/`` 直接含 AGENTS.md/procedures/
-        tools/（安装到 ``<sys.prefix>`` 根）—— ``builtin_roots()`` 必须发现它。
+        构建出的 wheel 其 ``<pkg>.data/data/`` 直接含 procedures/、tools/
+        （安装到 ``<sys.prefix>`` 根）—— ``builtin_roots()`` 必须发现扁平根。
         """
         import sys
         import zipfile
@@ -90,6 +133,16 @@ class TestBuiltinRoots:
 
         wheels = list(wheel.glob("*.whl"))
         assert len(wheels) == 1
+        # A+ W6: wheel 数据区不含顶层 knowledge/
+        import zipfile as _zipfile
+
+        with _zipfile.ZipFile(wheels[0]) as zf:
+            data_names = [
+                n for n in zf.namelist() if ".data/data/" in n and "/skills/" in n
+            ]
+            assert not any("knowledge/" in n for n in data_names), (
+                f"wheel 不得携带顶层 knowledge/: {data_names}"
+            )
         # 2. Extract ONLY the .data/data portion into a fake venv root
         #    (data dir name is `<dist>-<version>.data/data/`)
         fake_prefix = tmp_path / "venv"
@@ -105,14 +158,17 @@ class TestBuiltinRoots:
                     dest.parent.mkdir(parents=True, exist_ok=True)
                     dest.write_bytes(zf.read(name))
 
-        assert (fake_prefix / "AGENTS.md").is_file()
         assert (fake_prefix / "procedures").is_dir()
         assert (fake_prefix / "tools").is_dir()
 
-        # 3. Discovery from the venv-root layout must find the bundle
+        # A+ W6: 运行时 wheel 不含顶层 knowledge/（作者事实源，非运行依赖）
+        assert not (fake_prefix / "knowledge").is_dir()
+
+        # 3. Discovery from the venv-root layout must find the flat roots
         monkeypatch.setattr(sys, "prefix", str(fake_prefix))
         roots = builtin_roots()
-        assert fake_prefix.resolve() in roots
+        assert (fake_prefix / "procedures").resolve() in roots
+        assert (fake_prefix / "tools").resolve() in roots
 
         # 4. And candidates load with cp2k etc.
         sources = discover_candidate_sources(
@@ -122,30 +178,60 @@ class TestBuiltinRoots:
         names = {c.descriptor.name for c in candidates}
         assert "cp2k" in names
 
+    def test_sdist_keeps_full_skills_bundle(self, tmp_path):
+        """A+ W6：sdist 保留完整 skills/（作者分发，含 knowledge/ 事实源）。"""
+        import subprocess
+        import tarfile
+
+        dist = tmp_path / "dist"
+        build = subprocess.run(
+            ["uv", "build", "--sdist", "--out-dir", str(dist)],
+            cwd=str(REPO_ROOT),
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if build.returncode != 0:
+            pytest.skip(f"uv build unavailable: {build.stderr[:200]}")
+        sdists = list(dist.glob("*.tar.gz"))
+        assert len(sdists) == 1
+        names = tarfile.open(sdists[0]).getnames()
+        assert any(
+            n.endswith("skills/knowledge/electronic-structure.md") for n in names
+        )
+        assert any(n.endswith("skills/knowledge/sync-map.toml") for n in names)
+        assert any(n.endswith("skills/tools/cp2k/SKILL.md") for n in names)
+        # 各 skill 的 committed runtime copies 也随 sdist 分发
+        assert any(
+            n.endswith("skills/tools/cp2k/references/knowledge/electronic-structure.md")
+            for n in names
+        )
+
     def test_kind_for(self, tmp_path):
         bundle = _make_bundle(tmp_path / "bundle")
-        assert builtin_kind_for(bundle, bundle / "tools" / "cp2k") == "tool"
+        assert builtin_kind_for(bundle / "tools", bundle / "tools" / "cp2k") == "tool"
         assert (
-            builtin_kind_for(bundle, bundle / "procedures" / "workflow") == "procedure"
+            builtin_kind_for(bundle / "procedures", bundle / "procedures" / "workflow")
+            == "procedure"
         )
 
 
 class TestBuiltinDiscovery:
     def test_builtin_scope_discovered(self, tmp_path):
-        """builtin root → scope='builtin', dialect='builtin', read_only。"""
+        """扁平 root → scope='builtin', dialect='builtin', read_only。"""
         bundle = _make_bundle(tmp_path / "bundle")
         sources = discover_candidate_sources(
-            None, cwd=str(tmp_path), builtin_roots=(bundle,)
+            None, cwd=str(tmp_path), builtin_roots=_flat_roots(bundle)
         )
         builtin_src = [s for s in sources if s.scope == "builtin"]
-        assert len(builtin_src) == 1
-        assert builtin_src[0].dialect == "builtin"
-        assert builtin_src[0].read_only is True
+        assert len(builtin_src) == 2  # one source per flat root
+        assert all(s.dialect == "builtin" for s in builtin_src)
+        assert all(s.read_only is True for s in builtin_src)
 
     def test_builtin_candidates_load(self, tmp_path):
         bundle = _make_bundle(tmp_path / "bundle")
         sources = discover_candidate_sources(
-            None, cwd=str(tmp_path), builtin_roots=(bundle,)
+            None, cwd=str(tmp_path), builtin_roots=_flat_roots(bundle)
         )
         candidates = load_candidates(sources)
         names = {c.descriptor.name for c in candidates}
@@ -159,16 +245,22 @@ class TestBuiltinDiscovery:
     def test_builtin_qualified_id(self, tmp_path):
         bundle = _make_bundle(tmp_path / "bundle")
         sources = discover_candidate_sources(
-            None, cwd=str(tmp_path), builtin_roots=(bundle,)
+            None, cwd=str(tmp_path), builtin_roots=_flat_roots(bundle)
         )
         candidates = load_candidates(sources)
         cp2k = next(c for c in candidates if c.descriptor.name == "cp2k")
-        assert cp2k.skill_id == "builtin:tools:cp2k"
+        # RFC 命名约定：builtin:procedure:cp2k 风格（单数 kind）。
+        assert cp2k.skill_id == "builtin:tool:cp2k"
 
     def test_repo_bundle_as_builtin(self):
-        """真实仓库 skills/ 作为 builtin root 时可发现内置科学 Skill。"""
+        """真实仓库 skills/ 的两个扁平根可发现内置科学 Skill。"""
         sources = discover_candidate_sources(
-            None, cwd=str(REPO_ROOT), builtin_roots=(REPO_ROOT / "skills",)
+            None,
+            cwd=str(REPO_ROOT),
+            builtin_roots=(
+                REPO_ROOT / "skills" / "procedures",
+                REPO_ROOT / "skills" / "tools",
+            ),
         )
         candidates = load_candidates(sources)
         names = {c.descriptor.name for c in candidates}

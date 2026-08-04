@@ -59,7 +59,7 @@ For slabs, adsorbates, and supported clusters, run a deterministic geometry audi
 handoff whenever possible:
 
 ```bash
-uv run tools/structure-prep/scripts/audit_structure.py work/models/ads00/POSCAR --adsorbate-count 1 --json work/models/ads00/structure-audit.json
+uv run ../scripts/audit_structure.py work/models/ads00/POSCAR --adsorbate-count 1 --json work/models/ads00/structure-audit.json
 ```
 
 Use `--adsorbate-count N` when the adsorbate/cluster is the last N atoms, or

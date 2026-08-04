@@ -19,7 +19,8 @@ Workflow shape for every MD task: validate setup → minimize → equilibrate (v
 | Situation | Go to |
 |---|---|
 | writing an input: units/atom_style table, templates (EAM, ReaxFF, DeePMD, MACE), timestep/damping guidance | `references/running.md` |
-| scheduler/job script, partition/account, module/binary/launcher | `tools/hpc-submit/SKILL.md`; read the target `~/.cluster-agents.md` before writing the script |
+| choosing a force field / interatomic potential, classical MD concepts and conventions | science: `references/knowledge/force-fields.md`, `references/knowledge/molecular-dynamics.md` |
+| scheduler/job script, partition/account, module/binary/launcher | activate `hpc-submit` (its `SKILL.md`); read the target `~/.cluster-agents.md` before writing the script |
 | crashed, ERROR lines, lost atoms, unstable dynamics | `references/errors.md` |
 | run finished — equilibration evidence, drift bars, what may be computed | `uv run scripts/parse_lammps.py`, then `references/validation.md` |
 | working examples to copy and adapt | `examples/` |

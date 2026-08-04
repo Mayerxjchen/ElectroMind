@@ -685,7 +685,6 @@ class Sandbox:
         staging_base = posixpath.join(self.home, self.SKILLS_DIRNAME, ".staging")
 
         for source in snapshot.sources:
-            source_root = source.root
             source_id = source.id
 
             # Compute a content digest for this source
@@ -721,20 +720,14 @@ class Sandbox:
             staging_dir = posixpath.join(staging_base, staging_name)
 
             try:
-                if source.kind == "structured":
-                    # Copy complete structured skill root into staging
+                # Copy each skill directory into staging (A+ W5: flat model).
+                for skill in snapshot.registry.list():
+                    if getattr(skill, "source_id", "") != source_id:
+                        continue
+                    host_dir = skill.root.resolve()
                     await self._copy_directory_tree(
-                        source_root, staging_dir, source_root
+                        host_dir, staging_dir, host_dir.parent
                     )
-                else:
-                    # Copy each skill directory into staging
-                    for skill in snapshot.registry.list():
-                        if getattr(skill, "source_id", "") != source_id:
-                            continue
-                        host_dir = skill.root.resolve()
-                        await self._copy_directory_tree(
-                            host_dir, staging_dir, host_dir.parent
-                        )
 
                 # ── Verify staging content ─────────────────────
                 await _verify_staging_content(
@@ -1146,22 +1139,13 @@ async def _verify_staging_content(
             for res in ss.resources:
                 staging_key = skill_prefix + res.relative_path
                 expected[staging_key] = res.sha256
-        # Track AGENTS.md for structured sources — per-source hash
-        if source.kind == "structured":
-            agents_hashes = getattr(skill_set_snapshot, "agents_md_hashes", ())
-            for src_id, fh in agents_hashes:
-                if src_id == source.id:
-                    expected["AGENTS.md"] = fh
-                    break
     else:
         # Fallback: re-hash live source files.
         # Build staging-relative keys that match _copy_directory_tree output.
         for skill in snapshot.registry.list():
             if getattr(skill, "source_id", "") != source.id:
                 continue
-            # Compute prefix that matches staging layout:
-            #   structured: skill_root relative to source_root
-            #   standard:   skill root directory name
+            # Compute prefix that matches staging layout (skill dir name).
             skill_root = skill.root.resolve() if hasattr(skill, "root") else None
             if skill_root is None:
                 continue
@@ -1203,8 +1187,7 @@ async def _verify_staging_content(
             if entry.is_dir:
                 await _walk_verify(entry_path, entry_rel)
                 continue
-            # Verify only tracked resources; skip non-resource files
-            # (structured sources include AGENTS.md, knowledge/, etc.)
+            # Verify only tracked resources; skip non-resource files.
             exp_hash = expected.get(entry_rel)
             if exp_hash is None:
                 continue
@@ -1246,27 +1229,15 @@ def _build_source_mount(
     source_id = source.id
     target_base = posixpath.join(home, skills_dir, source_id, digest_prefix)
 
-    if source.kind == "structured":
-        source_root = source.root
-        skill_dir = getattr(skill, "skill_root", None) or skill.root
-        try:
-            rel = skill_dir.resolve().relative_to(source_root.resolve()).as_posix()
-        except ValueError:
-            rel = skill_dir.name
-        skill_target = posixpath.join(target_base, rel)
-        return SkillMount(
-            source_root=source_id,
-            skill_root=skill_target,
-            skills_root=target_base,
-        )
-    else:
-        host_dir = skill.root.resolve()
-        skill_target = posixpath.join(target_base, host_dir.name)
-        return SkillMount(
-            source_root=source_id,
-            skill_root=skill_target,
-            skills_root=None,
-        )
+    # A+ W8: flat model only — the skill dir name is the mount segment.
+    host_dir = skill.root.resolve()
+    skill_target = posixpath.join(target_base, host_dir.name)
+    # A+ CLEAN-007: no collection-level skills_root is exposed — the skill
+    # is a self-contained mount; `skill_root` is the only mount path.
+    return SkillMount(
+        source_root=source_id,
+        skill_root=skill_target,
+    )
 
 
 async def _cleanup_old_digest_dirs(

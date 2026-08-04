@@ -79,15 +79,15 @@ the DeepMD chain, not an interactive stop after every figure:
 Run the default chain after the DFT labels are converted/split:
 
 ```bash
-python tools/deepmd/scripts/run_deepmd_chain.py --run-dir <run> --data-root data
+python ../scripts/run_deepmd_chain.py --run-dir <run> --data-root data
 ```
 
 Use the individual helpers only to rerun or debug one part of the chain:
 
 ```bash
-uv run tools/deepmd/scripts/plot_deepmd_postprocess.py --work-dir <run> --detail-prefix detail_file
-uv run tools/deepmd/scripts/deepmd_descriptor_pca.py --model <graph.pb> --data-root <data-root>
-uv run tools/deepmd/scripts/check_deepmd_qa.py --project-root .
+uv run ../scripts/plot_deepmd_postprocess.py --work-dir <run> --detail-prefix detail_file
+uv run ../scripts/deepmd_descriptor_pca.py --model <graph.pb> --data-root <data-root>
+uv run ../scripts/check_deepmd_qa.py --project-root .
 ```
 
 The descriptor PCA scope is DFT labels only by default: every compatible frame in

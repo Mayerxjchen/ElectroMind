@@ -2,7 +2,7 @@
 
 > Load this when: writing or updating a cluster's operating guide (the remote `~/.cluster-agents.md`) — this is the template to copy and fill.
 
-> Copy this file to **`~/.cluster-agents.md` in your home directory on the cluster** — the operating guide the agent reads after logging in (tier 3 of the discovery model in `AGENTS.md` "Site environment"). Authoring it on the cluster means later sessions and teammates inherit it. Fill only facts confirmed by the user, local docs, or direct probing.
+> Copy this file to **`~/.cluster-agents.md` in your home directory on the cluster** — the operating guide the agent reads after logging in (tier 3 of the `hpc-submit` skill's three-tier discovery). Authoring it on the cluster means later sessions and teammates inherit it. Fill only facts confirmed by the user, local docs, or direct probing.
 >
 > This guide is read by the agent, not parsed by code, so prose, lists, and pasted command blocks are all fair game. The headings below are a checklist, not a rigid schema: drop sections that don't apply, and add your own. An empty field means "ask the user before relying on it."
 >

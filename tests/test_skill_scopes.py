@@ -46,7 +46,8 @@ def _make_structured(root: Path) -> None:
 
 class TestDiscoverCandidateSources:
     def test_project_structured_and_standard(self, tmp_path):
-        """Repo root level finds the structured bundle + fixed standard dirs."""
+        """A+ W5: repo-root structured bundle no longer discovered — only the
+        flat fixed dirs."""
         proj = tmp_path / "proj"
         proj.mkdir()
         _make_structured(proj / "skills")
@@ -56,16 +57,17 @@ class TestDiscoverCandidateSources:
         sources = discover_candidate_sources(str(proj), cwd=str(proj))
 
         roots = {s.root for s in sources if s.scope == "project"}
-        assert (proj / "skills").resolve() in roots
+        assert (proj / "skills").resolve() not in roots
         assert (proj / ".agents" / "skills").resolve() in roots
         assert (proj / ".claude" / "skills").resolve() in roots
 
     def test_ancestor_discovery_from_subdir(self, tmp_path):
-        """从仓库子目录启动可发现仓库根 Skill（RFC SKILL-2 完成条件）。"""
+        """从仓库子目录启动可发现仓库根 Skill（A+ W5：各层仅检查固定目录）。"""
         proj = tmp_path / "repo"
         proj.mkdir()
-        _make_structured(proj / "skills")
+        _make_structured(proj / "skills")  # 不再被发现的 structured bundle
         (proj / ".git").mkdir()  # repo marker
+        _write_skill(proj / ".agents" / "skills", "repo-helper", "r", "b\n")
         subdir = proj / "packages" / "water"
         subdir.mkdir(parents=True)
         _write_skill(subdir / ".electromind" / "skills", "water-helper", "w", "b\n")
@@ -73,16 +75,16 @@ class TestDiscoverCandidateSources:
         sources = discover_candidate_sources(str(proj), cwd=str(subdir))
         project_sources = [s for s in sources if s.scope == "project"]
 
-        # Both the sub-project level and the repo-root level are found.
-        assert len(project_sources) == 2  # sub .electromind + repo structured
+        # 子层 .electromind + 仓库根 .agents 都被发现（structured 不参与）。
+        assert len(project_sources) == 2
         # Nearest project (distance 0) is the subdir level.
         nearest = [s for s in project_sources if s.distance_from_cwd == 0]
         assert len(nearest) == 1
         assert nearest[0].root == (subdir / ".electromind" / "skills").resolve()
-        # Repo-root structured bundle is at a larger distance.
+        # Repo-root flat dir is at a larger distance.
         repo_level = [s for s in project_sources if s.distance_from_cwd == 2]
         assert len(repo_level) == 1
-        assert repo_level[0].root == (proj / "skills").resolve()
+        assert repo_level[0].root == (proj / ".agents" / "skills").resolve()
 
     def test_ancestor_walk_only_fixed_dirs(self, tmp_path):
         """Non-fixed dirs at ancestor levels are never scanned."""
@@ -201,6 +203,24 @@ class TestCandidatesAndTrust:
         helper = [c for c in candidates if c.descriptor.name == "my-helper"]
         assert len(helper) == 1
         assert helper[0].skill_id == f"project:{proj.name}:agents:my-helper"
+
+    def test_name_directory_mismatch_drops_candidate(self, tmp_path):
+        """A+ W3：目录名 ≠ frontmatter name → invalid skill，不进 catalog。"""
+        proj = tmp_path / "proj"
+        proj.mkdir()
+        _write_skill(proj / ".agents" / "skills", "good", "g", "b\n")
+        bad = proj / ".agents" / "skills" / "mismatched"
+        bad.mkdir(parents=True)
+        (bad / "SKILL.md").write_text(
+            "---\nname: other-name\ndescription: d\n---\nbody\n",
+            encoding="utf-8",
+        )
+        sources = discover_candidate_sources(str(proj), cwd=str(proj))
+        candidates = load_candidates(sources)
+        names = [c.descriptor.name for c in candidates]
+        assert "good" in names
+        assert "other-name" not in names
+        assert "mismatched" not in names
 
     def test_untrusted_project_candidates_marked(self, tmp_path):
         """未信任项目的候选标记为 untrusted，且不进入模型 Catalog。"""

@@ -27,7 +27,7 @@ schema_version: 1
 id: T003
 title: Build candidate adsorption models
 role: structure-modeler
-role_contract: procedures/research-orchestrator/references/roles.md#structure-modeler
+role_contract: ../references/roles.md#structure-modeler
 skill: structure-prep
 status: approved
 depends_on:
@@ -53,13 +53,15 @@ success_criteria:
   - composition and PBC validated
   - provenance recorded
 knowledge_required:
-  - knowledge/surface-thermodynamics.md
+  - references/knowledge/surface-thermodynamics.md
 required_refs:
-  - tools/structure-prep/references/running.md
-  - tools/structure-prep/references/validation.md
+  - the `structure-prep` skill's `references/running.md`
+  - the `structure-prep` skill's `references/validation.md`
 required_checks:
-  - uv run {repo_root}/tools/structure-prep/scripts/audit_structure.py work/models/slab.vasp
-  - uv run {repo_root}/procedures/research-orchestrator/scripts/check_structure_generator_boundary.py --forbid-engine-inputs work/scripts/
+  # activate the `structure-prep` skill first; run its script from its skill root
+  - uv run <skill-root>/scripts/audit_structure.py work/models/slab.vasp
+  # this skill's own gate script lives under the skill root
+  - uv run {repo_root}/scripts/check_structure_generator_boundary.py --forbid-engine-inputs work/scripts/
 release_gates:
   - model-structure-review
 execution_policy:
@@ -99,12 +101,12 @@ provenance: []
   this task can be accepted.
 - `required_refs`: skill references that the executing agent must read.
 - `required_checks`: deterministic commands that must run before validation or release.
-  Use `uv run procedures/research-orchestrator/scripts/run_required_checks.py
+  Use `uv run ../scripts/run_required_checks.py
   PATH/.research TASK_ID` to execute them from the project root.
   The runner expands `{repo_root}` to this skill repository and `{project_root}` to the
   active project root, so project state can live outside the skill repository.
 - `role_contract`: repo path to the role contract section, e.g.
-  `procedures/research-orchestrator/references/roles.md#scientific-critic`.
+  `../references/roles.md#scientific-critic`.
 - `can_read`: artifact IDs, artifact types, paths, roles, or skills this task may read.
 - `can_write`: artifact IDs or artifact types this task may produce.
 - `cannot`: explicit authority boundaries, such as "submit production HPC jobs".
@@ -129,7 +131,7 @@ artifact inputs may be unregistered, which is useful for tasks that inspect whet
 supplied starting structures exist and self-build candidates when they do not.
 
 The validator checks that `role` is legal, that `skill` names an existing repository
-skill under `procedures/*/SKILL.md` or `tools/*/SKILL.md`, and that `role_contract`,
+skill's `SKILL.md` (any procedure or tool skill), and that `role_contract`,
 when present, points to an existing repo file. The validator also enforces role output
 boundaries for restricted roles such as `scientific-critic`.
 
@@ -173,7 +175,7 @@ submit scripts or final engine input packs before structure acceptance; scripts 
 mutate structures should be checked with `check_structure_generator_boundary.py`, using
 `--forbid-engine-inputs` when the task is only a structure-modeler task. The `structure-critic` task is
 read-only: it checks the generated structures against the literature review and
-`tools/structure-prep/references/validation.md`, then writes `structure-audit-report`
+the `structure-prep` skill's `references/validation.md`, then writes `structure-audit-report`
 or `model-structure-review`/`structure_gate`. It can recommend changing facet,
 termination, supercell, vacuum, layer count, adsorbate height, orientation, site,
 coverage, or model size, but the coordinate edits go back to `structure-modeler`.
@@ -206,10 +208,11 @@ VASP, list at least:
 
 ```yaml
 required_refs:
-  - tools/vasp/references/running.md
-  - tools/vasp/references/validation.md
+  - the `vasp` skill's `references/running.md`
+  - the `vasp` skill's `references/validation.md`
 required_checks:
-  - uv run {repo_root}/tools/vasp/scripts/check_inputs.py --strict-performance work/runs/ads-relax
+  # activate the `vasp` skill first; run its script from its skill root
+  - uv run <skill-root>/scripts/check_inputs.py --strict-performance work/runs/ads-relax
 ```
 
 The resulting `engine-input-set` artifact should record the input-standard choices:
@@ -261,7 +264,7 @@ attempts the same next-wave task scaffolding, but still exits blocked for the fi
 report.
 
 Each gate-producing task writes a YAML verdict following
-`procedures/research-orchestrator/references/gate-contract.md`. Downstream tasks should
+`../references/gate-contract.md`. Downstream tasks should
 consume the verdict artifact by ID, not by chat memory. Narrative review files can
 support the verdict, but they do not replace the YAML gate artifact:
 
@@ -272,7 +275,7 @@ inputs:
   - artifact_id: cluster-guide-read
     min_status: accepted
 required_checks:
-  - uv run {repo_root}/procedures/research-orchestrator/scripts/check_pre_submit.py {project_root}/.research T_ENGINE
+  - uv run {repo_root}/scripts/check_pre_submit.py {project_root}/.research T_ENGINE
 ```
 
 The gate verdict stays general. It records whether model relevance, finite-size effects,

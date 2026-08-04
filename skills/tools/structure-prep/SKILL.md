@@ -72,7 +72,7 @@ Two toolchains by system type: **periodic** (crystals, slabs, defects, VASP file
   helpers such as `generate_case()` into a structure-only function and a separate
   engine-input function that starts from a reviewed structure. In `.research`
   workflows, run
-  `procedures/research-orchestrator/scripts/check_structure_generator_boundary.py --forbid-engine-inputs`
+  the `research-orchestrator` skill's `scripts/check_structure_generator_boundary.py --forbid-engine-inputs`
   on such scripts before accepting the structure-modeler task.
 - Originals preserved; derived structures to new paths; database structures carry their entry ID.
 

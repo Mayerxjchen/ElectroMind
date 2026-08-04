@@ -1,6 +1,6 @@
 # Running Electronic-Structure Analysis in CP2K
 
-> Load this when: producing CP2K files for DOS/PDOS, band structures, molecular orbitals, Molden/Multiwfn analysis, cube fields, charge-density difference, work function, ELF, spin density, d-band center, charges, or visualization. For interpretation discipline, also read `knowledge/electronic-structure.md`, `knowledge/bonding-analysis.md`, and `knowledge/scientific-visualization.md`.
+> Load this when: producing CP2K files for DOS/PDOS, band structures, molecular orbitals, Molden/Multiwfn analysis, cube fields, charge-density difference, work function, ELF, spin density, d-band center, charges, or visualization. For interpretation discipline, also read `references/knowledge/electronic-structure.md`, `references/knowledge/bonding-analysis.md`, and `references/knowledge/scientific-visualization.md`.
 
 Each task below is an operation recipe from a converged ground-state calculation. Keep settings consistent across compared systems; the *meaning* of every observable lives in the knowledge docs.
 

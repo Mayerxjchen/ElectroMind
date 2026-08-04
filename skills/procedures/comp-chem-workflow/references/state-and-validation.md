@@ -6,7 +6,7 @@
 ## `.research/` — structured project state
 
 For multi-stage, HPC, resumable, or handoff-heavy projects, create a `.research/`
-directory using `procedures/research-orchestrator/`:
+directory using the `research-orchestrator` skill:
 
 ```text
 .research/
@@ -25,10 +25,11 @@ This is the source of truth for dependencies, artifact status, approvals, and ev
 Use:
 
 ```bash
-uv run procedures/research-orchestrator/scripts/validate_state.py .research
-uv run procedures/research-orchestrator/scripts/ready_tasks.py .research
-uv run procedures/research-orchestrator/scripts/run_required_checks.py .research T002
-uv run procedures/research-orchestrator/scripts/claim_task.py .research T002 --owner <owner-id>
+# activate the `research-orchestrator` skill first; its scripts live at <skill-root>/scripts/
+uv run <skill-root>/scripts/validate_state.py .research
+uv run <skill-root>/scripts/ready_tasks.py .research
+uv run <skill-root>/scripts/run_required_checks.py .research T002
+uv run <skill-root>/scripts/claim_task.py .research T002 --owner <owner-id>
 ```
 
 `workflow.md` remains a human-readable summary for scanning.
@@ -98,7 +99,7 @@ rung, and never conflate rungs.
 
 1. **Files exist** — the run produced its expected artifacts.
 2. **Terminated normally** — or the failure reason is identified (engine skill's `references/errors.md`).
-3. **Technically converged** — SCF/optimization criteria met; MD equilibrated and stable. (For a weakly-bound/floppy adsorbate, a residual soft-mode force at a genuinely stationary energy may be accepted *only* under the narrow, disclosed exception in `tools/vasp/references/validation.md` — never as a silent pass, and never when the energy is still descending.)
+3. **Technically converged** — SCF/optimization criteria met; MD equilibrated and stable. (For a weakly-bound/floppy adsorbate, a residual soft-mode force at a genuinely stationary energy may be accepted *only* under the narrow, disclosed exception in the `vasp` skill's `references/validation.md` — never as a silent pass, and never when the energy is still descending.)
 4. **Scientifically valid** — right reference states, aligned settings across compared values, corrections accounted for, magnitude sane against expectation, **and the relaxed structure still is the intended model** (bonding topology survived relaxation: adsorbates where placed, no silent H transfer/dissociation/reconstruction — a run can converge cleanly into a different chemical species than the one the stage claims to model).
 
 Rung 3 without rung 4 is "a converged number", not a result. A validated result without

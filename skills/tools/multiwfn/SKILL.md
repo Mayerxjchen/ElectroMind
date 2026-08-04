@@ -23,9 +23,9 @@ Multiwfn is a post-processing and wavefunction-analysis tool. It does not valida
 | checking whether a Multiwfn result is usable | `references/validation.md` |
 | bad input file, missing orbitals, cube/rendering problems, strange charges | `references/errors.md` |
 | official manual, Sobereva tutorials, VMD/cube-related resources | `references/resources.md` |
-| figure strategy and quality floor | `knowledge/scientific-visualization.md` |
-| charge/bonding interpretation | `knowledge/electronic-structure.md`, `knowledge/bonding-analysis.md` |
-| TD-DFT state interpretation | `knowledge/molecular-qc-practical-rules.md` |
+| figure strategy and quality floor | `references/knowledge/scientific-visualization.md` |
+| charge/bonding interpretation | `references/knowledge/electronic-structure.md`, `references/knowledge/bonding-analysis.md` |
+| TD-DFT state interpretation | `references/knowledge/molecular-qc-practical-rules.md` |
 
 ## Workflow
 
@@ -33,7 +33,7 @@ Multiwfn is a post-processing and wavefunction-analysis tool. It does not valida
 2. Convert/check the input file, e.g. Gaussian `.chk` -> `.fchk` using `formchk`.
 3. Choose the narrow analysis path from `references/orbital-charge-spectra.md` or `references/running.md`.
 4. Record menu path/options, file provenance, isovalues/cutoffs, grid settings, and state/orbital indices.
-5. Interpret with the relevant `knowledge/` file; do not overclaim from a single population or picture.
+5. Interpret with the relevant `references/knowledge/` file; do not overclaim from a single population or picture.
 
 ## Hard guardrails
 

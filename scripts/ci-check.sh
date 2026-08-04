@@ -17,8 +17,27 @@ uv run ruff check .
 step "ruff format --check"
 uv run ruff format --check .
 
-step "pytest + coverage"
-uv run pytest tests/ --cov=src --cov-report=xml --cov-report=term -q
+# W2 (A+ self-contained skills): 每个 skill 必须自包含（无 collection 依赖、
+# 无跨 skill 路径引用、Markdown 引用闭包）。迁移完成前本步骤为红，内容迁移
+# 完成后必须保持绿。
+step "skill isolation check"
+uv run scripts/check-skill-isolation.py
+
+# A+ 验收（v1.0）: 覆盖率门禁 ≥ max(78%, baseline)。COVERAGE_MIN 可覆盖。
+# 用 --cov-report=json 生成原始值，显式读 percent_covered（非四舍五入 display）
+# 二次门禁；不足即非零退出（`set -e` 保证）。
+step "pytest + coverage（>= ${COVERAGE_MIN:-78}%）"
+uv run pytest tests/ --cov=src --cov-report=json --cov-report=term -q
+COVERAGE_MIN="${COVERAGE_MIN:-78}" uv run python - "$COVERAGE_MIN" <<'PY'
+import json
+import sys
+
+cov = float(json.load(open("coverage.json"))["totals"]["percent_covered"])
+minimum = float(sys.argv[1])
+print(f"coverage: {cov:.4f}% (min {minimum}%)")
+if cov < minimum:
+    raise SystemExit(f"coverage {cov:.4f}% < {minimum}%")
+PY
 
 # 发布产物完整性：wheel 与 sdist 都必须含 default-config.toml。
 # 构建后端下限已锁 uv_build 0.9.0（0.8.x 的 sdist 收集缺陷：模块目录概率性

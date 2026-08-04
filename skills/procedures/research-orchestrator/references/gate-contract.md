@@ -153,9 +153,9 @@ is decisive. For example, if `min_adsorbate_image_A` is lower than
 - any final-report figure that uses VASP volumetric data (`CHGCAR`, `CHGDIFF`,
   `PARCHG`, `ELFCAR`, spin density, Delta rho / charge-density difference,
   wavefunction/WAVECAR-derived grids, or CHGCAR-like outputs) has accepted figure or
-  report-manifest provenance showing `tools/vasp/references/volumetric-visualization.md`;
-  charge-density-difference figures also show `tools/vasp/references/electronic-analysis.md`;
-- the report builder readiness checklist in `tools/report/references/validation.md`
+  report-manifest provenance showing the `vasp` skill's `references/volumetric-visualization.md`;
+  charge-density-difference figures also show the `vasp` skill's `references/electronic-analysis.md`;
+- the report builder readiness checklist in the `report` skill's `references/validation.md`
   is satisfied.
 
 ## Hook Scripts
@@ -163,10 +163,10 @@ is decisive. For example, if `min_adsorbate_image_A` is lower than
 The shipped hooks are deliberately generic:
 
 ```text
-uv run procedures/research-orchestrator/scripts/validate_gate.py work/reviews/result_gate.yaml --research .research --require-passing
-uv run procedures/research-orchestrator/scripts/check_pre_submit.py .research T_ENGINE
-uv run procedures/research-orchestrator/scripts/check_pre_accept_claim.py .research CLAIM_ID --outcome addresses
-uv run procedures/research-orchestrator/scripts/check_pre_report.py .research T_REPORT
+uv run ../scripts/validate_gate.py work/reviews/result_gate.yaml --research .research --require-passing
+uv run ../scripts/check_pre_submit.py .research T_ENGINE
+uv run ../scripts/check_pre_accept_claim.py .research CLAIM_ID --outcome addresses
+uv run ../scripts/check_pre_report.py .research T_REPORT
 ```
 
 They check state, artifact status, gate syntax, gate status, waiver provenance, the

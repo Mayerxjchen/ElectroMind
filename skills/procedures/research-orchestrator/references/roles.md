@@ -64,7 +64,7 @@ itself.
 - Extract claims, computational methods, structures, observables, and missing details
   from source documents.
 - Produce method fingerprints and model-observable decisions with assumptions labeled.
-- Consult `knowledge/` when choosing scientific observables, but keep literature-derived
+- Consult `references/knowledge/` when choosing scientific observables, but keep literature-derived
   models exploratory unless original structures and full methods are available.
 
 ### `scientific-critic`
@@ -81,7 +81,7 @@ itself.
 
 - Consume accepted claims, accepted figures, and accepted calculation-directory indexes.
 - Preserve limitations and contradictions visibly.
-- Build report artifacts through `tools/report`; do not turn validated-only parser
+- Build report artifacts through the `report` skill; do not turn validated-only parser
   output into a final claim.
 - A stage synthesis is allowed only as an interim post-result packet. It is not a
   substitute for plan, structure, or engine preflight gates and must not gate first
@@ -139,7 +139,7 @@ input or HPC submission:
   consistency, polarity/termination risks, closest contacts with element-pair
   covalent-radius thresholds/margins, adsorbate-surface distances, and
   periodic-image separation.
-- Use `tools/structure-prep/references/validation.md` and deterministic geometry
+- Use the `structure-prep` skill's `references/validation.md` and deterministic geometry
   summaries where possible. When a structure looks visually plausible but numerical
   distances disagree, the numerical neighbor check wins.
 - Write `structure-audit-report`, `model-structure-review`, or `gate-verdict` artifacts.

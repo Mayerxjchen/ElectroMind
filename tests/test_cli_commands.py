@@ -298,7 +298,7 @@ def test_skills_list_empty_dir(capsys, monkeypatch, tmp_path):
     """空项目 + 无内置 bundle → 无 skills（SKILL-8 空环境发现测试）。"""
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
-        "electromind.skills.builtin._candidate_builtin_roots",
+        "electromind.skills.builtin._candidate_builtin_bases",
         lambda: [tmp_path / "none"],
     )
     assert skills_cmd.run(["list"]) == EXIT_OK

@@ -1,6 +1,6 @@
 # Running AIMD and Enhanced Sampling in VASP
 
-> Load this when: setting up a VASP AIMD run (heating/NVT/NVE), constrained/free-energy dynamics (Blue-moon, slow-growth, metadynamics), or validating a trajectory from `OUTCAR`/`OSZICAR`/`REPORT`. For *what the trajectory means and how to analyze it* (RDF/VACF/VDOS/MSD interpretation, diffusion fitting, CV choice, sampling discipline), see `knowledge/molecular-dynamics.md`. For VASPKIT post-processing, `tools/vaspkit/references/aimd-postprocessing.md`.
+> Load this when: setting up a VASP AIMD run (heating/NVT/NVE), constrained/free-energy dynamics (Blue-moon, slow-growth, metadynamics), or validating a trajectory from `OUTCAR`/`OSZICAR`/`REPORT`. For *what the trajectory means and how to analyze it* (RDF/VACF/VDOS/MSD interpretation, diffusion fitting, CV choice, sampling discipline), see `references/knowledge/molecular-dynamics.md`. For VASPKIT post-processing, the `vaspkit` skill's `references/aimd-postprocessing.md`.
 
 AIMD is statistical sampling (see the knowledge doc) — this file is the VASP *operation*. Standard
 flow: relax a sensible start → heat/anneal (velocity rescaling) → equilibrate with a thermostat →
@@ -91,8 +91,8 @@ tail REPORT
 `OSZICAR`/`REPORT` show temperature, energies, thermostat energy, and SCF failures. (What a healthy
 trajectory looks like and the red flags are in the knowledge doc.) Convert XDATCAR→xyz for
 VMD/OVITO with an explicit frame stride; diffusion/MSD needs the unwrapped trajectory. Extract
-RDF/VACF/VDOS/MSD with VASPKIT (`tools/vaspkit/references/aimd-postprocessing.md`); interpret them
-with `knowledge/molecular-dynamics.md`.
+RDF/VACF/VDOS/MSD with VASPKIT (the `vaspkit` skill's `references/aimd-postprocessing.md`); interpret them
+with `references/knowledge/molecular-dynamics.md`.
 
 ## Constrained / free-energy dynamics (VASP tags)
 

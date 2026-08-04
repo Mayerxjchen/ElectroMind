@@ -1,6 +1,6 @@
 # Running DOS and Band Structure in VASP
 
-> Load this when: setting up a VASP DOS/PDOS or band-structure run — INCAR blocks, k-point strategy, smearing, the non-SCF band workflow. For *interpreting* the result (PDOS meaning, energy alignment, d-band center, adsorbate orbital analysis), see `knowledge/electronic-structure.md`. For VASPKIT extraction/d-band-center menus, also load `tools/vaspkit/references/dos-band.md`.
+> Load this when: setting up a VASP DOS/PDOS or band-structure run — INCAR blocks, k-point strategy, smearing, the non-SCF band workflow. For *interpreting* the result (PDOS meaning, energy alignment, d-band center, adsorbate orbital analysis), see `references/knowledge/electronic-structure.md`. For VASPKIT extraction/d-band-center menus, also load the `vaspkit` skill's `references/dos-band.md`.
 
 DOS/band runs are **post-relaxation** electronic analyses. Do not use DOS averaged over a
 relaxation trajectory — start from the optimized structure, run a clean static, then run the
@@ -48,7 +48,7 @@ For supercells, band folding complicates comparison with primitive bands; use ba
 - `LORBIT=11`: magnetic-component PDOS (`s`, `px/py/pz`, `dxy…`); `LORBIT=10`: coarser s/p/d/f.
 - Fermi energy: `grep E-fermi OUTCAR`.
 
-*What the projections mean and how to align/compare them — `knowledge/electronic-structure.md`.*
+*What the projections mean and how to align/compare them — `references/knowledge/electronic-structure.md`.*
 
 ## Multi-atom PDOS for covalent interactions (overlay, don't isolate)
 

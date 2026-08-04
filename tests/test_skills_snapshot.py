@@ -46,23 +46,16 @@ def tmp_skill_dir(tmp_path: Path) -> Path:
 
 
 @pytest.fixture
-def tmp_structured_root(tmp_path: Path) -> Path:
-    """Create a minimal structured skill root."""
-    bundle = tmp_path / "skills"
-    bundle.mkdir()
-    (bundle / "AGENTS.md").write_text("# Global instructions\n", encoding="utf-8")
-    tools = bundle / "tools"
-    tools.mkdir()
-    skill = tools / "my-tool"
-    skill.mkdir()
+def tmp_flat_root(tmp_path: Path) -> Path:
+    """A flat project skill root (.agents/skills) — A+ W5, no markers."""
+    root = tmp_path / ".agents" / "skills"
+    skill = root / "my-tool"
+    skill.mkdir(parents=True)
     (skill / "SKILL.md").write_text(
         "---\nname: my-tool\ndescription: A tool skill\n---\n\nTool body.\n",
         encoding="utf-8",
     )
-    knowledge = bundle / "knowledge"
-    knowledge.mkdir()
-    (knowledge / "shared.md").write_text("# Shared\n", encoding="utf-8")
-    return bundle
+    return root
 
 
 # ============================================================================
@@ -160,31 +153,14 @@ class TestSkillSnapshot:
 
 
 class TestSkillSetSnapshot:
-    def test_set_digest_changes_with_agents_md(self, tmp_structured_root):
-        """Changing AGENTS.md changes the set digest."""
-        sources = _structured_sources(tmp_structured_root)
-        cat1 = load_skill_catalog(sources)
-        ss1 = build_skill_set_snapshot(cat1, generation=1)
-
-        # Modify AGENTS.md
-        (tmp_structured_root / "AGENTS.md").write_text(
-            "# Modified global instructions\n", encoding="utf-8"
-        )
-        cat2 = load_skill_catalog(sources)
-        ss2 = build_skill_set_snapshot(cat2, generation=2)
-
-        assert ss1.digest != ss2.digest
-        assert ss1.generation == 1
-        assert ss2.generation == 2
-
-    def test_set_digest_changes_with_skill_change(self, tmp_structured_root):
+    def test_set_digest_changes_with_skill_change(self, tmp_flat_root):
         """Changing a skill changes the set digest."""
-        sources = _structured_sources(tmp_structured_root)
+        sources = _standard_sources(tmp_flat_root)
         cat1 = load_skill_catalog(sources)
         ss1 = build_skill_set_snapshot(cat1, generation=1)
 
         # Modify a skill
-        (tmp_structured_root / "tools" / "my-tool" / "SKILL.md").write_text(
+        (tmp_flat_root / "my-tool" / "SKILL.md").write_text(
             "---\nname: my-tool\ndescription: changed\n---\n\nChanged.\n",
             encoding="utf-8",
         )
@@ -224,15 +200,6 @@ class TestSkillSetSnapshot:
         # Digest should differ due to the added skill_symlink_rejected diagnostic
         assert len(ss2.diagnostics) > diag_count_1
         assert ss1.digest != ss2.digest
-
-    def test_agents_md_is_captured(self, tmp_structured_root):
-        """SkillSetSnapshot captures AGENTS.md content."""
-        sources = _structured_sources(tmp_structured_root)
-        cat = load_skill_catalog(sources)
-        ss = build_skill_set_snapshot(cat, generation=1)
-
-        assert ss.agents_md is not None
-        assert "Global instructions" in ss.agents_md
 
     def test_digest_prefix_helper(self):
         """digest_prefix returns first N chars."""
@@ -368,28 +335,28 @@ class TestSkillRuntimeGeneration:
         assert view is not None
         assert view.generation == 1
 
-    def test_prepare_turn_with_skills(self, tmp_structured_root):
+    def test_prepare_turn_with_skills(self, tmp_flat_root):
         """prepare_turn with real skills returns generation 1."""
         from electromind.skills.runtime import SkillRuntime
 
-        rt = SkillRuntime(str(tmp_structured_root.parent))
+        rt = SkillRuntime(str(tmp_flat_root.parent))
         view = rt.prepare_turn()
 
         if view is not None:
             assert view.generation >= 1
 
-    def test_generation_bumps_on_change(self, tmp_structured_root):
+    def test_generation_bumps_on_change(self, tmp_flat_root):
         """Changing a skill bumps the generation."""
         from electromind.skills.runtime import SkillRuntime
 
-        rt = SkillRuntime(str(tmp_structured_root.parent))
+        rt = SkillRuntime(str(tmp_flat_root.parent))
         view1 = rt.prepare_turn()
         if view1 is None:
             pytest.skip("No skills to test generation bump")
         gen1 = view1.generation
 
         # Modify a skill
-        (tmp_structured_root / "tools" / "my-tool" / "SKILL.md").write_text(
+        (tmp_flat_root / "my-tool" / "SKILL.md").write_text(
             "---\nname: my-tool\ndescription: changed tool\n---\n\nChanged.\n",
             encoding="utf-8",
         )
@@ -398,11 +365,11 @@ class TestSkillRuntimeGeneration:
             pytest.skip("Skill change not detected")
         assert view2.generation > gen1
 
-    def test_generation_same_when_no_change(self, tmp_structured_root):
+    def test_generation_same_when_no_change(self, tmp_flat_root):
         """Same content → same generation."""
         from electromind.skills.runtime import SkillRuntime
 
-        rt = SkillRuntime(str(tmp_structured_root.parent))
+        rt = SkillRuntime(str(tmp_flat_root.parent))
         view1 = rt.prepare_turn()
         if view1 is None:
             pytest.skip("No skills to test")
@@ -412,9 +379,7 @@ class TestSkillRuntimeGeneration:
         assert view2.generation == view1.generation
         assert view2.digest == view1.digest
 
-    async def test_run_freeze_keeps_old_view_after_generation_bump(
-        self, tmp_structured_root
-    ):
+    async def test_run_freeze_keeps_old_view_after_generation_bump(self, tmp_flat_root):
         """Characterization: Run 级 Generation 冻结。
 
         ``use_skill`` 工具绑定到 view1 后，即使源文件变化使下一 turn 的
@@ -426,7 +391,7 @@ class TestSkillRuntimeGeneration:
 
         from electromind.skills.runtime import SkillRuntime
 
-        rt = SkillRuntime(str(tmp_structured_root.parent))
+        rt = SkillRuntime(str(tmp_flat_root.parent))
         view1 = rt.prepare_turn()
         if view1 is None:
             pytest.skip("No skills to test")
@@ -434,7 +399,7 @@ class TestSkillRuntimeGeneration:
         tool = rt.build_use_skill_tool(view1)
 
         # Modify a skill → next prepare_turn bumps the generation
-        (tmp_structured_root / "tools" / "my-tool" / "SKILL.md").write_text(
+        (tmp_flat_root / "my-tool" / "SKILL.md").write_text(
             "---\nname: my-tool\ndescription: changed tool\n---\n\nChanged body.\n",
             encoding="utf-8",
         )
@@ -450,11 +415,11 @@ class TestSkillRuntimeGeneration:
         assert "Tool body." in payload["instructions"]
         assert "Changed body." not in payload["instructions"]
 
-    def test_state_payload_includes_generation(self, tmp_structured_root):
+    def test_state_payload_includes_generation(self, tmp_flat_root):
         """state_payload includes generation and digest."""
         from electromind.skills.runtime import SkillRuntime
 
-        rt = SkillRuntime(str(tmp_structured_root.parent))
+        rt = SkillRuntime(str(tmp_flat_root.parent))
         rt.prepare_turn()
         payload = rt.state_payload(thread_id="test-thread")
         assert "generation" in payload
@@ -470,11 +435,11 @@ class TestSkillRuntimeGeneration:
 
 
 class TestSkillStateEvent:
-    def test_build_skill_state_event(self, tmp_structured_root):
+    def test_build_skill_state_event(self, tmp_flat_root):
         """build_skill_state_event produces the expected shape."""
         from electromind.skills.runtime import SkillRuntime
 
-        rt = SkillRuntime(str(tmp_structured_root.parent))
+        rt = SkillRuntime(str(tmp_flat_root.parent))
         rt.prepare_turn()
         event = rt.build_skill_state_event(thread_id="t1", which="init")
 
@@ -485,11 +450,11 @@ class TestSkillStateEvent:
         assert "loaded_this_run" in event
         assert "diagnostics" in event
 
-    def test_loaded_this_run_tracks_activation(self, tmp_structured_root):
+    def test_loaded_this_run_tracks_activation(self, tmp_flat_root):
         """_on_activate populates loaded_this_run."""
         from electromind.skills.runtime import SkillRuntime
 
-        rt = SkillRuntime(str(tmp_structured_root.parent))
+        rt = SkillRuntime(str(tmp_flat_root.parent))
         rt.prepare_turn()
         payload = rt.state_payload(thread_id="t1")
         assert payload["loaded_this_run"] == []
@@ -502,11 +467,11 @@ class TestSkillStateEvent:
                 payload2 = rt.state_payload(thread_id="t1")
                 assert "my-tool" in payload2["loaded_this_run"]
 
-    def test_loaded_this_run_resets_per_turn(self, tmp_structured_root):
+    def test_loaded_this_run_resets_per_turn(self, tmp_flat_root):
         """loaded_this_run is cleared on each prepare_turn."""
         from electromind.skills.runtime import SkillRuntime
 
-        rt = SkillRuntime(str(tmp_structured_root.parent))
+        rt = SkillRuntime(str(tmp_flat_root.parent))
         rt.prepare_turn()
 
         if rt.snapshot is not None:
@@ -598,23 +563,21 @@ class TestBlackBoxRegression:
         assert "Modified on disk" not in snap.instructions
 
     def test_discovery_priority_preserved(self, tmp_path):
-        """Six-level priority: higher-priority name wins."""
-        # Project Skills (priority 1)
-        proj_skills = tmp_path / "skills"
-        proj_skills.mkdir()
-        (proj_skills / "AGENTS.md").write_text("# agents\n", encoding="utf-8")
-        tool = proj_skills / "tools" / "shared-name"
-        tool.mkdir(parents=True)
-        (tool / "SKILL.md").write_text(
-            "---\nname: shared-name\ndescription: from project skills\n---\n\nProject Skills body.\n",
-            encoding="utf-8",
-        )
-
-        # Project .agents/skills (priority 2) — same name
+        """A+ W5: only flat fixed dirs are project sources; the nearer dialect
+        (.agents) wins over .electromind for the same name."""
+        # Project .agents/skills — wins
         agents = tmp_path / ".agents" / "skills" / "shared-name"
         agents.mkdir(parents=True)
         (agents / "SKILL.md").write_text(
             "---\nname: shared-name\ndescription: from agents\n---\n\nAgents body.\n",
+            encoding="utf-8",
+        )
+
+        # Project .electromind/skills (lower priority) — same name
+        em = tmp_path / ".electromind" / "skills" / "shared-name"
+        em.mkdir(parents=True)
+        (em / "SKILL.md").write_text(
+            "---\nname: shared-name\ndescription: from electromind\n---\n\nEM body.\n",
             encoding="utf-8",
         )
 
@@ -623,16 +586,16 @@ class TestBlackBoxRegression:
 
         skill = cat.registry.get("shared-name")
         assert skill is not None
-        assert "from project skills" in skill.description
+        assert "from agents" in skill.description
         # Should have a duplicate diagnostic
         assert any(
             d.code == "duplicate_skill_name" and "shared-name" in d.message
             for d in cat.diagnostics
         )
 
-    def test_knowledge_not_registered_as_skill(self, tmp_structured_root):
+    def test_knowledge_not_registered_as_skill(self, tmp_flat_root):
         """knowledge/ directory content is not registered as a skill."""
-        sources = _structured_sources(tmp_structured_root)
+        sources = _standard_sources(tmp_flat_root)
         cat = load_skill_catalog(sources)
 
         # knowledge/ should not appear in skill registry
@@ -641,265 +604,6 @@ class TestBlackBoxRegression:
 
 
 # ============================================================================
-# Phase 9: Multi-source AGENTS.md hash scoping
-# ============================================================================
-
-
-@pytest.fixture
-def tmp_two_structured_roots(tmp_path: Path) -> tuple[Path, Path]:
-    """Create two structured skill roots each with AGENTS.md and a skill."""
-    # Source A
-    root_a = tmp_path / "source-a"
-    root_a.mkdir()
-    (root_a / "AGENTS.md").write_text("# Global from source A\n", encoding="utf-8")
-    tools_a = root_a / "tools"
-    tools_a.mkdir()
-    skill_a = tools_a / "tool-a"
-    skill_a.mkdir()
-    (skill_a / "SKILL.md").write_text(
-        "---\nname: tool-a\ndescription: Tool from source A\n---\n\nTool A body.\n",
-        encoding="utf-8",
-    )
-
-    # Source B
-    root_b = tmp_path / "source-b"
-    root_b.mkdir()
-    (root_b / "AGENTS.md").write_text("# Global from source B\n", encoding="utf-8")
-    tools_b = root_b / "tools"
-    tools_b.mkdir()
-    skill_b = tools_b / "tool-b"
-    skill_b.mkdir()
-    (skill_b / "SKILL.md").write_text(
-        "---\nname: tool-b\ndescription: Tool from source B\n---\n\nTool B body.\n",
-        encoding="utf-8",
-    )
-
-    return root_a, root_b
-
-
-def _two_structured_sources(root_a: Path, root_b: Path) -> tuple[SkillSource, ...]:
-    """Create two structured SkillSources."""
-    return (
-        SkillSource(
-            id="source-alpha",
-            kind="structured",
-            scope="project",
-            root=root_a,
-            priority=1,
-        ),
-        SkillSource(
-            id="source-beta",
-            kind="structured",
-            scope="project",
-            root=root_b,
-            priority=2,
-        ),
-    )
-
-
-class TestMultiSourceAgentsMdHashes:
-    def test_agents_md_hashes_stores_per_source_pairs(self, tmp_two_structured_roots):
-        """agents_md_hashes contains exactly one (source_id, sha256) per source."""
-        root_a, root_b = tmp_two_structured_roots
-        sources = _two_structured_sources(root_a, root_b)
-        cat = load_skill_catalog(sources)
-        ss = build_skill_set_snapshot(cat, generation=1)
-
-        assert isinstance(ss.agents_md_hashes, tuple)
-        assert len(ss.agents_md_hashes) == 2
-
-        ids = {sid for sid, _ in ss.agents_md_hashes}
-        assert "source-alpha" in ids
-        assert "source-beta" in ids
-
-        for _sid, fh in ss.agents_md_hashes:
-            assert len(fh) == 64  # hex sha256
-
-    def test_each_source_hash_matches_its_own_agents_md(self, tmp_two_structured_roots):
-        """Each source's stored hash matches only that source's AGENTS.md."""
-        import hashlib
-
-        root_a, root_b = tmp_two_structured_roots
-        sources = _two_structured_sources(root_a, root_b)
-        cat = load_skill_catalog(sources)
-        ss = build_skill_set_snapshot(cat, generation=1)
-
-        hash_map = dict(ss.agents_md_hashes)
-
-        # Each stored hash matches its own source's AGENTS.md
-        for root, sid in [(root_a, "source-alpha"), (root_b, "source-beta")]:
-            actual = hashlib.sha256((root / "AGENTS.md").read_bytes()).hexdigest()
-            assert hash_map[sid] == actual, f"Mismatch for {sid}"
-
-        # Each stored hash does NOT match the other source's AGENTS.md
-        hash_a_actual = hashlib.sha256((root_a / "AGENTS.md").read_bytes()).hexdigest()
-        hash_b_actual = hashlib.sha256((root_b / "AGENTS.md").read_bytes()).hexdigest()
-        assert hash_a_actual != hash_b_actual, "AGENTS.md files should differ"
-        assert hash_map["source-alpha"] == hash_a_actual
-        assert hash_map["source-beta"] == hash_b_actual
-        assert hash_map["source-alpha"] != hash_map["source-beta"]
-
-    def test_mutating_one_agents_md_changes_only_that_source_hash(
-        self, tmp_two_structured_roots
-    ):
-        """Mutating source A's AGENTS.md changes only source A's hash."""
-        import hashlib
-
-        root_a, root_b = tmp_two_structured_roots
-        sources = _two_structured_sources(root_a, root_b)
-        cat = load_skill_catalog(sources)
-        ss_before = build_skill_set_snapshot(cat, generation=1)
-
-        # Mutate source A's AGENTS.md only
-        (root_a / "AGENTS.md").write_text(
-            "# Modified global from source A\n", encoding="utf-8"
-        )
-
-        cat2 = load_skill_catalog(sources)
-        ss_after = build_skill_set_snapshot(cat2, generation=2)
-
-        hash_before = dict(ss_before.agents_md_hashes)
-        hash_after = dict(ss_after.agents_md_hashes)
-
-        # Source A hash changed
-        assert hash_after["source-alpha"] != hash_before["source-alpha"]
-        # Source B hash unchanged
-        assert hash_after["source-beta"] == hash_before["source-beta"]
-
-        # Verify source A's new hash matches its new AGENTS.md
-        expected_a = hashlib.sha256((root_a / "AGENTS.md").read_bytes()).hexdigest()
-        assert hash_after["source-alpha"] == expected_a
-
-    def test_set_digest_changes_when_any_agents_md_mutates(
-        self, tmp_two_structured_roots
-    ):
-        """The set digest changes when either AGENTS.md changes."""
-        root_a, root_b = tmp_two_structured_roots
-        sources = _two_structured_sources(root_a, root_b)
-        cat = load_skill_catalog(sources)
-        ss_base = build_skill_set_snapshot(cat, generation=1)
-
-        # Mutate source A
-        (root_a / "AGENTS.md").write_text("# Diff A\n", encoding="utf-8")
-        ss_a = build_skill_set_snapshot(load_skill_catalog(sources), generation=2)
-        assert ss_base.digest != ss_a.digest
-
-        # Restore A, mutate B
-        (root_a / "AGENTS.md").write_text("# Global from source A\n", encoding="utf-8")
-        (root_b / "AGENTS.md").write_text("# Diff B\n", encoding="utf-8")
-        ss_b = build_skill_set_snapshot(load_skill_catalog(sources), generation=3)
-        assert ss_base.digest != ss_b.digest
-        assert ss_a.digest != ss_b.digest
-
-    def test_single_structured_source_agents_md_hashes(self, tmp_structured_root):
-        """With one structured source, agents_md_hashes has exactly one entry."""
-        sources = _structured_sources(tmp_structured_root)
-        cat = load_skill_catalog(sources)
-        ss = build_skill_set_snapshot(cat, generation=1)
-
-        assert len(ss.agents_md_hashes) == 1
-        sid, fh = ss.agents_md_hashes[0]
-        assert sid == "project-skills-test"
-        assert len(fh) == 64
-
-    def test_no_structured_sources_gives_empty_hashes(self, tmp_skill_dir):
-        """When no structured sources exist, agents_md_hashes is empty."""
-        sources = _standard_sources(tmp_skill_dir.parent)
-        cat = load_skill_catalog(sources)
-        ss = build_skill_set_snapshot(cat, generation=1)
-
-        assert ss.agents_md_hashes == ()
-
-    @pytest.mark.asyncio
-    async def test_verify_two_unchanged_sources_pass(self, tmp_two_structured_roots):
-        """Verification passes when both source AGENTS.md files are unchanged."""
-        from electromind.sandbox.sandbox import _verify_staging_content
-
-        root_a, root_b = tmp_two_structured_roots
-        sources = _two_structured_sources(root_a, root_b)
-        cat = load_skill_catalog(sources)
-        ss = build_skill_set_snapshot(cat, generation=1)
-
-        # Verify source-alpha staging
-        sandbox_a = _FakeSandbox(root_a)
-        sandbox_a.files._prefix = "/sandbox/staging-a"
-        await _verify_staging_content(
-            sandbox_a, "/sandbox/staging-a", sources[0], cat, ss
-        )
-
-        # Verify source-beta staging
-        sandbox_b = _FakeSandbox(root_b)
-        sandbox_b.files._prefix = "/sandbox/staging-b"
-        await _verify_staging_content(
-            sandbox_b, "/sandbox/staging-b", sources[1], cat, ss
-        )
-
-    @pytest.mark.asyncio
-    async def test_verify_fails_when_agents_md_mutated_after_snapshot(
-        self, tmp_two_structured_roots
-    ):
-        """Verification fails when AGENTS.md is modified after snapshot."""
-        from electromind.sandbox.sandbox import _verify_staging_content
-
-        root_a, root_b = tmp_two_structured_roots
-        sources = _two_structured_sources(root_a, root_b)
-        cat = load_skill_catalog(sources)
-        ss = build_skill_set_snapshot(cat, generation=1)
-
-        # Mutate source A's AGENTS.md after snapshot
-        (root_a / "AGENTS.md").write_text("# Tampered\n", encoding="utf-8")
-
-        # Verification for source A should fail because AGENTS.md now differs
-        sandbox_a = _FakeSandbox(root_a)
-        sandbox_a.files._prefix = "/sandbox/staging-a"
-        with pytest.raises(RuntimeError, match="Staging content mismatch"):
-            await _verify_staging_content(
-                sandbox_a, "/sandbox/staging-a", sources[0], cat, ss
-            )
-
-        # Verification for source B should still pass (untampered)
-        sandbox_b = _FakeSandbox(root_b)
-        sandbox_b.files._prefix = "/sandbox/staging-b"
-        await _verify_staging_content(
-            sandbox_b, "/sandbox/staging-b", sources[1], cat, ss
-        )
-
-    @pytest.mark.asyncio
-    async def test_verify_fails_when_second_agents_md_mutated(
-        self, tmp_two_structured_roots
-    ):
-        """Mutating source B's AGENTS.md fails only source B verification."""
-        from electromind.sandbox.sandbox import _verify_staging_content
-
-        root_a, root_b = tmp_two_structured_roots
-        sources = _two_structured_sources(root_a, root_b)
-        cat = load_skill_catalog(sources)
-        ss = build_skill_set_snapshot(cat, generation=1)
-
-        # Mutate source B's AGENTS.md after snapshot
-        (root_b / "AGENTS.md").write_text("# Tampered B\n", encoding="utf-8")
-
-        # Source A should still pass
-        sandbox_a = _FakeSandbox(root_a)
-        sandbox_a.files._prefix = "/sandbox/staging-a"
-        await _verify_staging_content(
-            sandbox_a, "/sandbox/staging-a", sources[0], cat, ss
-        )
-
-        # Source B should fail
-        sandbox_b = _FakeSandbox(root_b)
-        sandbox_b.files._prefix = "/sandbox/staging-b"
-        with pytest.raises(RuntimeError, match="Staging content mismatch"):
-            await _verify_staging_content(
-                sandbox_b, "/sandbox/staging-b", sources[1], cat, ss
-            )
-
-
-# ============================================================================
-# Helpers
-# ============================================================================
-
-
 def _load_skill_from_dir(skill_dir: Path, source_id: str, source_root: Path) -> Skill:
     """Load a Skill from a directory and stamp with source info."""
     from electromind.skills.skill import load_skill
@@ -913,20 +617,6 @@ def _load_skill_from_dir(skill_dir: Path, source_id: str, source_root: Path) -> 
         resources=skill.resources,
         source_id=source_id,
         skill_root=skill.root,
-        skills_root=None,
-    )
-
-
-def _structured_sources(root: Path) -> tuple[SkillSource, ...]:
-    """Create a tuple with one structured SkillSource."""
-    return (
-        SkillSource(
-            id="project-skills-test",
-            kind="structured",
-            scope="project",
-            root=root,
-            priority=1,
-        ),
     )
 
 

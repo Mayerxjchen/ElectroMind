@@ -1,6 +1,6 @@
 # VASPKIT AIMD Post-processing
 
-> Load this when: using VASPKIT to analyze VASP AIMD trajectories, especially MSD/diffusion, VACF, VDOS, RDF-like trajectory summaries, or trajectory conversion. Pair with `knowledge/molecular-dynamics.md` for the scientific interpretation (diffusion fitting, RDF/VACF/VDOS meaning, sampling discipline).
+> Load this when: using VASPKIT to analyze VASP AIMD trajectories, especially MSD/diffusion, VACF, VDOS, RDF-like trajectory summaries, or trajectory conversion. Pair with `references/knowledge/molecular-dynamics.md` for the scientific interpretation (diffusion fitting, RDF/VACF/VDOS meaning, sampling discipline).
 
 Task IDs can vary by VASPKIT release. Confirm the local menu before automation and record every menu answer. In VASPKIT Standard Edition 1.4.1, the Molecular-Dynamics Kit is menu `72`: `721` MSD, `722` MSD using FFT, `723` diffusion coefficient and ion mobility from `MSD.dat`, `725` pair correlation from `PCDAT`, `726` RDF between two selected elements, `727` VACF, `728` VDOS from VACF, `736` selected-atom trajectory in POSCAR format, and `737` selected-atom trajectory in PDB format.
 
@@ -63,10 +63,10 @@ For non-orthogonal cells, verify that the chosen RDF tool handles the lattice co
 After one interactive run confirms the local menu sequence, store it in a small stdin file and use the wrapper script:
 
 ```bash
-uv run tools/vaspkit/scripts/run_vaspkit_task.py 722 --cwd run-dir --stdin-file msd.inputs --log vaspkit.722.log
-uv run tools/vaspkit/scripts/run_vaspkit_task.py 723 --cwd run-dir --stdin-file diffusion.inputs --log vaspkit.723.log
-uv run tools/vaspkit/scripts/run_vaspkit_task.py 727 --cwd run-dir --stdin-file vacf.inputs --log vaspkit.727.log
-uv run tools/vaspkit/scripts/run_vaspkit_task.py 728 --cwd run-dir --stdin-file vdos.inputs --log vaspkit.728.log
+uv run ../scripts/run_vaspkit_task.py 722 --cwd run-dir --stdin-file msd.inputs --log vaspkit.722.log
+uv run ../scripts/run_vaspkit_task.py 723 --cwd run-dir --stdin-file diffusion.inputs --log vaspkit.723.log
+uv run ../scripts/run_vaspkit_task.py 727 --cwd run-dir --stdin-file vacf.inputs --log vaspkit.727.log
+uv run ../scripts/run_vaspkit_task.py 728 --cwd run-dir --stdin-file vdos.inputs --log vaspkit.728.log
 ```
 
 Stop the batch if one trajectory fails validation unless the run plan explicitly allows partial results.

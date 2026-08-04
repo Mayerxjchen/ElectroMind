@@ -54,7 +54,10 @@ debug
 # example runtime data
 .pagent/
 .electromind/
-artifacts/
+# 验收证据（A+ v1.0）必须被跟踪；仅忽略其下的临时产物
+artifacts/*
+!artifacts/skill-migration/
+!artifacts/skill-migration/*.json
 benchmarks/
 .trae
 
@@ -63,3 +66,6 @@ editors/web/tsconfig.tsbuildinfo
 .superpowers/
 # 临时 agent worktrees（嵌套 git 仓库，勿跟踪）
 .claude/worktrees/
+
+# coverage 产物（验收脚本生成）
+coverage.json

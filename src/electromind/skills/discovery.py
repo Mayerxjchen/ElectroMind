@@ -1,12 +1,11 @@
 """Skill source discovery and catalog snapshots.
 
-Deterministic discovery across project, configured, and user roots.  Two
-directory layouts are supported:
+Deterministic discovery across project, configured, and user roots.
 
-- **Structured root**: ``skills/`` with ``AGENTS.md`` + ``procedures/`` +
-  ``tools/`` + ``knowledge/`` (project skills).
-- **Flat root**: ``<root>/<skill-name>/SKILL.md`` (``.agents/skills``,
-  ``.electromind/skills``, user home).
+A+ W5/W8: discovery has exactly one model — the plain flat skill root
+``<root>/<skill-name>/SKILL.md`` (``.agents/skills``, ``.electromind/skills``,
+user home, and the builtin ``procedures``/``tools`` roots).  There is no
+structured-root variant and no AGENTS.md marker.
 
 Public entry points:
 - ``discover_skill_sources()`` → ordered tuple of ``SkillSource``
@@ -24,7 +23,6 @@ from .skill import (
     Skill,
     SkillRegistry,
     has_symlinks,
-    load_skill,
     validate_skill_name,
 )
 from .snapshot import hash_content  # shared fingerprint hasher
@@ -68,8 +66,7 @@ class SkillSource:
 
     Attributes:
         id: Stable identifier derived from scope, kind, and normalised path.
-        kind: ``"structured"`` for ``skills/`` roots with AGENTS.md,
-            ``"standard"`` for flat per-skill directories.
+        kind: ``"standard"`` — A+ W5: every source is a flat per-skill root.
         scope: ``"project"``, ``"configured"``, or ``"user"``.
         root: Absolute filesystem path to the source root.
         priority: Lower number = higher priority in duplicate resolution.
@@ -98,7 +95,6 @@ class SkillMount:
 
     source_root: str
     skill_root: str
-    skills_root: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -108,15 +104,12 @@ class SkillCatalogSnapshot:
     Attributes:
         registry: The populated ``SkillRegistry``.
         sources: Ordered discovery sources.
-        global_instructions: ``AGENTS.md`` content from structured skill
-            roots (one per source).
         diagnostics: Non-fatal issues found during discovery/loading.
         fingerprint: SHA-256 hash of the catalog content for change detection.
     """
 
     registry: SkillRegistry
     sources: tuple[SkillSource, ...]
-    global_instructions: tuple[str, ...]
     diagnostics: tuple[SkillDiagnostic, ...]
     fingerprint: str
 
@@ -125,13 +118,7 @@ class SkillCatalogSnapshot:
 # Discovery
 # ---------------------------------------------------------------------------
 
-STRUCTURED_MARKER = "AGENTS.md"
 STANDARD_MARKER = "SKILL.md"
-
-# Subdirectories of a structured skill root that contain Skills.
-_STRUCTURED_SKILL_DIRS = ("procedures", "tools")
-# Subdirectories of a structured skill root that are never Skills.
-_STRUCTURED_SKIP_DIRS = ("knowledge",)
 
 
 def _make_source_id(scope: str, kind: str, root: Path) -> str:
@@ -166,32 +153,23 @@ def discover_skill_sources(
 ) -> tuple[SkillSource, ...]:
     """Return an ordered, deterministic list of Skill sources.
 
+    A+ W5: every source is a plain flat skill root; the structured
+    ``<project>/skills`` bundle is no longer discovered.
+
     Priority order (first = highest):
-    1. ``<project>/skills`` when it has a structured layout (contains AGENTS.md)
-    2. ``<project>/.agents/skills``
-    3. ``<project>/.electromind/skills``
-    4. configured / legacy roots (``configured_roots``)
-    5. ``~/.electromind/skills``
-    6. ``~/.agents/skills``
+    1. ``<project>/.agents/skills``
+    2. ``<project>/.electromind/skills``
+    3. configured / legacy roots (``configured_roots``)
+    4. ``~/.electromind/skills``
+    5. ``~/.agents/skills``
     """
     sources: list[SkillSource] = []
     home = user_home or Path.home()
 
-    # 1–3: project sources
+    # 1–3: project sources (A+ W5: only the flat fixed skill dirs — the
+    # structured ``<project>/skills`` bundle is no longer a discovery path)
     if project_path:
         proj = Path(project_path).expanduser().resolve()
-
-        skills_root = proj / "skills"
-        if (skills_root / STRUCTURED_MARKER).exists():
-            sources.append(
-                SkillSource(
-                    id=_make_source_id("project", "skills", skills_root),
-                    kind="structured",
-                    scope="project",
-                    root=skills_root,
-                    priority=1,
-                )
-            )
 
         for priority, candidate in enumerate(
             (proj / ".agents" / "skills", proj / ".electromind" / "skills"), start=2
@@ -248,110 +226,6 @@ def discover_skill_sources(
         )
 
     return tuple(sources)
-
-
-def _load_structured_source(
-    source: SkillSource,
-) -> tuple[list[Skill], list[str], list[SkillDiagnostic]]:
-    """Load Skills and global instructions from a structured skill root.
-
-    Returns ``(skills, global_instructions, diagnostics)``.
-    """
-    skills: list[Skill] = []
-    instructions: list[str] = []
-    diagnostics: list[SkillDiagnostic] = []
-
-    agents_md = source.root / STRUCTURED_MARKER
-    if agents_md.exists():
-        try:
-            instructions.append(agents_md.read_text(encoding="utf-8"))
-        except OSError as exc:
-            diagnostics.append(
-                SkillDiagnostic(
-                    code="structured_agents_md_read_error",
-                    message=f"cannot read AGENTS.md: {exc}",
-                    path=str(agents_md),
-                    severity="error",
-                )
-            )
-
-    for subdir_name in _STRUCTURED_SKILL_DIRS:
-        sub = source.root / subdir_name
-        if not sub.is_dir():
-            continue
-        for entry in sorted(sub.iterdir()):
-            if not entry.is_dir() or entry.name.startswith("."):
-                continue
-            skill_md = entry / STANDARD_MARKER
-            if not skill_md.exists():
-                continue
-            try:
-                resolved = entry.resolve()
-                if not _path_is_within_root(resolved, source.root):
-                    diagnostics.append(
-                        SkillDiagnostic(
-                            code="skill_resolves_outside_root",
-                            message=f"skill resolves outside its source root: {entry}",
-                            path=str(entry),
-                            severity="error",
-                        )
-                    )
-                    continue
-
-                # Reject symlinks anywhere in the skill tree
-                syms = has_symlinks(resolved)
-                if syms:
-                    for sym_path in syms:
-                        diagnostics.append(
-                            SkillDiagnostic(
-                                code="skill_symlink_rejected",
-                                message=(
-                                    f"skill {entry.name!r} contains a symlink: "
-                                    f"{sym_path.relative_to(resolved)}"
-                                ),
-                                path=str(sym_path),
-                                severity="error",
-                            )
-                        )
-                    continue
-
-                skill = load_skill(resolved)
-
-                # Validate name
-                name_err = validate_skill_name(skill.name)
-                if name_err:
-                    diagnostics.append(
-                        SkillDiagnostic(
-                            code="skill_name_invalid",
-                            message=name_err,
-                            path=str(resolved),
-                            severity="error",
-                        )
-                    )
-                    continue
-
-                skill = Skill(
-                    name=skill.name,
-                    description=skill.description,
-                    instructions=skill.instructions,
-                    root=skill.root,
-                    resources=skill.resources,
-                    source_id=source.id,
-                    skill_root=skill.root,
-                    skills_root=source.root,
-                )
-                skills.append(skill)
-            except Exception as exc:
-                diagnostics.append(
-                    SkillDiagnostic(
-                        code="structured_skill_load_error",
-                        message=f"failed to load skill in {entry}: {exc}",
-                        path=str(entry),
-                        severity="error",
-                    )
-                )
-
-    return skills, instructions, diagnostics
 
 
 def _load_standard_source(
@@ -460,7 +334,6 @@ def _load_standard_source(
                 resources=skill.resources,
                 source_id=source.id,
                 skill_root=skill.root,
-                skills_root=None,
             )
         )
 
@@ -478,7 +351,6 @@ def _path_is_within_root(path: Path, root: Path) -> bool:
 
 def _build_fingerprint(
     skills: list[Skill],
-    global_instructions: tuple[str, ...],
     sources: tuple[SkillSource, ...],
 ) -> str:
     """Build a deterministic SHA-256 fingerprint from catalog contents."""
@@ -489,9 +361,6 @@ def _build_fingerprint(
         parts.append(
             f"{src.id}|{src.kind}|{src.scope}|{src.root.as_posix()}|{src.priority}"
         )
-
-    # Hash global instructions
-    parts.extend(global_instructions)
 
     # Hash each skill in name-sorted order, including resource content
     for skill in sorted(skills, key=lambda s: s.name):
@@ -521,15 +390,11 @@ def load_skill_catalog(
     ``"duplicate_skill_name"`` diagnostic.
     """
     all_skills: list[Skill] = []
-    all_instructions: list[str] = []
     all_diagnostics: list[SkillDiagnostic] = []
 
+    # A+ W5/W8: every source is a plain flat skill root — one loader.
     for source in sources:
-        if source.kind == "structured":
-            skills, instructions, diags = _load_structured_source(source)
-            all_instructions.extend(instructions)
-        else:
-            skills, diags = _load_standard_source(source)
+        skills, diags = _load_standard_source(source)
         all_skills.extend(skills)
         all_diagnostics.extend(diags)
 
@@ -551,14 +416,11 @@ def load_skill_catalog(
             continue
         registry.register(skill)
 
-    fingerprint = _build_fingerprint(
-        list(registry.list()), tuple(all_instructions), sources
-    )
+    fingerprint = _build_fingerprint(list(registry.list()), sources)
 
     return SkillCatalogSnapshot(
         registry=registry,
         sources=sources,
-        global_instructions=tuple(all_instructions),
         diagnostics=tuple(all_diagnostics),
         fingerprint=fingerprint,
     )

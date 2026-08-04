@@ -79,20 +79,14 @@ class SkillSetSnapshot:
     Attributes:
         generation: Monotonically increasing integer (1-based).
         digest: Content-addressed SHA-256 of the complete set.
-        agents_md: Content of ``AGENTS.md`` (structured skill roots), or ``None``.
         skills: Frozen tuple of ``SkillSnapshot`` in name order.
         diagnostics: Non-fatal issues from discovery / loading.
-        agents_md_hashes: Frozen ``(source_id, sha256)`` pairs for each
-            structured source's ``AGENTS.md`` file, used during mount
-            verification.
     """
 
     generation: int
     digest: str
-    agents_md: str | None
     skills: tuple[SkillSnapshot, ...]
     diagnostics: tuple["SkillDiagnostic", ...]
-    agents_md_hashes: tuple[tuple[str, str], ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -194,7 +188,7 @@ def build_skill_set_snapshot(
     """Build a ``SkillSetSnapshot`` from a ``SkillCatalogSnapshot``.
 
     Each ``Skill`` in the catalog is converted to a ``SkillSnapshot``.  The set
-    digest covers all AGENTS.md content, every skill's name/source_id/sha256,
+    digest covers every skill's name/source_id/sha256,
     and all diagnostics — so the digest changes iff any observable content
     changes.
     """
@@ -217,27 +211,9 @@ def build_skill_set_snapshot(
 
     snapshots.sort(key=lambda s: s.name)
 
-    # Hash AGENTS.md files from structured sources — one per source.
-    # Must be collected before building the set digest so AGENTS.md
-    # hashes contribute to content-addressed equality.
-    _agents_hashes: list[tuple[str, str]] = []
-    for src in catalog.sources:
-        if src.kind == "structured":
-            agents_path = src.root / "AGENTS.md"
-            try:
-                fh, _ = _hash_file(agents_path)
-                _agents_hashes.append((src.id, fh))
-            except OSError:
-                pass
-    _agents_hashes.sort(key=lambda pair: pair[0])
-    agents_md_hashes = tuple(_agents_hashes)
-
-    # Build set digest
+    # Build set digest (A+ W8: no AGENTS.md content/hashes — skills are
+    # self-contained; the digest covers skill identity, content, diagnostics).
     digest_parts: list[str] = []
-
-    # AGENTS.md content
-    for gi in catalog.global_instructions:
-        digest_parts.append(gi)
 
     # Skill identity + hash (name-sorted for determinism)
     for ss in snapshots:
@@ -247,26 +223,13 @@ def build_skill_set_snapshot(
     for diag in sorted(catalog.diagnostics, key=lambda d: (d.path, d.code)):
         digest_parts.append(f"{diag.code}|{diag.path}|{diag.severity}|{diag.message}")
 
-    # AGENTS.md per-source hashes
-    for sid, fh in _agents_hashes:
-        digest_parts.append(f"agents_md|{sid}|{fh}")
-
     digest = _hash_content(*digest_parts)
-
-    # agents_md: concatenate all global instructions
-    agents_md = (
-        "\n---\n".join(catalog.global_instructions)
-        if catalog.global_instructions
-        else None
-    )
 
     return SkillSetSnapshot(
         generation=generation,
         digest=digest,
-        agents_md=agents_md,
         skills=tuple(snapshots),
         diagnostics=catalog.diagnostics,
-        agents_md_hashes=agents_md_hashes,
     )
 
 

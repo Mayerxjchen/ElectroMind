@@ -22,21 +22,21 @@ Task types: **single-point** (`RUN_TYPE ENERGY`), **optimization** (`GEO_OPT`, `
 | setting up an input: skeleton, run types, Quickstep, grids, k-points, baseline templates | `references/running.md` |
 | cutoff/rel_cutoff, k-point convergence, Gamma-supercell tradeoffs, MPI/OpenMP performance, smoke-test cost | `references/grids-kpoints-performance.md` |
 | basis/potential choice, `&KIND` mapping, GTH/MOLOPT/UZH, ADMM/RI auxiliary bases | `references/basis-potential.md` |
-| low-dimensional electrostatics: molecule boxes, slabs, 2D/1D, charged cells, dipoles, work functions | `references/low-dimensional-electrostatics.md`; science: `knowledge/periodic-electrostatics.md` |
+| low-dimensional electrostatics: molecule boxes, slabs, 2D/1D, charged cells, dipoles, work functions | `references/low-dimensional-electrostatics.md`; science: `references/knowledge/periodic-electrostatics.md` |
 | semiempirical screening/pre-equilibration: DFTB, SCC-DFTB, GFN-xTB | `references/semiempirical-dftb-xtb.md` |
 | advanced electronic methods: hybrid/HFX/ADMM/RI-HFX, MP2/RPA/GW, CDFT, large-system acceleration | `references/advanced-electronic-methods.md` |
 | SCF failure or setup choice: OT vs diagonalization, smearing, `ADDED_MOS`, mixing, restarts | `references/scf-convergence.md`; then `references/errors.md` |
 | geometry/cell optimization, fixed atoms, slab constraints, stress tensor, stationary-point checks | `references/geometry-cell-optimization.md` |
-| DFT+U and magnetic starting states | `references/dftu-magnetism.md`; science: `knowledge/hubbard-u-and-magnetism.md` |
-| DOS/PDOS, bands, Molden/Multiwfn, cubes, density difference, charges, bond order, visualization | `references/electronic-analysis.md`; science: `knowledge/electronic-structure.md`, `knowledge/bonding-analysis.md`, and `knowledge/scientific-visualization.md` |
-| reproducible cube/Molden/ELF/spin-density/headless PyVista/VESTA/VMD rendering | `references/volumetric-visualization.md`; science: `knowledge/scientific-visualization.md` |
-| vibrational analysis, phonons, imaginary modes, IR/Raman prerequisites | `references/vibration-phonon.md`; science: `knowledge/vibrational-phonon-analysis.md` |
-| NEB/BAND reaction paths and transition-state validation | `references/neb-dimer.md`; kinetics science: `knowledge/reaction-kinetics.md` |
-| AIMD/PIMD/metadynamics statistics and trajectory analysis | `references/aimd.md`; science: `knowledge/molecular-dynamics.md` |
-| adsorption, surface, defect, reaction, and thermal correction energy expressions | science: `knowledge/thermochemistry-and-free-energy.md` and `knowledge/surface-thermodynamics.md`; keep every compared energy on identical settings (`references/validation.md`) |
-| SCCS and implicit solvent | `references/sccs-solvation.md`; electrostatics science: `knowledge/periodic-electrostatics.md` |
-| TDDFT, UV-Vis, XAS, and excited-state spectra | `references/tddft-xas.md`; science: `knowledge/excited-state-and-core-spectroscopy.md` |
-| NMR and magnetic-response properties | `references/nmr.md`; science: `knowledge/excited-state-and-core-spectroscopy.md` |
+| DFT+U and magnetic starting states | `references/dftu-magnetism.md`; science: `references/knowledge/hubbard-u-and-magnetism.md` |
+| DOS/PDOS, bands, Molden/Multiwfn, cubes, density difference, charges, bond order, visualization | `references/electronic-analysis.md`; science: `references/knowledge/electronic-structure.md`, `references/knowledge/bonding-analysis.md`, and `references/knowledge/scientific-visualization.md` |
+| reproducible cube/Molden/ELF/spin-density/headless PyVista/VESTA/VMD rendering | `references/volumetric-visualization.md`; science: `references/knowledge/scientific-visualization.md` |
+| vibrational analysis, phonons, imaginary modes, IR/Raman prerequisites | `references/vibration-phonon.md`; science: `references/knowledge/vibrational-phonon-analysis.md` |
+| NEB/BAND reaction paths and transition-state validation | `references/neb-dimer.md`; kinetics science: `references/knowledge/reaction-kinetics.md` |
+| AIMD/PIMD/metadynamics statistics and trajectory analysis | `references/aimd.md`; science: `references/knowledge/molecular-dynamics.md` |
+| adsorption, surface, defect, reaction, and thermal correction energy expressions | science: `references/knowledge/thermochemistry-and-free-energy.md` and `references/knowledge/surface-thermodynamics.md`; keep every compared energy on identical settings (`references/validation.md`) |
+| SCCS and implicit solvent | `references/sccs-solvation.md`; electrostatics science: `references/knowledge/periodic-electrostatics.md` |
+| TDDFT, UV-Vis, XAS, and excited-state spectra | `references/tddft-xas.md`; science: `references/knowledge/excited-state-and-core-spectroscopy.md` |
+| NMR and magnetic-response properties | `references/nmr.md`; science: `references/knowledge/excited-state-and-core-spectroscopy.md` |
 | QM/MM embedding, boundary atoms, mixed topology, and force-field coupling | `references/qmmm.md` |
 | VASP-to-CP2K translation | `references/vasp-to-cp2k-map.md` |
 | before submitting: parse-level input checks and smoke-test rules | `uv run scripts/check_inputs.py`, then `references/validation.md` |
@@ -47,7 +47,7 @@ Task types: **single-point** (`RUN_TYPE ENERGY`), **optimization** (`GEO_OPT`, `
 
 ## Workflow
 
-1. Decide the scientific question first; if it is code-agnostic, read the matching `knowledge/` doc before choosing CP2K settings.
+1. Decide the scientific question first; if it is code-agnostic, read the matching `references/knowledge/` doc before choosing CP2K settings.
 2. Build the input from `running.md` or a verified example; keep all compared energies on the same functional, basis/potential, grid, k-policy, SCF, smearing, electrostatics, and correction settings.
 3. Preflight: `uv run scripts/check_inputs.py input.inp`; for novel setups, run `cp2k -c input.inp` and a short smoke test.
 4. Execute through `hpc-submit` for durable local/Slurm/PBS runs; before writing

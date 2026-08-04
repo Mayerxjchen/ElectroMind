@@ -5,14 +5,14 @@ description: Umbrella routing for machine-learning interatomic potential workflo
 
 # Machine-Learning Potentials
 
-Covers MLP-wide routing and legacy generic notes. DeePMD-kit/DPMD now lives in `tools/deepmd`; future MACE, NequIP, GPUMD/NEP, LASP, GemNet-OC, EquiformerV2 content should live in their own tool skills. MD deployment mechanics live in `lammps`; DFT label generation in `vasp` or `cp2k`; tool-agnostic MLP science lives in `knowledge/machine-learning-potentials.md`.
+Covers MLP-wide routing and legacy generic notes. DeePMD-kit/DPMD now lives in the `deepmd` skill; future MACE, NequIP, GPUMD/NEP, LASP, GemNet-OC, EquiformerV2 content should live in their own tool skills. MD deployment mechanics live in `lammps`; DFT label generation in `vasp` or `cp2k`; tool-agnostic MLP science lives in `references/knowledge/machine-learning-potentials.md`.
 
 ## Where to find what
 
 | Situation | Go to |
 |---|---|
-| DeePMD-kit/DPMD dataset prep, `input.json`, `dp train/freeze/test`, model deviation | `tools/deepmd/` |
-| general MLP concepts, dataset design, symmetry/equivariance, program taxonomy | `knowledge/machine-learning-potentials.md` |
+| DeePMD-kit/DPMD dataset prep, `input.json`, `dp train/freeze/test`, model deviation | `deepmd` |
+| general MLP concepts, dataset design, symmetry/equivariance, program taxonomy | `references/knowledge/machine-learning-potentials.md` |
 | legacy generic dataset prep, training configs, fine-tuning, deployment, active-learning loop | `references/running.md` |
 | is this model production-ready? RMSE gates, physics checks, model-deviation thresholds | `references/validation.md` |
 | training diverges, NaN loss, type-map mismatches, MD explodes despite good metrics | `references/errors.md` |

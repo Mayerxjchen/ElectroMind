@@ -71,14 +71,8 @@ CHARGE_DENSITY_DIFFERENCE_TERMS = (
     "charge-density difference",
     "charge-density-difference",
 )
-VOLUMETRIC_VIS_REF_TERMS = (
-    "tools/vasp/references/volumetric-visualization.md",
-    "vasp/references/volumetric-visualization.md",
-)
-VASP_ELECTRONIC_REF_TERMS = (
-    "tools/vasp/references/electronic-analysis.md",
-    "vasp/references/electronic-analysis.md",
-)
+VOLUMETRIC_VIS_REF_TERMS = ("vasp/references/volumetric-visualization.md",)
+VASP_ELECTRONIC_REF_TERMS = ("vasp/references/electronic-analysis.md",)
 
 
 def gate_scope_claims(gate: dict[str, object]) -> set[str]:
@@ -261,12 +255,12 @@ def figure_routing_problems(
 
         missing: list[str] = []
         if not contains_any(evidence, VOLUMETRIC_VIS_REF_TERMS):
-            missing.append("tools/vasp/references/volumetric-visualization.md")
+            missing.append("vasp/references/volumetric-visualization.md")
         if contains_any(evidence, CHARGE_DENSITY_DIFFERENCE_TERMS) and not contains_any(
             evidence,
             VASP_ELECTRONIC_REF_TERMS,
         ):
-            missing.append("tools/vasp/references/electronic-analysis.md")
+            missing.append("vasp/references/electronic-analysis.md")
 
         if missing:
             problems.append(

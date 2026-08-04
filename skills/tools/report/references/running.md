@@ -90,7 +90,7 @@ For a stage synthesis, add an opening section named "Current Status" with:
 
 ## Figures: the pairing rule in practice
 
-Never present a Bader charge / bond length / valence claim as a bare number. The structure figure *is* the evidence: atoms colored by the quantity (+ colorbar), the few decisive atoms labeled, top **and** side ortho views so geometry is unambiguous. Combine with a DOS/PDOS panel when the electronic-structure argument needs it (`knowledge/scientific-visualization.md`).
+Never present a Bader charge / bond length / valence claim as a bare number. The structure figure *is* the evidence: atoms colored by the quantity (+ colorbar), the few decisive atoms labeled, top **and** side ortho views so geometry is unambiguous. Combine with a DOS/PDOS panel when the electronic-structure argument needs it (`references/knowledge/scientific-visualization.md`).
 
 For report-ready structure figures, the unit consumed by the manifest should usually be
 the assembled panel image, not the individual top/side or charge/plain subimages:

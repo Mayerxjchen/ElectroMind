@@ -3,7 +3,7 @@
 > Load this when: creating or updating any review-response state file (fingerprint, triage, master workflow) or drafting the response package — these are the schemas and the letter/SI/changelog templates.
 
 > For new multi-stage or handoff-heavy projects, structured state lives in
-> `.research/` via `procedures/research-orchestrator/`. The Markdown files below are
+> `.research/` via the `research-orchestrator` skill. The Markdown files below are
 > human-readable summaries and package templates. (A worked instance of every file
 > below: `examples/toy-vacancy-pt-vs-au/`.)
 

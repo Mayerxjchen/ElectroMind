@@ -11,11 +11,157 @@
 # Verify (read-only) with:
 #     uv run scripts/sync-skill-references.py --check
 #
-# [[references]]
-# source = "skills/knowledge/electronic-structure.md"
-# targets = [
-#   "skills/tools/cp2k/references/knowledge/electronic-structure.md",
-#   "skills/tools/vasp/references/knowledge/electronic-structure.md",
-# ]
+# 推导依据（W4）：各 skill 对 knowledge/<doc> 的实际引用 + 路由语义 +
+# knowledge 文档互链闭包（electronic-structure → bonding-analysis/
+# periodic-electrostatics/surface-thermodynamics 等，成对同步）。
 
-# (empty — derived in the knowledge content migration phase)
+[[references]]
+source = "skills/knowledge/bonding-analysis.md"
+targets = [
+  "skills/procedures/comp-chem-workflow/references/knowledge/bonding-analysis.md",
+  "skills/procedures/research-orchestrator/references/knowledge/bonding-analysis.md",
+  "skills/procedures/review-response/references/knowledge/bonding-analysis.md",
+  "skills/tools/cp2k/references/knowledge/bonding-analysis.md",
+  "skills/tools/lobster/references/knowledge/bonding-analysis.md",
+  "skills/tools/multiwfn/references/knowledge/bonding-analysis.md",
+  "skills/tools/report/references/knowledge/bonding-analysis.md",
+  "skills/tools/vasp/references/knowledge/bonding-analysis.md",
+  "skills/tools/vaspkit/references/knowledge/bonding-analysis.md",
+]
+
+[[references]]
+source = "skills/knowledge/catalytic-reaction-pathways.md"
+targets = [
+  "skills/procedures/comp-chem-workflow/references/knowledge/catalytic-reaction-pathways.md",
+]
+
+[[references]]
+source = "skills/knowledge/electrochemistry.md"
+targets = [
+  "skills/procedures/comp-chem-workflow/references/knowledge/electrochemistry.md",
+  "skills/procedures/research-orchestrator/references/knowledge/electrochemistry.md",
+  "skills/tools/vasp/references/knowledge/electrochemistry.md",
+]
+
+[[references]]
+source = "skills/knowledge/electronic-structure.md"
+targets = [
+  "skills/procedures/comp-chem-workflow/references/knowledge/electronic-structure.md",
+  "skills/procedures/research-orchestrator/references/knowledge/electronic-structure.md",
+  "skills/procedures/review-response/references/knowledge/electronic-structure.md",
+  "skills/tools/cp2k/references/knowledge/electronic-structure.md",
+  "skills/tools/multiwfn/references/knowledge/electronic-structure.md",
+  "skills/tools/report/references/knowledge/electronic-structure.md",
+  "skills/tools/vasp/references/knowledge/electronic-structure.md",
+  "skills/tools/vaspkit/references/knowledge/electronic-structure.md",
+]
+
+[[references]]
+source = "skills/knowledge/excited-state-and-core-spectroscopy.md"
+targets = [
+  "skills/tools/cp2k/references/knowledge/excited-state-and-core-spectroscopy.md",
+]
+
+[[references]]
+source = "skills/knowledge/force-fields.md"
+targets = [
+  "skills/tools/cp2k/references/knowledge/force-fields.md",
+  "skills/tools/deepmd/references/knowledge/force-fields.md",
+  "skills/tools/lammps/references/knowledge/force-fields.md",
+  "skills/tools/report/references/knowledge/force-fields.md",
+  "skills/tools/vasp/references/knowledge/force-fields.md",
+  "skills/tools/vaspkit/references/knowledge/force-fields.md",
+]
+
+[[references]]
+source = "skills/knowledge/hubbard-u-and-magnetism.md"
+targets = [
+  "skills/tools/cp2k/references/knowledge/hubbard-u-and-magnetism.md",
+  "skills/tools/vasp/references/knowledge/hubbard-u-and-magnetism.md",
+]
+
+[[references]]
+source = "skills/knowledge/machine-learning-potentials.md"
+targets = [
+  "skills/tools/deepmd/references/knowledge/machine-learning-potentials.md",
+  "skills/tools/mlp/references/knowledge/machine-learning-potentials.md",
+]
+
+[[references]]
+source = "skills/knowledge/molecular-dynamics.md"
+targets = [
+  "skills/tools/cp2k/references/knowledge/molecular-dynamics.md",
+  "skills/tools/deepmd/references/knowledge/molecular-dynamics.md",
+  "skills/tools/lammps/references/knowledge/molecular-dynamics.md",
+  "skills/tools/report/references/knowledge/molecular-dynamics.md",
+  "skills/tools/vasp/references/knowledge/molecular-dynamics.md",
+  "skills/tools/vaspkit/references/knowledge/molecular-dynamics.md",
+]
+
+[[references]]
+source = "skills/knowledge/molecular-qc-practical-rules.md"
+targets = [
+  "skills/tools/multiwfn/references/knowledge/molecular-qc-practical-rules.md",
+]
+
+[[references]]
+source = "skills/knowledge/periodic-electrostatics.md"
+targets = [
+  "skills/procedures/comp-chem-workflow/references/knowledge/periodic-electrostatics.md",
+  "skills/procedures/research-orchestrator/references/knowledge/periodic-electrostatics.md",
+  "skills/procedures/review-response/references/knowledge/periodic-electrostatics.md",
+  "skills/tools/cp2k/references/knowledge/periodic-electrostatics.md",
+  "skills/tools/multiwfn/references/knowledge/periodic-electrostatics.md",
+  "skills/tools/report/references/knowledge/periodic-electrostatics.md",
+  "skills/tools/vasp/references/knowledge/periodic-electrostatics.md",
+  "skills/tools/vaspkit/references/knowledge/periodic-electrostatics.md",
+]
+
+[[references]]
+source = "skills/knowledge/reaction-kinetics.md"
+targets = [
+  "skills/tools/cp2k/references/knowledge/reaction-kinetics.md",
+  "skills/tools/vasp/references/knowledge/reaction-kinetics.md",
+]
+
+[[references]]
+source = "skills/knowledge/scientific-visualization.md"
+targets = [
+  "skills/procedures/research-orchestrator/references/knowledge/scientific-visualization.md",
+  "skills/procedures/review-response/references/knowledge/scientific-visualization.md",
+  "skills/tools/cp2k/references/knowledge/scientific-visualization.md",
+  "skills/tools/multiwfn/references/knowledge/scientific-visualization.md",
+  "skills/tools/report/references/knowledge/scientific-visualization.md",
+  "skills/tools/vasp/references/knowledge/scientific-visualization.md",
+]
+
+[[references]]
+source = "skills/knowledge/surface-thermodynamics.md"
+targets = [
+  "skills/procedures/comp-chem-workflow/references/knowledge/surface-thermodynamics.md",
+  "skills/procedures/research-orchestrator/references/knowledge/surface-thermodynamics.md",
+  "skills/procedures/review-response/references/knowledge/surface-thermodynamics.md",
+  "skills/tools/cp2k/references/knowledge/surface-thermodynamics.md",
+  "skills/tools/multiwfn/references/knowledge/surface-thermodynamics.md",
+  "skills/tools/report/references/knowledge/surface-thermodynamics.md",
+  "skills/tools/vasp/references/knowledge/surface-thermodynamics.md",
+  "skills/tools/vaspkit/references/knowledge/surface-thermodynamics.md",
+]
+
+[[references]]
+source = "skills/knowledge/thermochemistry-and-free-energy.md"
+targets = [
+  "skills/tools/cp2k/references/knowledge/thermochemistry-and-free-energy.md",
+  "skills/tools/report/references/knowledge/thermochemistry-and-free-energy.md",
+  "skills/tools/vasp/references/knowledge/thermochemistry-and-free-energy.md",
+  "skills/tools/vaspkit/references/knowledge/thermochemistry-and-free-energy.md",
+]
+
+[[references]]
+source = "skills/knowledge/vibrational-phonon-analysis.md"
+targets = [
+  "skills/tools/cp2k/references/knowledge/vibrational-phonon-analysis.md",
+  "skills/tools/report/references/knowledge/vibrational-phonon-analysis.md",
+  "skills/tools/vasp/references/knowledge/vibrational-phonon-analysis.md",
+  "skills/tools/vaspkit/references/knowledge/vibrational-phonon-analysis.md",
+]

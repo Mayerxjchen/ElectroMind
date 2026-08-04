@@ -402,3 +402,148 @@ class TestSync:
         proc = _run(tmp_path)
         assert proc.returncode == 1
         assert not (tmp_path / tgt).exists()
+
+
+# ---------------------------------------------------------------------------
+# P0-1: 路径穿越 / symlink / 原子写入
+# ---------------------------------------------------------------------------
+
+
+class TestPathSafety:
+    def test_absolute_source_rejected(self, tmp_path):
+        """绝对路径 source → 拒绝（P0-1）。"""
+        _tree(
+            tmp_path,
+            {
+                "skills/knowledge/sync-map.toml": _map_toml(
+                    ("/etc/passwd", ["skills/tools/cp2k/references/knowledge/x.md"])
+                )
+            },
+        )
+        proc = _run(tmp_path, "--check")
+        assert proc.returncode == 1
+        assert "repo-root relative" in (proc.stdout + proc.stderr).lower()
+
+    def test_dotdot_source_rejected(self, tmp_path):
+        """`..` 穿越 source → 拒绝。"""
+        _tree(
+            tmp_path,
+            {
+                "skills/knowledge/sync-map.toml": _map_toml(
+                    (
+                        "skills/../knowledge/x.md",
+                        ["skills/tools/cp2k/references/knowledge/x.md"],
+                    )
+                )
+            },
+        )
+        proc = _run(tmp_path, "--check")
+        assert proc.returncode == 1
+        assert "'..'" in (proc.stdout + proc.stderr)
+
+    def test_source_outside_knowledge_rejected(self, tmp_path):
+        """source 不在 skills/knowledge/ 下 → 拒绝。"""
+        _tree(
+            tmp_path,
+            {
+                "skills/knowledge/sync-map.toml": _map_toml(
+                    (
+                        "skills/tools/cp2k/SKILL.md",
+                        ["skills/tools/cp2k/references/knowledge/x.md"],
+                    )
+                )
+            },
+        )
+        proc = _run(tmp_path, "--check")
+        assert proc.returncode == 1
+        assert "under skills/knowledge" in (proc.stdout + proc.stderr)
+
+    def test_target_escape_rejected(self, tmp_path):
+        """target 逃出 references/knowledge/（含 .. 与绝对路径）→ 拒绝。"""
+        _tree(
+            tmp_path,
+            {
+                "skills/knowledge/sync-map.toml": _map_toml(
+                    ("skills/knowledge/x.md", ["../../outside.md"])
+                ),
+                "skills/knowledge/x.md": "x",
+            },
+        )
+        proc = _run(tmp_path, "--check")
+        assert proc.returncode == 1
+        assert "'..'" in (proc.stdout + proc.stderr)
+
+    def test_target_wrong_shape_rejected(self, tmp_path):
+        """target 不是 skills/{procedures,tools}/<skill>/references/knowledge/<f> → 拒绝。"""
+        _tree(
+            tmp_path,
+            {
+                "skills/knowledge/sync-map.toml": _map_toml(
+                    ("skills/knowledge/x.md", ["skills/tools/cp2k/references/other.md"])
+                ),
+                "skills/knowledge/x.md": "x",
+            },
+        )
+        proc = _run(tmp_path, "--check")
+        assert proc.returncode == 1
+        assert "references/knowledge" in (proc.stdout + proc.stderr)
+
+    def test_symlink_target_rejected(self, tmp_path):
+        """symlink 目标 → 拒绝（不跟随写入）。"""
+        src = "skills/knowledge/x.md"
+        tgt = "skills/tools/cp2k/references/knowledge/x.md"
+        _tree(
+            tmp_path,
+            {"skills/knowledge/sync-map.toml": _map_toml((src, [tgt])), src: "x"},
+        )
+        outside = tmp_path / "outside.md"
+        outside.write_text("pwned", encoding="utf-8")
+        (tmp_path / tgt).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / tgt).symlink_to(outside)
+        proc = _run(tmp_path)
+        assert proc.returncode == 1
+        assert "symlink" in (proc.stdout + proc.stderr).lower()
+        assert outside.read_text(encoding="utf-8") == "pwned"  # 未被覆盖
+
+    def test_symlink_source_rejected(self, tmp_path):
+        """symlink source → 拒绝。"""
+        src = "skills/knowledge/x.md"
+        tgt = "skills/tools/cp2k/references/knowledge/x.md"
+        _tree(
+            tmp_path,
+            {"skills/knowledge/sync-map.toml": _map_toml((src, [tgt]))},
+        )
+        outside = tmp_path / "outside.md"
+        outside.write_text("pwned", encoding="utf-8")
+        (tmp_path / src).parent.mkdir(parents=True, exist_ok=True)
+        (tmp_path / src).symlink_to(outside)
+        proc = _run(tmp_path)
+        assert proc.returncode == 1
+        assert "symlink" in (proc.stdout + proc.stderr).lower()
+
+    def test_atomic_copy_leaves_no_partial_file_on_failure(self, tmp_path):
+        """原子写入：目标路径被文件占据时失败且不产生半成品（P0-1）。"""
+        src = "skills/knowledge/x.md"
+        tgt = "skills/tools/cp2k/references/knowledge/x.md"
+        _tree(
+            tmp_path,
+            {
+                "skills/knowledge/sync-map.toml": _map_toml((src, [tgt])),
+                src: "x",
+            },
+        )
+        # 让目标技能目录变成文件，迫使 mkdir 失败
+        blocker = tmp_path / "skills" / "tools" / "cp2k"
+        blocker.mkdir(parents=True, exist_ok=True)
+        for child in blocker.rglob("*"):
+            if child.is_file():
+                child.unlink()
+        blocker.rmdir()
+        blocker.write_text("not a dir", encoding="utf-8")
+        proc = _run(tmp_path)
+        assert proc.returncode == 1
+        # 不产生任何 .sync-*.tmp 残留
+        leftovers = list(tmp_path.rglob(".sync-*.tmp"))
+        assert leftovers == []
+        # 且目标文件从未被写入
+        assert not (tmp_path / tgt).exists()

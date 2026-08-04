@@ -121,8 +121,10 @@ def test_01_skill_special_tests_pass():
 def test_02_same_name_candidates_all_retained(tmp_path):
     proj = tmp_path / "proj"
     proj.mkdir()
-    for dirname, desc in (("aa", "one"), ("bb", "two")):
-        d = proj / ".agents" / "skills" / dirname
+    # A+ W3/W5: 同名候选通过不同来源保留（每个目录名 == frontmatter name）；
+    # 同一来源内同名目录在 W3 下是 invalid skill。
+    for dialect_dir, desc in ((".agents", "one"), (".electromind", "two")):
+        d = proj / dialect_dir / "skills" / "same"
         d.mkdir(parents=True)
         (d / "SKILL.md").write_text(
             f"---\nname: same\ndescription: {desc}\n---\nb\n", encoding="utf-8"
@@ -554,7 +556,11 @@ def test_15_builtin_roots_find_real_wheel_layout(tmp_path, monkeypatch):
 
     monkeypatch.setattr(sys, "prefix", str(fake_prefix))
     roots = builtin_roots()
-    assert fake_prefix.resolve() in roots  # venv 根布局被发现
+    # A+ W5: venv 根布局以扁平根形式被发现（procedures/ 与 tools/ 本身）
+    assert (fake_prefix / "procedures").resolve() in roots
+    assert (fake_prefix / "tools").resolve() in roots
+    # A+ W6: 运行时 wheel 不含顶层 knowledge/
+    assert not (fake_prefix / "knowledge").is_dir()
     candidates = load_candidates(
         discover_candidate_sources(None, cwd=str(fake_prefix), builtin_roots=roots)
     )

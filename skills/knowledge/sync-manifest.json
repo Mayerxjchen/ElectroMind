@@ -1,5 +1,290 @@
 {
-  "entries": {},
+  "entries": {
+    "skills/procedures/comp-chem-workflow/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/procedures/comp-chem-workflow/references/knowledge/catalytic-reaction-pathways.md": {
+      "sha256": "69faa590a81c9eed03d29593c2295021bdfefda2fc9111d081026e93c1c584c5",
+      "source": "skills/knowledge/catalytic-reaction-pathways.md"
+    },
+    "skills/procedures/comp-chem-workflow/references/knowledge/electrochemistry.md": {
+      "sha256": "74d04db7f6e0c24f8ac2579d0290529854ffc9f9326fd31c755d1867579785f1",
+      "source": "skills/knowledge/electrochemistry.md"
+    },
+    "skills/procedures/comp-chem-workflow/references/knowledge/electronic-structure.md": {
+      "sha256": "1ce00b0f4a93b79a01e0f7888831970650dd7a928caa24d7eda16a2bc1a83ce4",
+      "source": "skills/knowledge/electronic-structure.md"
+    },
+    "skills/procedures/comp-chem-workflow/references/knowledge/periodic-electrostatics.md": {
+      "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
+      "source": "skills/knowledge/periodic-electrostatics.md"
+    },
+    "skills/procedures/comp-chem-workflow/references/knowledge/surface-thermodynamics.md": {
+      "sha256": "37b16782e9e199d47c75e55219b4b2061f711a46d62365fcfc35810f5ec0a3bb",
+      "source": "skills/knowledge/surface-thermodynamics.md"
+    },
+    "skills/procedures/research-orchestrator/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/procedures/research-orchestrator/references/knowledge/electrochemistry.md": {
+      "sha256": "74d04db7f6e0c24f8ac2579d0290529854ffc9f9326fd31c755d1867579785f1",
+      "source": "skills/knowledge/electrochemistry.md"
+    },
+    "skills/procedures/research-orchestrator/references/knowledge/electronic-structure.md": {
+      "sha256": "1ce00b0f4a93b79a01e0f7888831970650dd7a928caa24d7eda16a2bc1a83ce4",
+      "source": "skills/knowledge/electronic-structure.md"
+    },
+    "skills/procedures/research-orchestrator/references/knowledge/periodic-electrostatics.md": {
+      "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
+      "source": "skills/knowledge/periodic-electrostatics.md"
+    },
+    "skills/procedures/research-orchestrator/references/knowledge/scientific-visualization.md": {
+      "sha256": "35b1082203d0a4afa7480b1149b636f33d78b84f664722ca0331ed5555074f27",
+      "source": "skills/knowledge/scientific-visualization.md"
+    },
+    "skills/procedures/research-orchestrator/references/knowledge/surface-thermodynamics.md": {
+      "sha256": "37b16782e9e199d47c75e55219b4b2061f711a46d62365fcfc35810f5ec0a3bb",
+      "source": "skills/knowledge/surface-thermodynamics.md"
+    },
+    "skills/procedures/review-response/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/procedures/review-response/references/knowledge/electronic-structure.md": {
+      "sha256": "1ce00b0f4a93b79a01e0f7888831970650dd7a928caa24d7eda16a2bc1a83ce4",
+      "source": "skills/knowledge/electronic-structure.md"
+    },
+    "skills/procedures/review-response/references/knowledge/periodic-electrostatics.md": {
+      "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
+      "source": "skills/knowledge/periodic-electrostatics.md"
+    },
+    "skills/procedures/review-response/references/knowledge/scientific-visualization.md": {
+      "sha256": "35b1082203d0a4afa7480b1149b636f33d78b84f664722ca0331ed5555074f27",
+      "source": "skills/knowledge/scientific-visualization.md"
+    },
+    "skills/procedures/review-response/references/knowledge/surface-thermodynamics.md": {
+      "sha256": "37b16782e9e199d47c75e55219b4b2061f711a46d62365fcfc35810f5ec0a3bb",
+      "source": "skills/knowledge/surface-thermodynamics.md"
+    },
+    "skills/tools/cp2k/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/tools/cp2k/references/knowledge/electronic-structure.md": {
+      "sha256": "1ce00b0f4a93b79a01e0f7888831970650dd7a928caa24d7eda16a2bc1a83ce4",
+      "source": "skills/knowledge/electronic-structure.md"
+    },
+    "skills/tools/cp2k/references/knowledge/excited-state-and-core-spectroscopy.md": {
+      "sha256": "0d849c594f964ff706ac0e7ca6540545941d6c93d22c9f84de6b9df470723385",
+      "source": "skills/knowledge/excited-state-and-core-spectroscopy.md"
+    },
+    "skills/tools/cp2k/references/knowledge/force-fields.md": {
+      "sha256": "0e5b421e77fd83413b81df947b1a80a805c9658429047418b6b6dcdabdbdf715",
+      "source": "skills/knowledge/force-fields.md"
+    },
+    "skills/tools/cp2k/references/knowledge/hubbard-u-and-magnetism.md": {
+      "sha256": "5c0d6582b20b8d42d9aff5d1edaf56f2f41b82320146efdcc23cffabace3e59c",
+      "source": "skills/knowledge/hubbard-u-and-magnetism.md"
+    },
+    "skills/tools/cp2k/references/knowledge/molecular-dynamics.md": {
+      "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
+      "source": "skills/knowledge/molecular-dynamics.md"
+    },
+    "skills/tools/cp2k/references/knowledge/periodic-electrostatics.md": {
+      "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
+      "source": "skills/knowledge/periodic-electrostatics.md"
+    },
+    "skills/tools/cp2k/references/knowledge/reaction-kinetics.md": {
+      "sha256": "fc792e90f1dd938af6627aab2e9014c1ec62b011745594282e0250f6fd1845eb",
+      "source": "skills/knowledge/reaction-kinetics.md"
+    },
+    "skills/tools/cp2k/references/knowledge/scientific-visualization.md": {
+      "sha256": "35b1082203d0a4afa7480b1149b636f33d78b84f664722ca0331ed5555074f27",
+      "source": "skills/knowledge/scientific-visualization.md"
+    },
+    "skills/tools/cp2k/references/knowledge/surface-thermodynamics.md": {
+      "sha256": "37b16782e9e199d47c75e55219b4b2061f711a46d62365fcfc35810f5ec0a3bb",
+      "source": "skills/knowledge/surface-thermodynamics.md"
+    },
+    "skills/tools/cp2k/references/knowledge/thermochemistry-and-free-energy.md": {
+      "sha256": "de3a0f68d687ce748279400dd739c11d846fcf539e1ecd835fb06c0bba75767b",
+      "source": "skills/knowledge/thermochemistry-and-free-energy.md"
+    },
+    "skills/tools/cp2k/references/knowledge/vibrational-phonon-analysis.md": {
+      "sha256": "886a332159292b364ce0a98086729972a876a6ea9dc771dbbf60adc063b58eca",
+      "source": "skills/knowledge/vibrational-phonon-analysis.md"
+    },
+    "skills/tools/deepmd/references/knowledge/force-fields.md": {
+      "sha256": "0e5b421e77fd83413b81df947b1a80a805c9658429047418b6b6dcdabdbdf715",
+      "source": "skills/knowledge/force-fields.md"
+    },
+    "skills/tools/deepmd/references/knowledge/machine-learning-potentials.md": {
+      "sha256": "b827f3cea4c8b24e79dcdb6046e5ec7fefe0ae28b2230dd196e0a5bda6420d31",
+      "source": "skills/knowledge/machine-learning-potentials.md"
+    },
+    "skills/tools/deepmd/references/knowledge/molecular-dynamics.md": {
+      "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
+      "source": "skills/knowledge/molecular-dynamics.md"
+    },
+    "skills/tools/lammps/references/knowledge/force-fields.md": {
+      "sha256": "0e5b421e77fd83413b81df947b1a80a805c9658429047418b6b6dcdabdbdf715",
+      "source": "skills/knowledge/force-fields.md"
+    },
+    "skills/tools/lammps/references/knowledge/molecular-dynamics.md": {
+      "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
+      "source": "skills/knowledge/molecular-dynamics.md"
+    },
+    "skills/tools/lobster/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/tools/mlp/references/knowledge/machine-learning-potentials.md": {
+      "sha256": "b827f3cea4c8b24e79dcdb6046e5ec7fefe0ae28b2230dd196e0a5bda6420d31",
+      "source": "skills/knowledge/machine-learning-potentials.md"
+    },
+    "skills/tools/multiwfn/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/tools/multiwfn/references/knowledge/electronic-structure.md": {
+      "sha256": "1ce00b0f4a93b79a01e0f7888831970650dd7a928caa24d7eda16a2bc1a83ce4",
+      "source": "skills/knowledge/electronic-structure.md"
+    },
+    "skills/tools/multiwfn/references/knowledge/molecular-qc-practical-rules.md": {
+      "sha256": "abea771ffc437a70853a8941ccf0659fc9bf48f210ecaa3924349abe87c49897",
+      "source": "skills/knowledge/molecular-qc-practical-rules.md"
+    },
+    "skills/tools/multiwfn/references/knowledge/periodic-electrostatics.md": {
+      "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
+      "source": "skills/knowledge/periodic-electrostatics.md"
+    },
+    "skills/tools/multiwfn/references/knowledge/scientific-visualization.md": {
+      "sha256": "35b1082203d0a4afa7480b1149b636f33d78b84f664722ca0331ed5555074f27",
+      "source": "skills/knowledge/scientific-visualization.md"
+    },
+    "skills/tools/multiwfn/references/knowledge/surface-thermodynamics.md": {
+      "sha256": "37b16782e9e199d47c75e55219b4b2061f711a46d62365fcfc35810f5ec0a3bb",
+      "source": "skills/knowledge/surface-thermodynamics.md"
+    },
+    "skills/tools/report/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/tools/report/references/knowledge/electronic-structure.md": {
+      "sha256": "1ce00b0f4a93b79a01e0f7888831970650dd7a928caa24d7eda16a2bc1a83ce4",
+      "source": "skills/knowledge/electronic-structure.md"
+    },
+    "skills/tools/report/references/knowledge/force-fields.md": {
+      "sha256": "0e5b421e77fd83413b81df947b1a80a805c9658429047418b6b6dcdabdbdf715",
+      "source": "skills/knowledge/force-fields.md"
+    },
+    "skills/tools/report/references/knowledge/molecular-dynamics.md": {
+      "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
+      "source": "skills/knowledge/molecular-dynamics.md"
+    },
+    "skills/tools/report/references/knowledge/periodic-electrostatics.md": {
+      "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
+      "source": "skills/knowledge/periodic-electrostatics.md"
+    },
+    "skills/tools/report/references/knowledge/scientific-visualization.md": {
+      "sha256": "35b1082203d0a4afa7480b1149b636f33d78b84f664722ca0331ed5555074f27",
+      "source": "skills/knowledge/scientific-visualization.md"
+    },
+    "skills/tools/report/references/knowledge/surface-thermodynamics.md": {
+      "sha256": "37b16782e9e199d47c75e55219b4b2061f711a46d62365fcfc35810f5ec0a3bb",
+      "source": "skills/knowledge/surface-thermodynamics.md"
+    },
+    "skills/tools/report/references/knowledge/thermochemistry-and-free-energy.md": {
+      "sha256": "de3a0f68d687ce748279400dd739c11d846fcf539e1ecd835fb06c0bba75767b",
+      "source": "skills/knowledge/thermochemistry-and-free-energy.md"
+    },
+    "skills/tools/report/references/knowledge/vibrational-phonon-analysis.md": {
+      "sha256": "886a332159292b364ce0a98086729972a876a6ea9dc771dbbf60adc063b58eca",
+      "source": "skills/knowledge/vibrational-phonon-analysis.md"
+    },
+    "skills/tools/vasp/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/tools/vasp/references/knowledge/electrochemistry.md": {
+      "sha256": "74d04db7f6e0c24f8ac2579d0290529854ffc9f9326fd31c755d1867579785f1",
+      "source": "skills/knowledge/electrochemistry.md"
+    },
+    "skills/tools/vasp/references/knowledge/electronic-structure.md": {
+      "sha256": "1ce00b0f4a93b79a01e0f7888831970650dd7a928caa24d7eda16a2bc1a83ce4",
+      "source": "skills/knowledge/electronic-structure.md"
+    },
+    "skills/tools/vasp/references/knowledge/force-fields.md": {
+      "sha256": "0e5b421e77fd83413b81df947b1a80a805c9658429047418b6b6dcdabdbdf715",
+      "source": "skills/knowledge/force-fields.md"
+    },
+    "skills/tools/vasp/references/knowledge/hubbard-u-and-magnetism.md": {
+      "sha256": "5c0d6582b20b8d42d9aff5d1edaf56f2f41b82320146efdcc23cffabace3e59c",
+      "source": "skills/knowledge/hubbard-u-and-magnetism.md"
+    },
+    "skills/tools/vasp/references/knowledge/molecular-dynamics.md": {
+      "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
+      "source": "skills/knowledge/molecular-dynamics.md"
+    },
+    "skills/tools/vasp/references/knowledge/periodic-electrostatics.md": {
+      "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
+      "source": "skills/knowledge/periodic-electrostatics.md"
+    },
+    "skills/tools/vasp/references/knowledge/reaction-kinetics.md": {
+      "sha256": "fc792e90f1dd938af6627aab2e9014c1ec62b011745594282e0250f6fd1845eb",
+      "source": "skills/knowledge/reaction-kinetics.md"
+    },
+    "skills/tools/vasp/references/knowledge/scientific-visualization.md": {
+      "sha256": "35b1082203d0a4afa7480b1149b636f33d78b84f664722ca0331ed5555074f27",
+      "source": "skills/knowledge/scientific-visualization.md"
+    },
+    "skills/tools/vasp/references/knowledge/surface-thermodynamics.md": {
+      "sha256": "37b16782e9e199d47c75e55219b4b2061f711a46d62365fcfc35810f5ec0a3bb",
+      "source": "skills/knowledge/surface-thermodynamics.md"
+    },
+    "skills/tools/vasp/references/knowledge/thermochemistry-and-free-energy.md": {
+      "sha256": "de3a0f68d687ce748279400dd739c11d846fcf539e1ecd835fb06c0bba75767b",
+      "source": "skills/knowledge/thermochemistry-and-free-energy.md"
+    },
+    "skills/tools/vasp/references/knowledge/vibrational-phonon-analysis.md": {
+      "sha256": "886a332159292b364ce0a98086729972a876a6ea9dc771dbbf60adc063b58eca",
+      "source": "skills/knowledge/vibrational-phonon-analysis.md"
+    },
+    "skills/tools/vaspkit/references/knowledge/bonding-analysis.md": {
+      "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
+      "source": "skills/knowledge/bonding-analysis.md"
+    },
+    "skills/tools/vaspkit/references/knowledge/electronic-structure.md": {
+      "sha256": "1ce00b0f4a93b79a01e0f7888831970650dd7a928caa24d7eda16a2bc1a83ce4",
+      "source": "skills/knowledge/electronic-structure.md"
+    },
+    "skills/tools/vaspkit/references/knowledge/force-fields.md": {
+      "sha256": "0e5b421e77fd83413b81df947b1a80a805c9658429047418b6b6dcdabdbdf715",
+      "source": "skills/knowledge/force-fields.md"
+    },
+    "skills/tools/vaspkit/references/knowledge/molecular-dynamics.md": {
+      "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
+      "source": "skills/knowledge/molecular-dynamics.md"
+    },
+    "skills/tools/vaspkit/references/knowledge/periodic-electrostatics.md": {
+      "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
+      "source": "skills/knowledge/periodic-electrostatics.md"
+    },
+    "skills/tools/vaspkit/references/knowledge/surface-thermodynamics.md": {
+      "sha256": "37b16782e9e199d47c75e55219b4b2061f711a46d62365fcfc35810f5ec0a3bb",
+      "source": "skills/knowledge/surface-thermodynamics.md"
+    },
+    "skills/tools/vaspkit/references/knowledge/thermochemistry-and-free-energy.md": {
+      "sha256": "de3a0f68d687ce748279400dd739c11d846fcf539e1ecd835fb06c0bba75767b",
+      "source": "skills/knowledge/thermochemistry-and-free-energy.md"
+    },
+    "skills/tools/vaspkit/references/knowledge/vibrational-phonon-analysis.md": {
+      "sha256": "886a332159292b364ce0a98086729972a876a6ea9dc771dbbf60adc063b58eca",
+      "source": "skills/knowledge/vibrational-phonon-analysis.md"
+    }
+  },
   "generated_by": "scripts/sync-skill-references.py",
   "schema_version": 1
 }

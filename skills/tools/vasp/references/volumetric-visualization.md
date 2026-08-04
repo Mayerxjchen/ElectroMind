@@ -13,7 +13,7 @@ This note records a command-line PyVista workflow for VASP volumetric data. It i
 | 2D arbitrary-plane charge slice | `pymatgen` + `scipy.ndimage.map_coordinates` + Matplotlib | Useful for planes defined by chemically important atoms, e.g. metal-C-O |
 | atomistic structure rendering only | ASE or another available structure renderer | PyVista is mainly for volumetric fields |
 | charge post-processing and planar averages | VASPKIT / VTST scripts | Use structured tools for density subtraction and planar averages, then visualize the resulting file |
-| VASPKIT-generated volumetric outputs | `tools/vaspkit/references/electronic-analysis.md`, then PyVista | Generate real-space wavefunction files, spin density, and charge-density differences with VASPKIT; this file covers rendering once the CHGCAR-like file exists |
+| VASPKIT-generated volumetric outputs | the `vaspkit` skill's `references/electronic-analysis.md`, then PyVista | Generate real-space wavefunction files, spin density, and charge-density differences with VASPKIT; this file covers rendering once the CHGCAR-like file exists |
 
 Recommended isolated Python environment:
 
@@ -46,7 +46,7 @@ Use exactly equal positive and negative isosurface magnitudes unless there is a 
 
 ## Reading a CHGCAR-like file
 
-`pymatgen.io.vasp.outputs.Chgcar` can read normal `CHGCAR`-format volumetric files, including many VASPKIT outputs. VASPKIT menu selection and automation belong in `tools/vaspkit/references/electronic-analysis.md`; this file starts after the CHGCAR-like output file exists. Common examples are:
+`pymatgen.io.vasp.outputs.Chgcar` can read normal `CHGCAR`-format volumetric files, including many VASPKIT outputs. VASPKIT menu selection and automation belong in the `vaspkit` skill's `references/electronic-analysis.md`; this file starts after the CHGCAR-like output file exists. Common examples are:
 
 - VASPKIT 511 wavefunction real-space files, such as `WFN_REAL_B0005_K0001.vasp`
 - VASPKIT 312 spin-density output
@@ -57,7 +57,7 @@ For final-report figures, VASP volumetric sources (`CHGCAR`, `CHGDIFF`, `PARCHG`
 `ELFCAR`, spin density, wavefunction/WAVECAR-derived grids, and Delta rho / charge
 density difference plots) must record this reference in the accepted figure artifact or
 report manifest. Charge-density-difference figures should also record
-`tools/vasp/references/electronic-analysis.md`. The plotting script may use
+`electronic-analysis.md`. The plotting script may use
 `pymatgen`, PyVista, Matplotlib, or VESTA-style parameters, but it should consume a
 recorded CHGCAR-like source file and sidecar/provenance that names the source files,
 source-generation route, sign/grid checks, and rendering parameters. If VASPKIT was

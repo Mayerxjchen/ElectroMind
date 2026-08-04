@@ -154,7 +154,24 @@ class TestCompatAdapter:
 
     def test_candidates_from_catalog_express_source_identity(self):
         """Every visible catalog skill becomes a candidate with scope + source."""
-        sources = discover_skill_sources(str(REPO_ROOT))
+        from electromind.skills.discovery import SkillSource as LegacySkillSource
+
+        sources = (
+            LegacySkillSource(
+                id="builtin:procedures",
+                kind="standard",
+                scope="project",
+                root=(REPO_ROOT / "skills" / "procedures").resolve(),
+                priority=1,
+            ),
+            LegacySkillSource(
+                id="builtin:tools",
+                kind="standard",
+                scope="project",
+                root=(REPO_ROOT / "skills" / "tools").resolve(),
+                priority=1,
+            ),
+        )
         catalog = load_skill_catalog(sources)
         candidates = candidates_from_catalog(catalog)
 
@@ -283,12 +300,13 @@ class TestAgentsValidator:
         )
         assert any("invalid skill name" in e for e in errors)
 
-    def test_name_dir_mismatch_is_warning(self):
+    def test_name_dir_mismatch_is_error(self):
+        """A+ W3：目录名 ≠ frontmatter name 是硬错误，不再是 warning。"""
         errors, warnings = validate_agents_frontmatter(
             {"name": "other", "description": "hi"}, dir_name="greet"
         )
-        assert errors == []
-        assert any("does not match directory" in w for w in warnings)
+        assert warnings == []
+        assert any("does not match directory" in e for e in errors)
 
     def test_validate_skill_dir_ok(self, tmp_path):
         d = _write_skill(tmp_path, "good", "desc", "body\n")

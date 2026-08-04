@@ -27,7 +27,7 @@ try:
 except ImportError as exc:  # pragma: no cover - reached only outside uv/pep723
     raise SystemExit(
         "PyYAML is required. Run with: uv run "
-        "procedures/research-orchestrator/scripts/validate_state.py PATH/.research"
+        "<skill-root>/scripts/validate_state.py PATH/.research"
     ) from exc
 
 

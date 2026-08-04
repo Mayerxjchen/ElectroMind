@@ -1144,40 +1144,34 @@ async def test_sandbox_describe_local(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def _make_structured_root(root: Path) -> None:
-    """Create a minimal structured skill root at ``root``."""
-    root.mkdir(parents=True, exist_ok=True)
-    (root / "AGENTS.md").write_text("# Global instructions\nDo X.\n", encoding="utf-8")
-
-    wf = root / "procedures" / "workflow"
+def _make_project_skills(project: Path) -> None:
+    """Create a project with flat `.agents/skills/` skills (A+ W5)."""
+    skills = project / ".agents" / "skills"
+    wf = skills / "workflow"
     wf.mkdir(parents=True)
     (wf / "SKILL.md").write_text(
         "---\nname: workflow\ndescription: A standard workflow\n---\nExecute the workflow.\n",
         encoding="utf-8",
     )
 
-    tool = root / "tools" / "hpc-submit"
+    tool = skills / "hpc-submit"
     tool.mkdir(parents=True)
     (tool / "SKILL.md").write_text(
         "---\nname: hpc-submit\ndescription: Submit HPC jobs\n---\nSubmit a job.\n",
         encoding="utf-8",
     )
 
-    (root / "tools" / "hpc-submit" / "submit.sh").write_text("#!/bin/sh\necho submit\n")
-
-    kn = root / "knowledge"
-    kn.mkdir(parents=True)
-    (kn / "reference.md").write_text("# Reference\n", encoding="utf-8")
+    (skills / "hpc-submit" / "submit.sh").write_text("#!/bin/sh\necho submit\n")
 
 
 @pytest.mark.asyncio
-async def test_install_structured_catalog_preserves_tree(tmp_path):
-    """A structured catalog installed into the sandbox preserves the complete tree."""
+async def test_install_project_catalog_preserves_skill_tree(tmp_path):
+    """A flat project catalog installed into the sandbox preserves each skill tree."""
     from electromind.skills.discovery import discover_skill_sources, load_skill_catalog
 
     project = tmp_path / "project"
     project.mkdir()
-    _make_structured_root(project / "skills")
+    _make_project_skills(project)
 
     sources = discover_skill_sources(str(project))
     catalog = load_skill_catalog(sources)
@@ -1187,32 +1181,22 @@ async def test_install_structured_catalog_preserves_tree(tmp_path):
     ) as box:
         mounts = await box.install_skill_catalog(catalog)
 
-    # All structured skills should be mounted
+    # All project skills should be mounted
     assert "workflow" in mounts
     assert "hpc-submit" in mounts
 
-    # Mount points: each skill's skills_root should point to the structured root
-    assert mounts["hpc-submit"].skills_root is not None
-    assert mounts["workflow"].skills_root is not None
+    # Mount points: each skill's skill_root points into the digest-prefixed tree
+    assert mounts["hpc-submit"].skill_root is not None
+    assert mounts["workflow"].skill_root is not None
 
-    # Use the mount's skills_root to find the actual installed tree base
-    skills_base = mounts["hpc-submit"].skills_root
-    assert skills_base is not None
-    assert skills_base.startswith("/home/agent/.skills/")
-
-    # Check AGENTS.md was copied under the digest-prefixed tree
-    agents_path = box.resolve(f"{skills_base}/AGENTS.md")
-    assert os.path.isfile(agents_path)
-
-    # Check tools/hpc-submit/SKILL.md and submit.sh
-    assert os.path.isfile(box.resolve(f"{skills_base}/tools/hpc-submit/SKILL.md"))
-    assert os.path.isfile(box.resolve(f"{skills_base}/tools/hpc-submit/submit.sh"))
-
-    # Check procedures/workflow/SKILL.md
-    assert os.path.isfile(box.resolve(f"{skills_base}/procedures/workflow/SKILL.md"))
-
-    # Check knowledge/ is preserved (even though not a skill)
-    assert os.path.isfile(box.resolve(f"{skills_base}/knowledge/reference.md"))
+    # hpc-submit tree: SKILL.md + submit.sh, no AGENTS.md / knowledge/ extras
+    hpc_base = mounts["hpc-submit"].skill_root
+    assert hpc_base is not None
+    assert hpc_base.startswith("/home/agent/.skills/")
+    assert os.path.isfile(box.resolve(f"{hpc_base}/SKILL.md"))
+    assert os.path.isfile(box.resolve(f"{hpc_base}/submit.sh"))
+    assert not os.path.isfile(box.resolve(f"{hpc_base}/AGENTS.md"))
+    assert not os.path.isfile(box.resolve(f"{hpc_base}/knowledge/reference.md"))
 
 
 @pytest.mark.asyncio
@@ -1256,13 +1240,14 @@ async def test_install_standard_skill_uses_source_and_skill_directory(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_install_catalog_returns_skill_and_skills_roots(tmp_path):
-    """install_skill_catalog returns SkillMount with skill_root and skills_root."""
+async def test_install_catalog_returns_skill_root_only(tmp_path):
+    """A+ CLEAN-007: install returns skill_root only — no collection-level
+    skills_root is exposed (skills are self-contained mounts)."""
     from electromind.skills.discovery import discover_skill_sources, load_skill_catalog
 
     project = tmp_path / "project"
     project.mkdir()
-    _make_structured_root(project / "skills")
+    _make_project_skills(project)
 
     sources = discover_skill_sources(str(project))
     catalog = load_skill_catalog(sources)
@@ -1272,20 +1257,18 @@ async def test_install_catalog_returns_skill_and_skills_roots(tmp_path):
     ) as box:
         mounts = await box.install_skill_catalog(catalog)
 
-    source_id = [s for s in sources if s.kind == "structured"][0].id
+    source_id = sources[0].id
     hpc_mount = mounts["hpc-submit"]
-    # skill_root includes a digest prefix: .skills/{source_id}/{dgst}/tools/hpc-submit
+    # skill_root includes a digest prefix: .skills/{source_id}/{dgst}/hpc-submit
     assert hpc_mount.skill_root.startswith(f"/home/agent/.skills/{source_id}/")
-    assert hpc_mount.skill_root.endswith("/tools/hpc-submit")
-    assert hpc_mount.skills_root is not None
-    assert hpc_mount.skills_root.startswith(f"/home/agent/.skills/{source_id}/")
+    assert hpc_mount.skill_root.endswith("/hpc-submit")
+    assert not hasattr(hpc_mount, "skills_root")  # 字段已删除
     assert hpc_mount.source_root == source_id
 
     wf_mount = mounts["workflow"]
     assert wf_mount.skill_root.startswith(f"/home/agent/.skills/{source_id}/")
-    assert wf_mount.skill_root.endswith("/procedures/workflow")
-    assert wf_mount.skills_root is not None
-    assert wf_mount.skills_root.startswith(f"/home/agent/.skills/{source_id}/")
+    assert wf_mount.skill_root.endswith("/workflow")
+    assert not hasattr(wf_mount, "skills_root")
 
 
 @pytest.mark.asyncio
@@ -1337,7 +1320,7 @@ async def test_unchanged_catalog_is_not_rewritten(tmp_path):
 
     project = tmp_path / "project"
     project.mkdir()
-    _make_structured_root(project / "skills")
+    _make_project_skills(project)
 
     sources = discover_skill_sources(str(project))
     catalog1 = load_skill_catalog(sources)

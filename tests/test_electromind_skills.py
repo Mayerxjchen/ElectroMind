@@ -339,39 +339,32 @@ async def test_use_skill_tool_falls_back_to_host_root_without_mount(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def make_structured_root(root: Path) -> None:
-    """Create a minimal structured skill root at `root`.
+def make_project_skills(project: Path) -> None:
+    """Create a minimal project skill set (A+ W5: flat .agents/skills roots).
 
     Structure::
 
-        <root>/
-        ├── AGENTS.md
-        ├── procedures/
-        │   └── workflow/
-        │       └── SKILL.md
-        ├── tools/
-        │   └── hpc-submit/
-        │       └── SKILL.md
-        └── knowledge/
+        <project>/.agents/skills/
+        ├── workflow/
+        │   └── SKILL.md
+        ├── hpc-submit/
+        │   └── SKILL.md
+        └── knowledge/            # no SKILL.md → never a skill
             └── reference.md
     """
-    root.mkdir(parents=True, exist_ok=True)
-    (root / "AGENTS.md").write_text(
-        "# Global instructions\nAlways do X.\n", encoding="utf-8"
-    )
-    wf = root / "procedures" / "workflow"
-    wf.mkdir(parents=True)
-    (wf / "SKILL.md").write_text(
+    skills_dir = project / ".agents" / "skills"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "workflow" / "SKILL.md").parent.mkdir(parents=True)
+    (skills_dir / "workflow" / "SKILL.md").write_text(
         "---\nname: workflow\ndescription: 标准工作流\n---\n执行标准工作流。\n",
         encoding="utf-8",
     )
-    tool = root / "tools" / "hpc-submit"
-    tool.mkdir(parents=True)
-    (tool / "SKILL.md").write_text(
+    (skills_dir / "hpc-submit" / "SKILL.md").parent.mkdir(parents=True)
+    (skills_dir / "hpc-submit" / "SKILL.md").write_text(
         "---\nname: hpc-submit\ndescription: HPC 提交\n---\n提交 HPC 作业。\n",
         encoding="utf-8",
     )
-    kn = root / "knowledge"
+    kn = skills_dir / "knowledge"
     kn.mkdir(parents=True)
     (kn / "reference.md").write_text(
         "# Reference\nKnowledge base entry.\n", encoding="utf-8"
@@ -392,17 +385,28 @@ def make_standard_skill(root: Path, name: str, description: str, body: str) -> P
 # ---- discovery source tests ----
 
 
-def test_discover_project_structured_root_without_configuration(tmp_path):
-    """A project with a structured skills/ dir is discovered automatically."""
+def test_project_structured_skills_dir_no_longer_discovered(tmp_path):
+    """DEPRECATED (A+ W5, deadline W8): project skills/ bundles with AGENTS.md
+    are no longer a discovery path — only the flat fixed dirs are."""
     project = tmp_path / "project"
     project.mkdir()
-    make_structured_root(project / "skills")
+    skills_dir = project / "skills"
+    skills_dir.mkdir(parents=True)
+    (skills_dir / "AGENTS.md").write_text(
+        "# Global instructions\nAlways do X.\n", encoding="utf-8"
+    )
+    wf = skills_dir / "procedures" / "workflow"
+    wf.mkdir(parents=True)
+    (wf / "SKILL.md").write_text(
+        "---\nname: workflow\ndescription: 标准工作流\n---\n执行标准工作流。\n",
+        encoding="utf-8",
+    )
 
     sources = discover_skill_sources(str(project))
     structured = [s for s in sources if s.kind == "structured"]
-    assert len(structured) == 1
-    assert structured[0].scope == "project"
-    assert structured[0].root == (project / "skills").resolve()
+    assert structured == []
+    catalog = load_skill_catalog(sources)
+    assert catalog.registry.get("workflow") is None
 
 
 def test_discover_standard_project_skills(tmp_path):
@@ -482,10 +486,10 @@ def test_same_scope_duplicate_first_wins(tmp_path):
 
 
 def test_knowledge_is_not_registered_as_skill(tmp_path):
-    """`knowledge/` entries are NOT registered as Skills."""
+    """`knowledge/` entries (no SKILL.md) are NOT registered as Skills."""
     project = tmp_path / "project"
     project.mkdir()
-    make_structured_root(project / "skills")
+    make_project_skills(project)
 
     sources = discover_skill_sources(str(project))
     catalog = load_skill_catalog(sources)
@@ -525,17 +529,18 @@ def test_project_skill_symlink_escape_is_rejected(tmp_path):
 
 
 def test_catalog_fingerprint_changes_when_skill_md_changes(tmp_path):
-    """The fingerprint must change when a SKILL.md body or AGENTS.md changes."""
+    """The fingerprint must change when a SKILL.md body changes (A+ W5:
+    there is no AGENTS.md to fingerprint anymore)."""
     project = tmp_path / "project"
     project.mkdir()
-    make_structured_root(project / "skills")
+    make_project_skills(project)
 
     sources = discover_skill_sources(str(project))
     catalog1 = load_skill_catalog(sources)
     fp1 = catalog1.fingerprint
 
     # Change a SKILL.md
-    (project / "skills" / "tools" / "hpc-submit" / "SKILL.md").write_text(
+    (project / ".agents" / "skills" / "hpc-submit" / "SKILL.md").write_text(
         "---\nname: hpc-submit\ndescription: HPC 提交 v2\n---\n修改后的指令。\n",
         encoding="utf-8",
     )
@@ -543,15 +548,6 @@ def test_catalog_fingerprint_changes_when_skill_md_changes(tmp_path):
     fp2 = catalog2.fingerprint
 
     assert fp1 != fp2
-
-    # Change AGENTS.md
-    (project / "skills" / "AGENTS.md").write_text(
-        "# Updated global instructions\nDo Y instead.\n", encoding="utf-8"
-    )
-    catalog3 = load_skill_catalog(sources)
-    fp3 = catalog3.fingerprint
-
-    assert fp2 != fp3
 
 
 def test_discover_sources_includes_user_home_by_default(tmp_path, monkeypatch):
@@ -570,11 +566,10 @@ def test_discover_sources_includes_user_home_by_default(tmp_path, monkeypatch):
 
 
 def test_source_ordering_is_deterministic(tmp_path):
-    """The source list must be ordered: project-skills, project-agents, project-em,
-    configured, user-em, user-agents."""
+    """The source list must be ordered: project-agents, project-em,
+    configured, user-em, user-agents (A+ W5: no structured source)."""
     project = tmp_path / "project"
     project.mkdir()
-    make_structured_root(project / "skills")
 
     # Create .agents/skills and .electromind/skills in project
     (project / ".agents" / "skills").mkdir(parents=True, exist_ok=True)
@@ -597,7 +592,6 @@ def test_source_ordering_is_deterministic(tmp_path):
 
     order = [f"{s.scope}-{s.kind}" for s in sources]
     assert order == [
-        "project-structured",
         "project-standard",
         "project-standard",
         "configured-standard",
@@ -611,11 +605,13 @@ def test_source_ordering_is_deterministic(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_global_agents_instructions_precede_skill_catalog(tmp_path):
-    """Global instructions from AGENTS.md appear before the Skill catalog."""
+def test_global_agents_instructions_removed(tmp_path):
+    """DEPRECATED (A+ W5, deadline W8): AGENTS.md global instructions no
+    longer exist — skills are self-contained and the prompt has no global
+    instruction block."""
     project = tmp_path / "project"
     project.mkdir()
-    make_structured_root(project / "skills")
+    make_project_skills(project)
 
     sources = discover_skill_sources(str(project))
     catalog = load_skill_catalog(sources)
@@ -623,12 +619,8 @@ def test_global_agents_instructions_precede_skill_catalog(tmp_path):
     prompt = build_skills_system_prompt(catalog)
     assert "<!-- electromind:skills:start -->" in prompt
     assert "<!-- electromind:skills:end -->" in prompt
-    # Global instructions must be present
-    assert "Always do X" in prompt
-    # Instructions must appear before the skills catalog section
-    assert prompt.index("Always do X") < prompt.index(
-        "<!-- electromind:skills:start -->"
-    )
+    # No global instructions anywhere
+    assert "Always do X" not in prompt
 
 
 def test_initial_prompt_excludes_skill_body(tmp_path):
@@ -656,20 +648,19 @@ def test_initial_prompt_excludes_skill_body(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_use_skill_returns_skill_and_skills_roots(tmp_path):
-    """use_skill returns skill_root and skills_root from the mounts."""
+async def test_use_skill_returns_skill_root_only(tmp_path):
+    """A+ CLEAN-007: use_skill payload 只有 skill_root，无 collection 级 skills_root。"""
     project = tmp_path / "project"
     project.mkdir()
-    make_structured_root(project / "skills")
+    make_project_skills(project)
 
     sources = discover_skill_sources(str(project))
     catalog = load_skill_catalog(sources)
 
     mounts = {
         "hpc-submit": SkillMount(
-            source_root="project-skills",
-            skill_root="/home/agent/.skills/project-skills/tools/hpc-submit",
-            skills_root="/home/agent/.skills/project-skills",
+            source_root="project-agents",
+            skill_root="/home/agent/.skills/project-agents/hpc-submit",
         ),
     }
     tool = make_use_skill_tool(catalog, mounts)
@@ -677,10 +668,8 @@ async def test_use_skill_returns_skill_and_skills_roots(tmp_path):
     payload = json.loads(result.content)
     assert payload["ok"] is True
     assert payload["name"] == "hpc-submit"
-    assert (
-        payload["skill_root"] == "/home/agent/.skills/project-skills/tools/hpc-submit"
-    )
-    assert payload["skills_root"] == "/home/agent/.skills/project-skills"
+    assert payload["skill_root"] == "/home/agent/.skills/project-agents/hpc-submit"
+    assert "skills_root" not in payload
 
 
 @pytest.mark.asyncio

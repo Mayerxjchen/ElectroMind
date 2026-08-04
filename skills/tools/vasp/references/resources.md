@@ -7,7 +7,7 @@
 - **VASP forum** — https://www.vasp.at/forum/ — searchable history of error reports; good when an error string isn't in our errors.md.
 - **VTST tools** — https://theory.cm.utexas.edu/vtsttools/ — climbing-image NEB, dimer method, and helper scripts. VTST requires a VASP build compiled with the VTST patches; record the site's VTST-enabled module/binary and script paths in the private cluster guide.
 - **Bader analysis code** — https://theory.cm.utexas.edu/henkelman/code/bader/ — usage and the AECCAR workflow our charge-analysis setup targets.
-- **LOBSTER / COHP** — bonding analysis from a VASP wavefunction is its own skill: see `tools/lobster` (operation) and `knowledge/bonding-analysis.md` (science); program at http://www.cohp.de/.
+- **LOBSTER / COHP** — bonding analysis from a VASP wavefunction is its own skill: see the `lobster` skill (operation) and `references/knowledge/bonding-analysis.md` (science); program at http://www.cohp.de/.
 - **Materials Project docs** — https://docs.materialsproject.org/methodology/ — the source of the GGA+U values and parameter conventions cited in u-values-magmom.md; consult when matching MP-derived data.
 - **pymatgen VASP IO** — https://pymatgen.org/pymatgen.io.vasp.html — programmatic input generation and output parsing beyond our scripts.
 - **NIST-JANAF thermochemical tables** — https://janaf.nist.gov/ — gas-phase thermochemistry for chemical potentials and free-energy corrections; reconcile table conventions with DFT reference energies before use.

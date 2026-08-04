@@ -1,6 +1,6 @@
 # CP2K SCCS and Implicit Solvation
 
-> Load this when: setting up or interpreting CP2K implicit-solvent/SCCS calculations, comparing vacuum and solvated energies, or deciding whether implicit solvent is appropriate. Also load `low-dimensional-electrostatics.md` and `knowledge/periodic-electrostatics.md` for boundary-condition and thermodynamic-cycle reasoning.
+> Load this when: setting up or interpreting CP2K implicit-solvent/SCCS calculations, comparing vacuum and solvated energies, or deciding whether implicit solvent is appropriate. Also load `low-dimensional-electrostatics.md` and `references/knowledge/periodic-electrostatics.md` for boundary-condition and thermodynamic-cycle reasoning.
 
 ## When to use
 

@@ -136,7 +136,7 @@ schema_version: 1
 id: T_LIT
 title: Extract source paper into calculation seeds
 role: literature-method
-role_contract: procedures/research-orchestrator/references/roles.md#literature-method
+role_contract: references/roles.md#literature-method
 skill: literature-to-calculation
 status: approved
 depends_on: []

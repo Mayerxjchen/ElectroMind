@@ -28,7 +28,6 @@ class SkillRunView:
         generation: Monotonically increasing integer (1-based).
         digest: Content-addressed hash of the skill set.
         registry: The ``SkillRegistry`` for this generation (compat facade).
-        agents_md: ``AGENTS.md`` content from structured skill roots, or ``None``.
         mounted_roots: ``name -> SkillMount`` mapping for sandbox paths.
         catalog: The frozen ``MultiCandidateCatalog`` backing this view.
             Activations consume ONLY this catalog's frozen bodies
@@ -38,7 +37,6 @@ class SkillRunView:
     generation: int
     digest: str
     registry: "SkillRegistry"
-    agents_md: str | None
     mounted_roots: dict[str, "SkillMount"]
     catalog: "object | None" = None
 

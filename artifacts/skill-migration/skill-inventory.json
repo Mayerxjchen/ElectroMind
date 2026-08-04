@@ -1,0 +1,173 @@
+{
+  "count": 17,
+  "skills": [
+    {
+      "kind": "procedures",
+      "knowledge_copies": [
+        "bonding-analysis.md",
+        "catalytic-reaction-pathways.md",
+        "electrochemistry.md",
+        "electronic-structure.md",
+        "periodic-electrostatics.md",
+        "surface-thermodynamics.md"
+      ],
+      "name": "comp-chem-workflow"
+    },
+    {
+      "kind": "procedures",
+      "knowledge_copies": [],
+      "name": "literature-to-calculation"
+    },
+    {
+      "kind": "procedures",
+      "knowledge_copies": [
+        "bonding-analysis.md",
+        "electrochemistry.md",
+        "electronic-structure.md",
+        "periodic-electrostatics.md",
+        "scientific-visualization.md",
+        "surface-thermodynamics.md"
+      ],
+      "name": "research-orchestrator"
+    },
+    {
+      "kind": "procedures",
+      "knowledge_copies": [
+        "bonding-analysis.md",
+        "electronic-structure.md",
+        "periodic-electrostatics.md",
+        "scientific-visualization.md",
+        "surface-thermodynamics.md"
+      ],
+      "name": "review-response"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "bonding-analysis.md",
+        "electronic-structure.md",
+        "excited-state-and-core-spectroscopy.md",
+        "force-fields.md",
+        "hubbard-u-and-magnetism.md",
+        "molecular-dynamics.md",
+        "periodic-electrostatics.md",
+        "reaction-kinetics.md",
+        "scientific-visualization.md",
+        "surface-thermodynamics.md",
+        "thermochemistry-and-free-energy.md",
+        "vibrational-phonon-analysis.md"
+      ],
+      "name": "cp2k"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "force-fields.md",
+        "machine-learning-potentials.md",
+        "molecular-dynamics.md"
+      ],
+      "name": "deepmd"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [],
+      "name": "hpc-submit"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "force-fields.md",
+        "molecular-dynamics.md"
+      ],
+      "name": "lammps"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "bonding-analysis.md"
+      ],
+      "name": "lobster"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "machine-learning-potentials.md"
+      ],
+      "name": "mlp"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "bonding-analysis.md",
+        "electronic-structure.md",
+        "molecular-qc-practical-rules.md",
+        "periodic-electrostatics.md",
+        "scientific-visualization.md",
+        "surface-thermodynamics.md"
+      ],
+      "name": "multiwfn"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [],
+      "name": "packmol"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "bonding-analysis.md",
+        "electronic-structure.md",
+        "force-fields.md",
+        "molecular-dynamics.md",
+        "periodic-electrostatics.md",
+        "scientific-visualization.md",
+        "surface-thermodynamics.md",
+        "thermochemistry-and-free-energy.md",
+        "vibrational-phonon-analysis.md"
+      ],
+      "name": "report"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [],
+      "name": "rsess"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [],
+      "name": "structure-prep"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "bonding-analysis.md",
+        "electrochemistry.md",
+        "electronic-structure.md",
+        "force-fields.md",
+        "hubbard-u-and-magnetism.md",
+        "molecular-dynamics.md",
+        "periodic-electrostatics.md",
+        "reaction-kinetics.md",
+        "scientific-visualization.md",
+        "surface-thermodynamics.md",
+        "thermochemistry-and-free-energy.md",
+        "vibrational-phonon-analysis.md"
+      ],
+      "name": "vasp"
+    },
+    {
+      "kind": "tools",
+      "knowledge_copies": [
+        "bonding-analysis.md",
+        "electronic-structure.md",
+        "force-fields.md",
+        "molecular-dynamics.md",
+        "periodic-electrostatics.md",
+        "surface-thermodynamics.md",
+        "thermochemistry-and-free-energy.md",
+        "vibrational-phonon-analysis.md"
+      ],
+      "name": "vaspkit"
+    }
+  ]
+}

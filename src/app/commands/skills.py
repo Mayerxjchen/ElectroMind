@@ -299,11 +299,38 @@ def _doctor() -> int:
         if c.enabled_state == "off":
             problems += 1
             print(f"✗ {c.skill_id}: disabled", file=sys.stderr)
+    problems += _isolation_violations()
     print(
         f"{len(catalog.candidates)} candidates, {problems} issues, "
         f"generation {catalog.generation}"
     )
     return EXIT_CLI if problems else EXIT_OK
+
+
+def _isolation_violations() -> int:
+    """W2: run the isolation checker against the repo's own skills bundle.
+
+    Only active when run from the source tree (the checker script and the
+    repo skills/ bundle both exist); installed artifacts carry committed
+    self-contained copies and are validated at authoring time instead.
+    """
+    import subprocess
+
+    repo = Path(__file__).resolve().parents[3]
+    checker = repo / "scripts" / "check-skill-isolation.py"
+    if not checker.is_file() or not (repo / "skills").is_dir():
+        return 0
+    proc = subprocess.run(
+        [sys.executable, str(checker), "--repo", str(repo)],
+        capture_output=True,
+        text=True,
+    )
+    for line in (proc.stdout + proc.stderr).splitlines():
+        if line.startswith("check-skill-isolation:"):
+            continue
+        if line.strip():
+            print(f"✗ isolation: {line}", file=sys.stderr)
+    return 1 if proc.returncode else 0
 
 
 def _installer():

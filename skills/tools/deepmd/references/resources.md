@@ -20,10 +20,10 @@
 
 ## Related local docs
 
-- `knowledge/machine-learning-potentials.md` for tool-agnostic MLP principles and program taxonomy.
-- `knowledge/molecular-dynamics.md` for MD sampling, MSD/diffusion, RDF, VACF/VDOS, and free-energy analysis.
-- `tools/lammps` for LAMMPS input mechanics.
-- `tools/vasp` or `tools/cp2k` for DFT label generation.
+- `references/knowledge/machine-learning-potentials.md` for tool-agnostic MLP principles and program taxonomy.
+- `references/knowledge/molecular-dynamics.md` for MD sampling, MSD/diffusion, RDF, VACF/VDOS, and free-energy analysis.
+- the `lammps` skill for LAMMPS input mechanics.
+- the `vasp` or `cp2k` skill for DFT label generation.
 
 ## Related MLP programs
 

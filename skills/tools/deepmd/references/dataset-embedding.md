@@ -27,12 +27,12 @@ dpdata datasets -> short DPA1 training -> dp freeze -o graph-dpa1.pb
   -> PCA to 2D -> color by dataset family/source
 ```
 
-The shipped helper `tools/deepmd/scripts/deepmd_descriptor_pca.py` implements the
+The shipped helper `../scripts/deepmd_descriptor_pca.py` implements the
 standard DFT-all QA plot and discovers both `data/<split>/<system>/set.000` and
 `data/<system>/<split>/set.000` layouts:
 
 ```bash
-uv run tools/deepmd/scripts/deepmd_descriptor_pca.py \
+uv run ../scripts/deepmd_descriptor_pca.py \
   --model graph.pb \
   --data-root data \
   --out-dir analysis/deepmd_descriptor_pca_dft_all \

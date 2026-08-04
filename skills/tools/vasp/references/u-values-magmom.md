@@ -1,6 +1,6 @@
 # Setting DFT+U and MAGMOM in VASP
 
-> Load this when: writing the `LDAU*` or `MAGMOM` lines of a VASP INCAR. For *which* U value to pick and *what* initial moment to use (the chemistry), see `knowledge/hubbard-u-and-magnetism.md`; this file is the VASP syntax and the array-length rules.
+> Load this when: writing the `LDAU*` or `MAGMOM` lines of a VASP INCAR. For *which* U value to pick and *what* initial moment to use (the chemistry), see `references/knowledge/hubbard-u-and-magnetism.md`; this file is the VASP syntax and the array-length rules.
 
 ## DFT+U (Dudarev scheme: `LDAUTYPE=2`, only U−J matters)
 
@@ -15,7 +15,7 @@ LDAUJ     = 0.0 0.0
 LMAXMIX   = 4           # 6 for f-electrons — required for +U density mixing
 ```
 
-(U values: `knowledge/hubbard-u-and-magnetism.md`. e.g. Fe d = 5.3, Ce f = 4.5–5.0 with `LDAUL=3`, `LMAXMIX=6`.)
+(U values: `references/knowledge/hubbard-u-and-magnetism.md`. e.g. Fe d = 5.3, Ce f = 4.5–5.0 with `LDAUL=3`, `LMAXMIX=6`.)
 
 **Array-length rule (the common bug):** `LDAUL`/`LDAUU`/`LDAUJ` must match **each calculation's own
 species list**. A gas-phase reference box without the +U element still needs correctly sized arrays
@@ -29,7 +29,7 @@ MAGMOM = 4*5.0 6*0.0    # counts sum to the atom total, same order as POSCAR
 ```
 
 Start from the high-spin formal-oxidation-state value and let it relax (the value table and the
-relax-down / AFM-pattern reasoning are in `knowledge/hubbard-u-and-magnetism.md`). For AFM,
+relax-down / AFM-pattern reasoning are in `references/knowledge/hubbard-u-and-magnetism.md`). For AFM,
 write explicit ± per sublattice. After convergence, compare moments to the initialization; if a known
 magnet collapsed to ~0 μB, restart from high-spin or a converged magnetic `CHGCAR`. Report converged
 moments, not the initial guess.

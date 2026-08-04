@@ -97,8 +97,8 @@ Execution ownership:
   `model-structure-review`/`structure_gate`.
   A `structure-modeler` cannot write `structure-audit-report`,
   `model-structure-review`, or `gate-verdict` artifacts. Human-facing figures must
-  follow `knowledge/scientific-visualization.md`; reports must pass
-  `tools/report/references/validation.md`.
+  follow `references/knowledge/scientific-visualization.md`; reports must pass
+  the `report` skill's `references/validation.md`.
 - **Ready is derived, not persisted.** `ready_tasks.py` computes readiness from task
   status, dependencies, inputs, approvals, and output conflicts.
 - **Accepted is not self-asserted.** `completed` is producer output, `validated` is a

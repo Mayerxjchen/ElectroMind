@@ -46,7 +46,6 @@ class Skill:
     resources: tuple[str, ...] = field(default_factory=tuple)
     source_id: str = ""
     skill_root: Path | None = None
-    skills_root: Path | None = None
     sha256: str = ""
 
     def __post_init__(self) -> None:
@@ -325,10 +324,15 @@ def make_use_skill_tool(
 
         skill = registry.get(name)
         if not skill:
+            # A+ §6: missing collaboration skills report an explicit status
+            # instead of searching sibling directories or fabricating one.
             return json.dumps(
                 {
                     "ok": False,
                     "error": f"未知 skill: {name!r}",
+                    "error_code": "skill_unresolved",
+                    "skill_id": name,
+                    "status": f"required capability unavailable: {name}",
                     "available": registry.names(),
                 },
                 ensure_ascii=False,
@@ -341,11 +345,9 @@ def make_use_skill_tool(
 
         if isinstance(sm, _SkillMount):
             skill_root = sm.skill_root
-            skills_root = sm.skills_root
         else:
             # Legacy: mount is dict[str, str]
             skill_root = (mount or {}).get(skill.name) or str(skill.root)
-            skills_root = None
 
         payload = {
             "ok": True,
@@ -353,7 +355,6 @@ def make_use_skill_tool(
             "description": skill.description,
             "instructions": skill.instructions,
             "skill_root": skill_root,
-            "skills_root": skills_root,
             "resources": list(skill.resources),
             "sha256": skill.sha256,
         }
@@ -382,7 +383,7 @@ def make_use_skill_tool(
             "加载一个 skill 的完整说明书和资源清单。"
             "每个 skill 都是一份现成的操作手册，里面告诉你怎么完成一类任务、可以用哪些脚本。"
             f"当前可用：{names_hint}。"
-            "返回 JSON：{ok, name, description, instructions, skill_root, skills_root, resources[], sha256}。"
+            "返回 JSON：{ok, name, description, instructions, skill_root, resources[], sha256}。"
             f"{mount_hint}"
         ),
         parameters={
@@ -407,7 +408,7 @@ def build_skills_system_prompt(
     """Build the system-prompt block for Skills.
 
     When given a ``SkillCatalogSnapshot``:
-    - Global instructions (AGENTS.md from structured skill roots) appear first.
+    - A+ W8: no global instructions — skills are self-contained.
     - Only skill name, description, source, and mounted root are rendered;
       the SKILL.md instruction body is NOT included.
     - Output is wrapped in ``<!-- electromind:skills:start -->`` /
@@ -432,12 +433,7 @@ def _build_snapshot_prompt(
 
     lines: list[str] = []
 
-    # Global instructions first
-    for gi in snapshot.global_instructions:
-        gi_clean = gi.strip()
-        if gi_clean:
-            lines.append(gi_clean)
-
+    # A+ W8: no global instructions — skills are self-contained.
     lines.append("<!-- electromind:skills:start -->")
 
     if snapshot.registry.skills:
@@ -446,22 +442,16 @@ def _build_snapshot_prompt(
             sm = mount.get(skill.name) if mount else None
             if isinstance(sm, SkillMount):
                 location = sm.skill_root
-                skills_root = sm.skills_root
             elif isinstance(sm, str):
                 location = sm
-                skills_root = None
             else:
                 location = ""
-                skills_root = None
 
-            extra = ""
-            if skills_root:
-                extra = f"，root: {skills_root}"
             # Show a short source label without full filesystem paths
             source_label = _short_source_label(skill.source_id)
             lines.append(
                 f"- `{skill.name}`（{source_label}）：{skill.description}"
-                + (f" @ {location}{extra}" if location else "")
+                + (f" @ {location}" if location else "")
             )
         lines.append(
             "调 `use_skill(name)` 会把对应 skill 的完整说明书和资源清单加载进来。"

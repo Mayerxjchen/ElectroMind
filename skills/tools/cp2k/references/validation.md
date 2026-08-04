@@ -7,7 +7,7 @@
 Run:
 
 ```bash
-uv run tools/cp2k/scripts/check_inputs.py input.inp
+uv run ../scripts/check_inputs.py input.inp
 <CP2K_EXE> -c input.inp
 ```
 
@@ -26,7 +26,7 @@ Use `<CP2K_EXE>` for the site-selected binary (`cp2k.sopt`, `cp2k.ssmp`, `cp2k.p
 Run:
 
 ```bash
-uv run tools/cp2k/scripts/parse_cp2k.py output.out
+uv run ../scripts/parse_cp2k.py output.out
 ```
 
 Hard rules:

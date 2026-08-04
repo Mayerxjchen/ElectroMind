@@ -41,8 +41,8 @@ printf '103\n' | vaspkit > vaspkit.103.log 2>&1
 Scripted repeat:
 
 ```bash
-uv run tools/vaspkit/scripts/run_vaspkit_task.py 103 --cwd run-dir
-uv run tools/vaspkit/scripts/run_vaspkit_task.py 211 --cwd run-dir --stdin-file band.inputs
+uv run ../scripts/run_vaspkit_task.py 103 --cwd run-dir
+uv run ../scripts/run_vaspkit_task.py 211 --cwd run-dir --stdin-file band.inputs
 ```
 
 Only automate after one successful interactive run has identified the exact answer sequence for the installed VASPKIT version.
@@ -81,8 +81,8 @@ Use one directory per VASP run and keep logs beside outputs:
 ```bash
 for d in */; do
   [ -f "$d/OUTCAR" ] || continue
-  uv run tools/vaspkit/scripts/check_vaspkit.py "$d" --require OUTCAR
-  uv run tools/vaspkit/scripts/run_vaspkit_task.py 103 --cwd "$d" --log "vaspkit.103.log"
+  uv run ../scripts/check_vaspkit.py "$d" --require OUTCAR
+  uv run ../scripts/run_vaspkit_task.py 103 --cwd "$d" --log "vaspkit.103.log"
 done
 ```
 
@@ -98,8 +98,8 @@ For VASPKIT 403/501/502 workflows, gas chemical potentials, JANAF/NIST linkage, 
 
 ## Electronic-analysis pointer
 
-For charge-density difference, planar-average charge rearrangement, work functions, Bader charge coloring, real-space wavefunctions, and partial/orbital charge-density workflows, load `references/electronic-analysis.md`. Read the VASPKIT output as part of a scientific evidence chain, not a standalone figure — interpretation rules are in `knowledge/electronic-structure.md`.
+For charge-density difference, planar-average charge rearrangement, work functions, Bader charge coloring, real-space wavefunctions, and partial/orbital charge-density workflows, load `references/electronic-analysis.md`. Read the VASPKIT output as part of a scientific evidence chain, not a standalone figure — interpretation rules are in `references/knowledge/electronic-structure.md`.
 
 ## DOS/band pointer
 
-For VASPKIT 111-115 DOS/PDOS extraction, 21/25 band workflows, projected bands, and 503 d-band-center calculations, load `references/dos-band.md`. Pair it with the `vasp` skill DOS/band reference for calculation setup, and `knowledge/electronic-structure.md` for alignment and interpretation rules.
+For VASPKIT 111-115 DOS/PDOS extraction, 21/25 band workflows, projected bands, and 503 d-band-center calculations, load `references/dos-band.md`. Pair it with the `vasp` skill DOS/band reference for calculation setup, and `references/knowledge/electronic-structure.md` for alignment and interpretation rules.

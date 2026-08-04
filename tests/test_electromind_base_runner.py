@@ -311,22 +311,21 @@ async def test_run_state_closing_on_close(tmp_path, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
-def _make_structured_root(root):
-    root.mkdir(parents=True, exist_ok=True)
-    (root / "AGENTS.md").write_text("# Global\nDo X.\n", encoding="utf-8")
-    wf = root / "procedures" / "workflow"
+def _make_project_skills(project):
+    """Create a project with flat `.agents/skills/` skills (A+ W5)."""
+    skills = project / ".agents" / "skills"
+    wf = skills / "workflow"
     wf.mkdir(parents=True)
     (wf / "SKILL.md").write_text(
         "---\nname: workflow\ndescription: A workflow\n---\nRun it.\n",
         encoding="utf-8",
     )
-    tool = root / "tools" / "hpc-submit"
+    tool = skills / "hpc-submit"
     tool.mkdir(parents=True)
     (tool / "SKILL.md").write_text(
         "---\nname: hpc-submit\ndescription: Submit HPC jobs\n---\nSubmit.\n",
         encoding="utf-8",
     )
-    (root / "knowledge").mkdir(parents=True, exist_ok=True)
 
 
 @pytest.mark.asyncio
@@ -334,7 +333,7 @@ async def test_runner_discovers_project_skills_from_thread_project_path(tmp_path
     """Runner discovers project skills when thread.spec.project_path points to a project."""
     project = tmp_path / "project"
     project.mkdir()
-    _make_structured_root(project / "skills")
+    _make_project_skills(project)
 
     thread = Thread.open(
         "disc-test",
@@ -380,7 +379,7 @@ async def test_runner_project_skill_overrides_legacy_duplicate(tmp_path):
     """A project skill wins over a legacy root skill with the same name."""
     project = tmp_path / "project"
     project.mkdir()
-    _make_structured_root(project / "skills")
+    _make_project_skills(project)
 
     legacy = tmp_path / "legacy"
     legacy.mkdir()
@@ -620,7 +619,7 @@ async def test_resume_rebuilds_catalog_from_current_project(tmp_path, monkeypatc
     """When resuming, the catalog is rebuilt from the current project state."""
     project = tmp_path / "project"
     project.mkdir()
-    _make_structured_root(project / "skills")
+    _make_project_skills(project)
 
     provider = FakeProvider(
         [

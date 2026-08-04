@@ -1,6 +1,6 @@
 # VASPKIT DOS, Band, PDOS, and d-Band Workflows
 
-> Load this when: extracting DOS/PDOS, integrated DOS, band structures, projected bands, or d-band centers with VASPKIT. Pair this with `tools/vasp/references/dos-band.md` for VASP setup and `knowledge/electronic-structure.md` for scientific interpretation.
+> Load this when: extracting DOS/PDOS, integrated DOS, band structures, projected bands, or d-band centers with VASPKIT. Pair this with the `vasp` skill's `references/dos-band.md` for VASP setup and `references/knowledge/electronic-structure.md` for scientific interpretation.
 
 Task numbers can shift between VASPKIT releases. Confirm the local menu before automating and record version, task ID, menu answers, input files, and output files.
 

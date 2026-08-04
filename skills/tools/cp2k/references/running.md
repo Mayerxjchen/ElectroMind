@@ -214,7 +214,7 @@ Use `RUN_TYPE VIBRATIONAL_ANALYSIS` only after a tightly optimized stationary st
 
 ## NEB and transition paths
 
-CP2K NEB is controlled by `RUN_TYPE BAND` and `&MOTION/&BAND`; endpoints must be optimized with identical settings before interpolation. Inspect all images before submission. For many replicas, use `psmp` or a site-tested MPI/OpenMP split to manage memory. For reaction-rate interpretation after barriers, read `knowledge/reaction-kinetics.md`.
+CP2K NEB is controlled by `RUN_TYPE BAND` and `&MOTION/&BAND`; endpoints must be optimized with identical settings before interpolation. Inspect all images before submission. For many replicas, use `psmp` or a site-tested MPI/OpenMP split to manage memory. For reaction-rate interpretation after barriers, read `references/knowledge/reaction-kinetics.md`.
 
 ## AIMD and PIMD
 

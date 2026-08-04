@@ -51,7 +51,7 @@ Because rsess targets are standard ssh destinations, file transfer works **with 
 
 ```bash
 # Upload (the target alias goes after the colon, like any scp destination)
-scp ./myfile   alice@myserver:/home/alice/
+scp ./myfile   alice@myserver:~/
 
 # Download
 scp alice@myserver:/var/log/syslog   ./syslog

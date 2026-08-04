@@ -48,4 +48,4 @@ or bulky plot exports; keep concise run notes, small parsed tables, or scripts.
 - Pair distances/translations from `ICOHPLIST.lobster`; for orbitalwise, the orbital-coordinate convention and molecule orientation.
 - Supporting evidence (DOS/PDOS, charge-density difference, spin density, Bader, bond lengths, frequencies).
 
-(The interpretation of these numbers — bonding vs antibonding, like-with-like comparison — is in `knowledge/bonding-analysis.md`.)
+(The interpretation of these numbers — bonding vs antibonding, like-with-like comparison — is in `references/knowledge/bonding-analysis.md`.)

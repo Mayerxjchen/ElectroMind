@@ -32,7 +32,7 @@ long/expensive DPMD submission has not already been approved.
 Use the chain runner inside the DeepMD environment or inside the cluster batch script:
 
 ```bash
-python tools/deepmd/scripts/run_deepmd_chain.py \
+python ../scripts/run_deepmd_chain.py \
   --run-dir <deepmd-run-dir> \
   --data-root data
 ```
@@ -41,7 +41,7 @@ For an already trained model, keep the same diagnostics and skip only the comple
 compute phases:
 
 ```bash
-python tools/deepmd/scripts/run_deepmd_chain.py \
+python ../scripts/run_deepmd_chain.py \
   --run-dir <deepmd-run-dir> \
   --data-root data \
   --skip-train \
@@ -296,7 +296,7 @@ dp train --restart model.ckpt input.json
 ```
 
 For long `dp train`/`dp test` jobs or GPU training, prepare the batch script
-through `tools/hpc-submit`: read the target `~/.cluster-agents.md` before writing
+through the `hpc-submit` skill: read the target `~/.cluster-agents.md` before writing
 the script, and take the module/conda environment, GPU partition, launcher,
 scratch, and checkpoint/restart policy from that guide.
 
@@ -332,20 +332,20 @@ machine-readable verdict. The individual helper commands below are fallback/debu
 commands for rerunning one part of the chain, not approval breakpoints:
 
 ```bash
-uv run tools/deepmd/scripts/plot_deepmd_postprocess.py \
+uv run ../scripts/plot_deepmd_postprocess.py \
   --work-dir <deepmd-run-dir> \
   --lcurve lcurve.out \
   --detail-prefix detail_file \
   --fig-dir figures \
   --out-dir analysis/deepmd_postprocess
 
-uv run tools/deepmd/scripts/deepmd_descriptor_pca.py \
+uv run ../scripts/deepmd_descriptor_pca.py \
   --model <deepmd-run-dir>/graph.pb \
   --data-root <deepmd-run-dir>/data \
   --out-dir analysis/deepmd_descriptor_pca_dft_all \
   --figure figures/deepmd_descriptor_pca_dft_all.png
 
-uv run tools/deepmd/scripts/check_deepmd_qa.py \
+uv run ../scripts/check_deepmd_qa.py \
   --project-root . \
   --model <deepmd-run-dir>/graph.pb \
   --postprocess-summary analysis/deepmd_postprocess/postprocess_summary.json \
@@ -369,14 +369,14 @@ resolve `deepmd-kit`, run the same scripts with that environment's `python`. If 
 DeepMD environment can load the model but lacks `matplotlib`, run the PCA in two steps:
 
 ```bash
-<deepmd-python> tools/deepmd/scripts/deepmd_descriptor_pca.py \
+<deepmd-python> ../scripts/deepmd_descriptor_pca.py \
   --model <deepmd-run-dir>/graph.pb \
   --data-root <deepmd-run-dir>/data \
   --out-dir analysis/deepmd_descriptor_pca_dft_all \
   --figure figures/deepmd_descriptor_pca_dft_all.png \
   --skip-plot
 
-uv run tools/deepmd/scripts/deepmd_descriptor_pca.py \
+uv run ../scripts/deepmd_descriptor_pca.py \
   --out-dir analysis/deepmd_descriptor_pca_dft_all \
   --figure figures/deepmd_descriptor_pca_dft_all.png \
   --skip-extract --skip-pca
@@ -435,7 +435,7 @@ This is an active-learning/extrapolation diagnostic, not the default initial dat
 builder. Without an explicit request, first spend the compute budget on more AIMD label
 coverage from distinct initial models and temperatures.
 
-LAMMPS mechanics live in `tools/lammps`; MD statistical interpretation lives in `knowledge/molecular-dynamics.md`.
+LAMMPS mechanics live in the `lammps` skill; MD statistical interpretation lives in `references/knowledge/molecular-dynamics.md`.
 Batch scripts for DPMD deployment inherit the LAMMPS + `hpc-submit` rule: read
 the target `~/.cluster-agents.md` before writing the script.
 

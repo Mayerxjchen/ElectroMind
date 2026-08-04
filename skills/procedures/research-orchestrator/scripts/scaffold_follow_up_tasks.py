@@ -31,14 +31,14 @@ TASK_ID_RE = re.compile(r"^T(\d+)$")
 
 
 ROLE_CONTRACTS = {
-    "research-orchestrator": "procedures/research-orchestrator/references/roles.md#research-orchestrator",
-    "literature-method": "procedures/research-orchestrator/references/roles.md#literature-method",
-    "surface-literature-reviewer": "procedures/research-orchestrator/references/roles.md#surface-literature-reviewer",
-    "structure-modeler": "procedures/research-orchestrator/references/roles.md#structure-modeler",
-    "structure-critic": "procedures/research-orchestrator/references/roles.md#structure-critic",
-    "engine-runner": "procedures/research-orchestrator/references/roles.md#engine-runner",
-    "scientific-critic": "procedures/research-orchestrator/references/roles.md#scientific-critic",
-    "synthesis-report": "procedures/research-orchestrator/references/roles.md#synthesis-report",
+    "research-orchestrator": "references/roles.md#research-orchestrator",
+    "literature-method": "references/roles.md#literature-method",
+    "surface-literature-reviewer": "references/roles.md#surface-literature-reviewer",
+    "structure-modeler": "references/roles.md#structure-modeler",
+    "structure-critic": "references/roles.md#structure-critic",
+    "engine-runner": "references/roles.md#engine-runner",
+    "scientific-critic": "references/roles.md#scientific-critic",
+    "synthesis-report": "references/roles.md#synthesis-report",
 }
 
 

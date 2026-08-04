@@ -16,7 +16,7 @@ manuscript + SI + reviews (+ original calculation archive)
   -> Phase 5  response package: letter + SI material   [APPROVAL #2]
 ```
 
-Schemas and drafting templates: `references/response-templates.md`. Structured project state uses `procedures/research-orchestrator/` (`.research/` task DAG, artifacts, decisions, events). Two full worked runs (fake manuscripts, all phases, run in seconds): `examples/toy-vacancy-pt-vs-au/` ends in a drafted package (`addresses`); `examples/toy-contradicts-au-vs-cu/` exercises the integrity halt (`contradicts`).
+Schemas and drafting templates: `references/response-templates.md`. Structured project state uses the `research-orchestrator` skill (`.research/` task DAG, artifacts, decisions, events). Two full worked runs (fake manuscripts, all phases, run in seconds): `examples/toy-vacancy-pt-vs-au/` ends in a drafted package (`addresses`); `examples/toy-contradicts-au-vs-cu/` exercises the integrity halt (`contradicts`).
 
 ## Phase 0 — Inputs
 
@@ -92,11 +92,11 @@ Split the reviews into atomic comments with stable IDs (`R1.1`, `R2.3`, …). Cl
 | `text-only` | no computation involved | hand to authors, out of scope here |
 | `needs-human-decision` | infeasible, ambiguous, out of scope, or strategically loaded | present options + cost, do not plan unilaterally |
 
-For every computable comment record: the concern (quoted verbatim), the target quantity, the **satisfaction criterion** (what result would actually address the concern — make it falsifiable), planned route (skills/engines), method deltas from the fingerprint (normally none), cost estimate, and dependencies on other comments. When the target is a valence/charge or bonding state, choose the *discriminating observable* here using `knowledge/electronic-structure.md` (+ `knowledge/bonding-analysis.md`) — charge partitioning alone is often a weak discriminator, so rest the criterion on ≥2 observables including an experiment-anchored one (e.g. an adsorbate stretch frequency). In `.research/`, encode these as task YAML plus `model-observable-decision` and `triage-plan` artifacts; `knowledge_required` records the science references consulted.
+For every computable comment record: the concern (quoted verbatim), the target quantity, the **satisfaction criterion** (what result would actually address the concern — make it falsifiable), planned route (skills/engines), method deltas from the fingerprint (normally none), cost estimate, and dependencies on other comments. When the target is a valence/charge or bonding state, choose the *discriminating observable* here using `references/knowledge/electronic-structure.md` (+ `references/knowledge/bonding-analysis.md`) — charge partitioning alone is often a weak discriminator, so rest the criterion on ≥2 observables including an experiment-anchored one (e.g. an adsorbate stretch frequency). In `.research/`, encode these as task YAML plus `model-observable-decision` and `triage-plan` artifacts; `knowledge_required` records the science references consulted.
 
 Vague asks are common on experimental manuscripts ("DFT calculations would strengthen the proposed mechanism"). Triage must translate them into a falsifiable target ("does the computed barrier for pathway A lie below pathway B on the characterized facet?") before planning anything. "No feasible simulation can resolve this question" is a legitimate triage outcome — file it as `needs-human-decision` with the reasoning, since arguing scope may serve the authors better than a weak calculation.
 
-**Approval breakpoint #1**: present the full triage table and plan. Nothing runs before the user approves it (possibly partially — track per-comment approval). This gate is what makes the workflow *semi*-automatic. Record the approval in `.research/decisions.jsonl` when structured state is in use. (In **autonomous mode** — AGENTS.md "Operation mode" — record the plan as a documented decision and proceed without pausing.)
+**Approval breakpoint #1**: present the full triage table and plan. Nothing runs before the user approves it (possibly partially — track per-comment approval). This gate is what makes the workflow *semi*-automatic. Record the approval in `.research/decisions.jsonl` when structured state is in use. (In **autonomous mode** — the `comp-chem-workflow` skill's operation-mode rules — record the plan as a documented decision and proceed without pausing.)
 
 ## Phase 3 — Execution
 
@@ -130,7 +130,7 @@ passes against the reviewer's bar. If a critic returns `needs-follow-up` or
 `inconclusive`, create new `.research/tasks/*.yaml` nodes for the missing calculations,
 post-processing, or validation, then route them back through `comp-chem-workflow`.
 
-Use `tools/report` only for a **stage synthesis** while follow-up items remain open:
+Use the `report` skill only for a **stage synthesis** while follow-up items remain open:
 summarize current evidence, critic outcomes, and the next calculations. The final
 response package starts only when every reviewer-facing claim is `addresses`,
 `contradicts` with author decision, explicitly `inconclusive`/limited, or waived by a
@@ -145,16 +145,16 @@ engine/HPC task.
 
 Per comment, draft (templates in references):
 
-0. **Pre-report soft gate**: run `tools/report/references/validation.md` before drafting final claims. Check whether high-temperature/gas-reservoir free-energy corrections, DOS/PDOS, charge/work-function, or other low-cost post-processing evidence is needed. If needed, run it (VASPKIT 501/502 for VASP thermochemistry where applicable) or record a visible waiver/limitation.
+0. **Pre-report soft gate**: run the `report` skill's `references/validation.md` before drafting final claims. Check whether high-temperature/gas-reservoir free-energy corrections, DOS/PDOS, charge/work-function, or other low-cost post-processing evidence is needed. If needed, run it (VASPKIT 501/502 for VASP thermochemistry where applicable) or record a visible waiver/limitation.
 1. **Response paragraph**: quote the comment, state what was computed and with which methods (one line confirming consistency with the manuscript's settings), the result with units and provenance, and the resulting manuscript change.
-2. **SI additions**: tables/figures with full captions (method, units, convergence) ready to paste. Report **relative energies** (adsorption/binding/reaction energies, barriers) with their reference state — never bare total energies. Render model-structure figures as an **orthographic top + zoomed side `(a)`/`(b)` panel** — ASE `plot_atoms` is a preview, not a final figure — and show charge/valence/bond claims *on the structure* (atoms colored by the quantity + colorbar paired with a same-view plain element-colored panel), not as lone numbers; figure choice and the quality floor are in `knowledge/scientific-visualization.md`.
+2. **SI additions**: tables/figures with full captions (method, units, convergence) ready to paste. Report **relative energies** (adsorption/binding/reaction energies, barriers) with their reference state — never bare total energies. Render model-structure figures as an **orthographic top + zoomed side `(a)`/`(b)` panel** — ASE `plot_atoms` is a preview, not a final figure — and show charge/valence/bond claims *on the structure* (atoms colored by the quantity + colorbar paired with a same-view plain element-colored panel), not as lone numbers; figure choice and the quality floor are in `references/knowledge/scientific-visualization.md`.
 3. **Revision changelog entry**: where the manuscript changed and why.
 
-**Assemble the deliverable.** The response package is compiled into a **near-submission `.docx` by default** (not on request) via `tools/report` — `build_report.py` from a manifest of the response paragraphs, relative-energy tables, and assembled `(a)`/`(b)` structure panels. Run `tools/report`'s readiness checklist (`tools/report/references/validation.md`) before the gate: pre-report soft gate decisions recorded, no bare total energies, every quantitative claim paired with a figure, model figures orthographic and panelized. In `.research/`, the report task consumes accepted `scientific-claim`, `figure`, and `report-manifest` artifacts.
+**Assemble the deliverable.** The response package is compiled into a **near-submission `.docx` by default** (not on request) via the `report` skill — `build_report.py` from a manifest of the response paragraphs, relative-energy tables, and assembled `(a)`/`(b)` structure panels. Run the `report` skill's readiness checklist (`references/validation.md`) before the gate: pre-report soft gate decisions recorded, no bare total energies, every quantitative claim paired with a figure, model figures orthographic and panelized. In `.research/`, the report task consumes accepted `scientific-claim`, `figure`, and `report-manifest` artifacts.
 
 **Approval breakpoint #2**: the drafted `.docx` is a *draft for the authors*. The agent never finalizes tone, never commits the rebuttal strategy, and never sends anything anywhere. Record the draft-package decision in `.research/decisions.jsonl` when structured state is in use. (In **autonomous mode**, emit the drafted package/`.docx` and finish — it is still a draft; nothing is sent.)
 
-## Integrity guardrails (in addition to AGENTS.md)
+## Integrity guardrails (in addition to the `comp-chem-workflow` global guardrails)
 
 - Contradicting results get the same prominence as supporting ones — in the package and in every summary along the way.
 - A simulation of an idealized model "confirms" nothing about an experiment by itself. For designed-fingerprint work, the response text must state the experiment–model correspondence (phase, termination, conditions) and its limits — what the model does and does not represent.

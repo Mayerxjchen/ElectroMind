@@ -1,6 +1,6 @@
 # Skill A+ 自包含迁移设计（确认稿）与 TDD 实施计划
 
-> Status: **Approved** — 2026-08-04 用户确认最终架构，正式进入文档与 TDD 实施计划阶段。
+> Status: **Implemented** — 2026-08-04 用户确认最终架构并完成 W1–W8 全部迁移（见文末「实施完成记录」）。
 > Baseline: `main` @ `83e006c`，1316 tests collected / 1311 passed / 5 skipped。
 > 上级文档: [skill-runtime-phase2-rfc](./2026-08-03-skill-runtime-phase2-rfc.md) — 本设计是其横切约束层，不改动 SKILL-0..9 的数据模型、阶段顺序与验收标准，只对「技能自包含」这一维度增加约束。
 > 现状矩阵: [skill0-matrix](./2026-08-03-skill0-matrix.md)
@@ -346,3 +346,58 @@ collection manifest
 | 8 | 规则迁移完成 | `skills/AGENTS.md` 已删除；每类 machine-enforced 规则有行为测试证明强制机制有效 |
 | 9 | 全量回归 | 1316 基线（或其显式修订）全绿；Ruff 全绿 |
 | 10 | 不进入本次迁移的项目 | 无语义切片 / export / plugin / collection manifest / 共享资源运行时代码 |
+
+## 实施完成记录（2026-08-04）
+
+W1–W8 全部完成，最终全量 `1370 passed / 4 skipped / 0 failed`，Ruff 全绿，
+`check-skill-isolation.py` 对 17 个 skill 零违规，`sync-skill-references.py --check`
+通过。
+
+## 验收 FAILED 复审修复记录（2026-08-04）
+
+按附件 v1.0 MUST 条款修复全部阻断项，`scripts/accept-self-contained-skills.sh`
+全绿（**ACCEPT_EXIT=0**，**1403 passed / 5 skipped，coverage 78%**）：
+
+- **P0-1 同步路径安全**：source/target 严格限定目录、拒绝绝对路径/`..`/symlink/
+  重复 target、临时文件 + `os.replace` 原子写入。
+- **P0-2 完整资源冻结**：`frozen_resources`（skill_id → 资源字节）随 catalog 构造
+  冻结；激活快照只从冻结字节构建（TOCTOU 闭合）；`resource_digest` 覆盖资源字节。
+- **P1-3 隔离检查器**：placeholder 前缀剥离（`{repo_root}/tools/...`、
+  `{repo_root}/../scripts/...` 现被抓出）；skill 树 symlink 拒绝。
+- **P1-4 payload 语义**：replay 保留 `resource_digest`；`resources` 恒输出；
+  失败 payload 带 `error_code` + `skill_id`。
+- **验收证据体系**：`artifacts/skill-migration/*.json`（5 个）、
+  `docs/design/skill-agents-rule-migration.md`（R-001..R-025 规则清单）、
+  `scripts/accept-self-contained-skills.sh`、`scripts/test-uv-tool-install.sh`、
+  运行时行为测试（驱动 validate_state/claim_task 证明审批与 lease 强制）。
+- **后端 parity**：`test_skill_mount_parity.py`（local/ssh 逐字节一致，
+  container 有 CLI 才跑）；跨 skill 场景范围修订
+  `docs/design/skill-aplus-v1-scope-revision.md`。
+- **清理与门禁**：STRUCTURE.md 删除、README 移出 wheel、sandbox 不再暴露
+  collection 级 `skills_root`、59 个 knowledge 副本 git 跟踪、ci-check 加
+  `--cov-fail-under=78`。
+
+- **W1 知识同步器**：`scripts/sync-skill-references.py`（TOML 映射 + 字节级复制 +
+  `--check` 六项验证 + 确定性 manifest）；19 个专项测试。
+- **W2 隔离检查器**：`scripts/check-skill-isolation.py`（链接闭包 + 上下文感知
+  拒绝模式 + Python AST/shell token 扫描），接入 `doctor` 与 `ci-check.sh`；
+  迁移前全量 251 处违规 → 清零。
+- **W3 名称一致性**：目录名 ≠ frontmatter `name` → invalid skill（硬错误）；
+  修正 packmol `name: packmol-generate` → `packmol`。
+- **W4 知识内容迁移**：`skills/knowledge/sync-map.toml`（16 文档 → 59 副本，
+  含闭包与路由表推导）；11 处知识源文档宿主化措辞改写（§6）；SKILL.md/
+  references 全部改为 in-skill 相对链接；`use_skill`/`activate_skill` 描述加入
+  「Activate the `X` skill」映射条款；缺失 skill 返回
+  `required capability unavailable: <name>`；README/STRUCTURE 更新。
+- **W5 扁平 discovery**：`builtin_skill_roots()` 两个普通根；删除全部
+  AGENTS.md marker 分支（builtin/scopes/discovery/base_runner/sandbox）；
+  八个入口统一扁平语义；global_instructions 管线在 W8 移除。
+- **W6 wheel 排除**：`wheel-exclude = ["skills/knowledge/**"]`（实测对 data
+  目录生效）；wheel 无顶层 knowledge/、sdist 保留完整 skills/；venv 安装产物
+  验证 17 candidates。
+- **W7 payload 契约**：payload 同时含 `mounted_root` + `skill_root` +
+  `resource_digest` + `resources`（兼容期相等）；幂等重放同样携带。
+- **W8 规则迁移**：`skills/AGENTS.md` 已删除；全局规则（never invent /
+  provenance / 操作模式 / 审批断点 / 信息缺失）进入 comp-chem-workflow；
+  集群三 tier 在 hpc-submit；删除 global_instructions/agents_md 全部管线；
+  行为证明测试 `test_skill_w8_self_containment.py`。

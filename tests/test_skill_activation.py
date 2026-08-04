@@ -320,6 +320,92 @@ class TestUseSkillCompatAdapter:
         assert "Run cp2k." in payload["instructions"]
         assert payload["status"] == ACTIVATED
 
+    async def test_payload_has_skill_root_and_resources(self, tmp_path):
+        """A+ §7：payload 兼容期同时含 mounted_root 与 skill_root，并列出
+        挂载资源（skill-relative 路径）。"""
+        import json as _json
+
+        from electromind.skills.activation import make_activate_skill_tool
+
+        skill_dir = _write_skill(tmp_path, "cp2k", "d", "Run cp2k.\n")
+        (skill_dir / "run.sh").write_text("#!/bin/sh\necho hi\n")
+        (skill_dir / "references" / "running.md").parent.mkdir(exist_ok=True)
+        (skill_dir / "references" / "running.md").write_text("# Running\n")
+        candidate = _candidate("cp2k", skill_dir)
+        service = SkillActivationService(
+            _catalog(candidate),
+            store=PrivateSnapshotStore(tmp_path / "snapshots"),
+            items_dir=tmp_path / "items",
+        )
+        tool = make_activate_skill_tool(service, thread_id="t1", run_id="run-1")
+        result = await tool.acall({"name": candidate.skill_id})
+        payload = _json.loads(result.content)
+        assert payload["ok"] is True
+        # 兼容期：skill_root == mounted_root（无 mounter 时两者同为 None，
+        # 字段存在且相等即契约成立）
+        assert "skill_root" in payload
+        assert "mounted_root" in payload
+        assert payload["skill_root"] == payload["mounted_root"]
+        # 资源为 skill-relative 路径，不含 SKILL.md
+        assert "references/running.md" in payload["resources"]
+        assert "run.sh" in payload["resources"]
+        assert "SKILL.md" not in payload["resources"]
+        assert payload["resource_digest"]
+
+    async def test_replay_payload_keeps_skill_root_and_resources(self, tmp_path):
+        """A+ §7：幂等重放的 payload 同样携带 skill_root 与 resources。"""
+        import json as _json
+
+        from electromind.skills.activation import make_activate_skill_tool
+
+        skill_dir = _write_skill(tmp_path, "cp2k", "d", "Run cp2k.\n")
+        (skill_dir / "run.sh").write_text("#!/bin/sh\necho hi\n")
+        candidate = _candidate("cp2k", skill_dir)
+        service = SkillActivationService(
+            _catalog(candidate),
+            store=PrivateSnapshotStore(tmp_path / "snapshots"),
+            items_dir=tmp_path / "items",
+        )
+        tool = make_activate_skill_tool(service, thread_id="t1", run_id="run-1")
+        first = _json.loads((await tool.acall({"name": candidate.skill_id})).content)
+        second = _json.loads((await tool.acall({"name": candidate.skill_id})).content)
+        assert second["ok"] is True
+        assert second["skill_root"] == second["mounted_root"] == first["mounted_root"]
+        assert second["resources"] == ["run.sh"]
+
+    async def test_missing_skill_reports_required_capability_status(self, tmp_path):
+        """A+ §6：缺失协作 skill 返回明确状态，而不是静默失败。"""
+        import json as _json
+
+        from electromind.skills.activation import make_activate_skill_tool
+
+        skill_dir = _write_skill(tmp_path, "cp2k", "d", "Run cp2k.\n")
+        candidate = _candidate("cp2k", skill_dir)
+        service = SkillActivationService(
+            _catalog(candidate),
+            store=PrivateSnapshotStore(tmp_path / "snapshots"),
+            items_dir=tmp_path / "items",
+        )
+        tool = make_activate_skill_tool(service, thread_id="t1", run_id="run-1")
+        result = await tool.acall({"name": "ghost"})
+        payload = _json.loads(result.content)
+        assert payload["ok"] is False
+        assert payload["status"] == "required capability unavailable: ghost"
+
+    async def test_tool_description_maps_activate_wording(self, tmp_path):
+        """A+ §6：工具描述把「Activate the X skill」映射到本工具。"""
+        from electromind.skills.activation import make_activate_skill_tool
+
+        skill_dir = _write_skill(tmp_path, "cp2k", "d", "Run cp2k.\n")
+        candidate = _candidate("cp2k", skill_dir)
+        service = SkillActivationService(
+            _catalog(candidate),
+            store=PrivateSnapshotStore(tmp_path / "snapshots"),
+            items_dir=tmp_path / "items",
+        )
+        tool = make_activate_skill_tool(service, thread_id="t1", run_id="run-1")
+        assert "Activate the" in tool.description
+
     async def test_activate_skill_tool_structured(self, tmp_path):
         import json as _json
 
@@ -590,3 +676,139 @@ class TestResolutionPinThroughActivation:
         payload = _json.loads(result.content)
         assert payload["ok"] is True
         assert payload["skill_id"] == "user:agents:cp2k"
+
+
+class TestFrozenResources:
+    """P0-2: 激活只消费 catalog 构建时冻结的资源字节（TOCTOU 闭合）。"""
+
+    async def test_activation_uses_frozen_resources_not_live_disk(self, tmp_path):
+        from electromind.skills.snapstore import PrivateSnapshotStore, SkillSnapshotRef
+
+        skill_dir = _write_skill(tmp_path, "cp2k", "d", "Run cp2k.\n")
+        (skill_dir / "run.sh").write_text("v1\n", encoding="utf-8")
+        candidate = _candidate("cp2k", skill_dir)
+        catalog = _catalog(candidate)  # 构造时冻结资源字节
+
+        # catalog 构建后修改实时资源 — 激活不得消费它
+        (skill_dir / "run.sh").write_text("v2-PWNED\n", encoding="utf-8")
+
+        store = PrivateSnapshotStore(tmp_path / "snapshots")
+        service = SkillActivationService(
+            catalog,
+            store=store,
+            items_dir=tmp_path / "items",
+        )
+        result = await service.activate(
+            ActivationRequest(
+                request_id="req-1",
+                thread_id="t1",
+                run_id="run-1",
+                skill_id=candidate.skill_id,
+            )
+        )
+        ref = SkillSnapshotRef(
+            digest=result.item.snapshot_ref,
+            store="private",
+            locator="",
+        )
+        target = store.path_for(ref)
+        assert target is not None
+        frozen = (target / "resources" / "run.sh").read_bytes()
+        assert frozen == b"v1\n", f"快照资源应为冻结字节 v1，得到 {frozen!r}"
+
+    async def test_frozen_resources_byte_change_changes_digest(self, tmp_path):
+        """同一路径、不同字节 → 不同 resource_digest 与快照 digest。"""
+        from electromind.skills.snapstore import PrivateSnapshotStore
+
+        skill_dir = _write_skill(tmp_path, "cp2k", "d", "Run cp2k.\n")
+        (skill_dir / "run.sh").write_text("v1\n", encoding="utf-8")
+        candidate = _candidate("cp2k", skill_dir)
+        store = PrivateSnapshotStore(tmp_path / "snapshots")
+
+        cat1 = _catalog(candidate)
+        r1 = await SkillActivationService(
+            cat1, store=store, items_dir=tmp_path / "items"
+        ).activate(
+            ActivationRequest(
+                request_id="a", thread_id="t", run_id="r", skill_id=candidate.skill_id
+            )
+        )
+
+        (skill_dir / "run.sh").write_text("v2\n", encoding="utf-8")
+        candidate2 = _candidate("cp2k", skill_dir)
+        cat2 = _catalog(candidate2)
+        r2 = await SkillActivationService(
+            cat2, store=store, items_dir=tmp_path / "items"
+        ).activate(
+            ActivationRequest(
+                request_id="b", thread_id="t", run_id="r", skill_id=candidate2.skill_id
+            )
+        )
+
+        # 同一路径不同字节 → 快照 digest 不同（资源字节参与内容寻址）
+        assert r1.item.snapshot_ref != r2.item.snapshot_ref
+
+
+class TestPayloadSchemaStability:
+    """P1-4: payload 字段稳定 — replay 保留 resource_digest、零资源恒有
+    resources、失败 payload 标准化。"""
+
+    async def test_replay_keeps_resource_digest(self, tmp_path):
+        import json as _json
+
+        from electromind.skills.activation import make_activate_skill_tool
+
+        skill_dir = _write_skill(tmp_path, "cp2k", "d", "Run cp2k.\n")
+        (skill_dir / "run.sh").write_text("#!/bin/sh\necho hi\n")
+        candidate = _candidate("cp2k", skill_dir)
+        service = SkillActivationService(
+            _catalog(candidate),
+            store=PrivateSnapshotStore(tmp_path / "snapshots"),
+            items_dir=tmp_path / "items",
+        )
+        tool = make_activate_skill_tool(service, thread_id="t1", run_id="run-1")
+        first = _json.loads((await tool.acall({"name": candidate.skill_id})).content)
+        second = _json.loads((await tool.acall({"name": candidate.skill_id})).content)
+        assert second["ok"] is True
+        assert "resource_digest" in second
+        assert second["resource_digest"] == first["resource_digest"]
+
+    async def test_zero_resource_skill_still_has_resources_field(self, tmp_path):
+        import json as _json
+
+        from electromind.skills.activation import make_activate_skill_tool
+
+        skill_dir = tmp_path / "bare"
+        skill_dir.mkdir()
+        (skill_dir / "SKILL.md").write_text(
+            "---\nname: bare\ndescription: no resources\n---\nbody\n",
+            encoding="utf-8",
+        )
+        candidate = _candidate("bare", skill_dir)
+        service = SkillActivationService(
+            _catalog(candidate),
+            store=PrivateSnapshotStore(tmp_path / "snapshots"),
+            items_dir=tmp_path / "items",
+        )
+        tool = make_activate_skill_tool(service, thread_id="t1", run_id="run-1")
+        payload = _json.loads((await tool.acall({"name": candidate.skill_id})).content)
+        assert payload["ok"] is True
+        assert payload["resources"] == []
+
+    async def test_failure_payload_has_error_code_and_skill_id(self, tmp_path):
+        import json as _json
+
+        from electromind.skills.activation import make_activate_skill_tool
+
+        skill_dir = _write_skill(tmp_path, "cp2k", "d", "Run cp2k.\n")
+        candidate = _candidate("cp2k", skill_dir)
+        service = SkillActivationService(
+            _catalog(candidate),
+            store=PrivateSnapshotStore(tmp_path / "snapshots"),
+            items_dir=tmp_path / "items",
+        )
+        tool = make_activate_skill_tool(service, thread_id="t1", run_id="run-1")
+        payload = _json.loads((await tool.acall({"name": "ghost"})).content)
+        assert payload["ok"] is False
+        assert payload["error_code"] == "skill_unresolved"
+        assert payload["skill_id"] == "ghost"

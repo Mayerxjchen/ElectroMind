@@ -62,7 +62,7 @@ default_policy:
 ## Path Rules
 
 - Paths in `.research/` are relative to the project root, except references to repo
-  files such as `tools/vasp/SKILL.md` or `knowledge/electrochemistry.md`.
+  files such as the `vasp` skill's `SKILL.md` or `references/knowledge/electrochemistry.md`.
 - The project root is the parent directory of `.research`. If `.research` lives under
   `work/.research`, artifact paths are relative to `work/`; write
   `reviews/structure_gate.yaml`, not `work/reviews/structure_gate.yaml`.

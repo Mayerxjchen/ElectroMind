@@ -4,9 +4,9 @@ Adds the RFC target discovery capabilities *alongside* the legacy pipeline
 without changing it:
 
 - **Ancestor walk**: from ``cwd`` up to the repo root, each level checks only
-  the fixed skill directories (``.electromind/skills``, ``.agents/skills``,
-  ``.claude/skills``) plus the repo's structured ``skills/`` bundle — no
-  recursive scans, no HOME sweeps, no sibling projects.
+  the fixed flat skill directories (``.electromind/skills``, ``.agents/skills``,
+  ``.claude/skills``) — no recursive scans, no HOME sweeps, no sibling
+  projects, and no structured bundle (A+ W5).
 - **Admin scope**: ``/etc/electromind/skills`` (injectable for tests).
 - **User scope**: ``~/.electromind/skills``, ``~/.agents/skills``,
   ``~/.claude/skills``.
@@ -152,9 +152,11 @@ def discover_candidate_sources(
         configured_roots: Explicit add-dir roots (scope ``"add_dir"``).
         user_home: User home for user-scoped discovery (default: ``Path.home()``).
         admin_root: Admin skills root (default: ``/etc/electromind/skills``).
-        builtin_roots: Builtin skill roots (procedures/ + tools/ bundle).
-            Defaults to ``builtin.builtin_roots()`` — the wheel/venv installed
-            bundle or the repo ``skills/`` fallback (SKILL-8).
+        builtin_roots: Builtin flat skill roots (A+ W5) — plain directories
+            whose children with ``SKILL.md`` are skills (e.g. the repo's
+            ``skills/procedures`` and ``skills/tools``).  Defaults to
+            ``builtin.builtin_roots()`` — the wheel/venv installed bundle or
+            the repo ``skills/`` fallback (SKILL-8).
 
     Returns:
         Sources ordered by RFC source priority (admin > user > nearest project
@@ -218,22 +220,10 @@ def discover_candidate_sources(
                 )
             )
 
-    # Project scope — ancestor walk over fixed dirs per level.
+    # Project scope — ancestor walk over fixed dirs per level (A+ W5: only
+    # the flat fixed dirs; no structured <level>/skills bundle).
     for distance, level in enumerate(_ancestor_levels(workdir, proj)):
         trust_domain = str(level)
-        # The repo's structured bundle: <level>/skills with AGENTS.md.
-        structured = level / "skills"
-        if (structured / "AGENTS.md").exists():
-            sources.append(
-                _project_source(
-                    "project",
-                    "electromind",
-                    structured,
-                    distance=distance,
-                    trust_domain=trust_domain,
-                    project_root=level,
-                )
-            )
         for dir_name in STANDARD_SKILL_DIRS:
             root = level / dir_name / "skills"
             if root.is_dir():
@@ -270,8 +260,7 @@ def _to_legacy_source(source: SkillSource) -> LegacySkillSource:
     """Map an RFC ``SkillSource`` onto the legacy ``discovery.SkillSource``.
 
     Legacy scope mapping: project/add_dir → ``"project"``/``"configured"``,
-    user → ``"user"``.  Structured (AGENTS.md) roots become ``"structured"``,
-    everything else ``"standard"``.
+    user → ``"user"``.  A+ W5: every source is a flat ``"standard"`` root.
     """
     legacy_scope = {
         "project": "project",
@@ -280,7 +269,8 @@ def _to_legacy_source(source: SkillSource) -> LegacySkillSource:
         "admin": "configured",
         "builtin": "configured",
     }.get(source.scope, "configured")
-    kind = "structured" if (source.root / "AGENTS.md").exists() else "standard"
+    # A+ W5/W8: every source is a flat standard root.
+    kind = "standard"
     return LegacySkillSource(
         id=source.source_id,
         kind=kind,  # type: ignore[arg-type]
@@ -317,25 +307,16 @@ def fingerprint_source(source: SkillSource) -> str:
 
 
 def _source_skill_dirs(source: SkillSource) -> list[Path]:
-    """The skill directories under *source* (structured or standard layout).
+    """The skill directories under *source* — the single flat model (A+ W5).
 
-    - Structured (AGENTS.md present): ``procedures/*`` and ``tools/*``.
-    - Standard: direct children that contain ``SKILL.md``.
+    Every source root is a plain flat skill root: direct children that
+    contain ``SKILL.md``.  There is no structured-root variant.
     """
-    dirs: list[Path] = []
-    if (source.root / "AGENTS.md").is_file():
-        for sub in ("procedures", "tools"):
-            subdir = source.root / sub
-            if not subdir.is_dir():
-                continue
-            for entry in sorted(subdir.iterdir()):
-                if entry.is_dir() and (entry / "SKILL.md").is_file():
-                    dirs.append(entry)
-    else:
-        for entry in sorted(source.root.iterdir()):
-            if entry.is_dir() and (entry / "SKILL.md").is_file():
-                dirs.append(entry)
-    return dirs
+    return [
+        entry
+        for entry in sorted(source.root.iterdir())
+        if entry.is_dir() and (entry / "SKILL.md").is_file()
+    ]
 
 
 def _resource_rel_paths(skill_dir: Path) -> list[str]:
@@ -455,23 +436,47 @@ def _load_one_candidate(
                 severity="error",
             )
         )
+    # A+ W3: the directory name must equal the frontmatter `name`.  A
+    # mismatch makes the skill invalid (hard error, not a warning) — the
+    # candidate is not registered.
+    if name and name != skill_dir.name:
+        diagnostics.append(
+            SkillDiagnostic(
+                code="skill_name_directory_mismatch",
+                message=(
+                    f"frontmatter name {name!r} does not match directory "
+                    f"{skill_dir.name!r}"
+                ),
+                path=str(skill_dir),
+                severity="error",
+            )
+        )
+        return None
 
     resources = tuple(rel for rel in collect_resources(skill_dir) if rel != "SKILL.md")
     content_digest = hash_content(body, description, *sorted(resources))
-    resource_digest = hash_content(*sorted(resources)) if resources else hash_content()
+    # P1-4: resource_digest covers resource BYTES, not just path names —
+    # a byte change in any resource must change the digest.
+    resource_parts: list[str] = []
+    for rel in sorted(resources):
+        try:
+            data = (skill_dir / rel).read_bytes().decode("utf-8", "replace")
+            resource_parts.append(f"{rel}|{hash_content(data)}")
+        except OSError:
+            resource_parts.append(f"{rel}|unreadable")
+    resource_digest = (
+        hash_content(*resource_parts) if resource_parts else hash_content()
+    )
 
     # Frontmatter policy fields → runtime model (RFC section 二/四).
     compatibility = _parse_compatibility(frontmatter)
     disable_model_invocation = _parse_bool_flag(frontmatter, "disable-model-invocation")
 
-    # Builtin kind from the subdirectory under the builtin root.
+    # Builtin kind comes from the flat root's own name (A+ W5): the skill
+    # directory no longer carries a procedures/tools subpath.
     kind: str | None = None
     if source.scope == "builtin":
-        try:
-            first = skill_dir.resolve().relative_to(source.root.resolve()).parts[0]
-            kind = "procedure" if first == "procedures" else first
-        except ValueError:
-            kind = "tool"
+        kind = "procedure" if source.root.name == "procedures" else "tool"
 
     descriptor = SkillDescriptor(
         name=name,

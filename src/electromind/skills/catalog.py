@@ -64,6 +64,11 @@ class MultiCandidateCatalog:
             ``None`` means "freeze now from source"; an explicit empty mapping
             (snapshot restore) keeps bodies empty — the source is never
             re-read for restored catalogs.
+        frozen_resources: ``skill_id -> ((rel_path, bytes), ...)`` captured at
+            catalog construction (P0-2).  Activation snapshots are built ONLY
+            from these frozen bytes — a resource modified after discovery is
+            never consumed by the current generation.  Memory only, like
+            ``frozen_bodies``; ``None`` means "freeze now from source".
         resolution: Validated default-resolution pins (RFC section 十一),
             carried by the frozen catalog so every downstream consumer
             (activation service, resolvers) shares the SAME map without
@@ -83,6 +88,7 @@ class MultiCandidateCatalog:
     catalog_digest: str = ""
     created_at: str = ""
     frozen_bodies: Mapping[str, str] | None = None
+    frozen_resources: Mapping[str, tuple[tuple[str, bytes], ...]] | None = None
     resolution: Mapping[str, str] = field(default_factory=dict)
     schema_version: int = 2
 
@@ -94,6 +100,12 @@ class MultiCandidateCatalog:
         # possibly-changed source files).
         if self.frozen_bodies is None:
             object.__setattr__(self, "frozen_bodies", _freeze_bodies(self.candidates))
+        # P0-2: freeze resource bytes at construction — activation snapshots
+        # must never re-read live resource files mid-run.
+        if self.frozen_resources is None:
+            object.__setattr__(
+                self, "frozen_resources", _freeze_resources(self.candidates)
+            )
 
     # -- indexes ---------------------------------------------------------
 
@@ -195,6 +207,32 @@ def _freeze_bodies(candidates: Sequence[SkillCandidate]) -> dict[str, str]:
     return bodies
 
 
+def _freeze_resources(
+    candidates: Sequence[SkillCandidate],
+) -> dict[str, tuple[tuple[str, bytes], ...]]:
+    """Freeze each candidate's resource bytes at catalog construction (P0-2).
+
+    Activation snapshots are built ONLY from these frozen bytes — a resource
+    modified after discovery is never consumed by the current generation
+    (TOCTOU closure).  Memory only, like ``frozen_bodies``.
+    """
+    from .skill import collect_resources
+
+    frozen: dict[str, tuple[tuple[str, bytes], ...]] = {}
+    for candidate in candidates:
+        root = candidate.descriptor.root_path
+        if not root.is_dir():
+            continue
+        items: list[tuple[str, bytes]] = []
+        for rel in sorted(collect_resources(root)):
+            try:
+                items.append((rel, (root / rel).read_bytes()))
+            except OSError:
+                continue
+        frozen[candidate.skill_id] = tuple(items)
+    return frozen
+
+
 def build_catalog(
     candidates: Sequence[SkillCandidate],
     *,
@@ -204,6 +242,7 @@ def build_catalog(
     source_fingerprints: Mapping[str, str] | None = None,
     created_at: str = "",
     frozen_bodies: Mapping[str, str] | None = None,
+    frozen_resources: Mapping[str, tuple[tuple[str, bytes], ...]] | None = None,
     resolution: Mapping[str, str] | None = None,
 ) -> MultiCandidateCatalog:
     """Build a ``MultiCandidateCatalog`` from candidates.
@@ -212,10 +251,11 @@ def build_catalog(
     ``scopes.discover_candidate_sources``); the catalog preserves that order
     verbatim — the resolver decides winners per scenario.
 
-    The catalog freezes each candidate's SKILL.md body at construction
-    (``frozen_bodies``); activations read only these bodies.  Validated
-    default-resolution pins (``resolution``) are carried by the catalog so
-    downstream consumers share one map.
+    The catalog freezes each candidate's SKILL.md body (``frozen_bodies``)
+    and resource bytes (``frozen_resources``, P0-2) at construction;
+    activations read only these frozen contents.  Validated default-resolution
+    pins (``resolution``) are carried by the catalog so downstream consumers
+    share one map.
     """
     import os
 
@@ -227,6 +267,9 @@ def build_catalog(
         source_fingerprints=dict(source_fingerprints or {}),
         created_at=created_at or "",
         frozen_bodies=(dict(frozen_bodies) if frozen_bodies is not None else None),
+        frozen_resources=(
+            dict(frozen_resources) if frozen_resources is not None else None
+        ),
         resolution=dict(resolution or {}),
     )
 
@@ -813,9 +856,11 @@ def load_catalog_snapshot(path: str | Path) -> MultiCandidateCatalog:
         source_fingerprints=payload["source_fingerprints"],
         catalog_digest=payload["catalog_digest"],
         created_at=payload["created_at"],
-        # Snapshot restore never re-reads source files — bodies stay empty
-        # (RFC section 七: restore prefers the SnapshotRef, not live files).
+        # Snapshot restore never re-reads source files — bodies and resources
+        # stay empty (RFC section 七: restore prefers the SnapshotRef, not
+        # live files; P0-2 keeps resources frozen the same way).
         frozen_bodies={},
+        frozen_resources={},
         resolution=dict(payload.get("resolution", {})),
         # Snapshots written before schema_version existed are v1 (legacy
         # digest algorithm without policy metadata).

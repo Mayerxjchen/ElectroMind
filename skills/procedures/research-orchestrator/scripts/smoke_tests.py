@@ -734,13 +734,13 @@ def gate_hooks_flow() -> None:
         )
         if (
             "figure-routing gate" not in result.stderr
-            or "tools/vasp/references/volumetric-visualization.md" not in result.stderr
+            or "vasp/references/volumetric-visualization.md" not in result.stderr
         ):
             print(result.stderr)
             raise SystemExit(
                 "pre-report hook did not block VASP volumetric figure without volumetric-visualization ref"
             )
-        if "tools/vasp/references/electronic-analysis.md" not in result.stderr:
+        if "vasp/references/electronic-analysis.md" not in result.stderr:
             print(result.stderr)
             raise SystemExit(
                 "pre-report hook did not require VASP electronic-analysis ref for chgdiff figure"
@@ -829,12 +829,12 @@ def gate_hooks_flow() -> None:
                 "provenance": [
                     "work/scripts/make_chgdiff.py recorded Delta rho sign convention and grid checks",
                     "work/figures/CHGDIFF.vasp",
-                    "tools/vasp/references/electronic-analysis.md",
-                    "tools/vasp/references/volumetric-visualization.md",
+                    "vasp/references/electronic-analysis.md",
+                    "vasp/references/volumetric-visualization.md",
                 ],
                 "knowledge_used": [
-                    "tools/vasp/references/electronic-analysis.md",
-                    "tools/vasp/references/volumetric-visualization.md",
+                    "vasp/references/electronic-analysis.md",
+                    "vasp/references/volumetric-visualization.md",
                 ],
                 "summary": "Charge-density-difference figure rendered from documented CHGDIFF.vasp source.",
             }
@@ -1162,7 +1162,7 @@ def first_submit_boundary_warning_flow() -> None:
             "id": "T006",
             "title": "Mistakenly gate first submit on result review",
             "role": "engine-runner",
-            "role_contract": "procedures/research-orchestrator/references/roles.md#engine-runner",
+            "role_contract": "references/roles.md#engine-runner",
             "skill": "vasp",
             "status": "approved",
             "depends_on": ["T004"],
@@ -1182,9 +1182,9 @@ def first_submit_boundary_warning_flow() -> None:
             ],
             "success_criteria": ["fixture only"],
             "knowledge_required": [],
-            "required_refs": ["tools/vasp/SKILL.md"],
+            "required_refs": ["vasp"],
             "required_checks": [
-                "uv run procedures/research-orchestrator/scripts/check_pre_report.py .research T005"
+                "uv run {repo_root}/scripts/check_pre_report.py .research T005"
             ],
             "release_gates": ["result_gate"],
             "execution_policy": {

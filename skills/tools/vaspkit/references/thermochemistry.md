@@ -2,7 +2,7 @@
 
 > Load this when: using VASPKIT for selective dynamics setup, VASP frequency thermochemistry, gas chemical potentials, free-energy corrections, or helper steps in surface thermodynamics/Wulff workflows.
 
-VASPKIT is a helper. The scientific model, balanced reactions, reference states, and surface-energy equations live in the knowledge library (`knowledge/surface-thermodynamics.md`).
+VASPKIT is a helper. The scientific model, balanced reactions, reference states, and surface-energy equations live in the knowledge library (`references/knowledge/surface-thermodynamics.md`).
 
 ## Task map
 

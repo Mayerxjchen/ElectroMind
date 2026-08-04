@@ -1,6 +1,6 @@
 # Running Electronic-Structure Analysis in VASP
 
-> Load this when: producing the VASP files for charge/Bader, charge-density difference, partial charge density, work function, or ELF — the INCAR tags and the commands. For *interpreting* the results (what each observable proves, evidence chains, oxidation-state caveats), see `knowledge/electronic-structure.md`. For rendering CHGCAR-like fields, `volumetric-visualization.md`; for VASPKIT extraction, `tools/vaspkit/references/electronic-analysis.md`.
+> Load this when: producing the VASP files for charge/Bader, charge-density difference, partial charge density, work function, or ELF — the INCAR tags and the commands. For *interpreting* the results (what each observable proves, evidence chains, oxidation-state caveats), see `references/knowledge/electronic-structure.md`. For rendering CHGCAR-like fields, `volumetric-visualization.md`; for VASPKIT extraction, the `vaspkit` skill's `references/electronic-analysis.md`.
 
 Each task below is a post-processing run from a converged static. Keep settings consistent across
 the runs you compare. The *meaning* of every output lives in the knowledge doc above.
@@ -21,7 +21,7 @@ bader CHGCAR -ref CHGCAR_sum
 uv run scripts/bader_summary.py RUNDIR        # per-element mean q (= ZVAL - N_Bader) + the per-atom spread
 ```
 
-`scripts/bader_summary.py` reads `ACF.dat` + POSCAR/CONTCAR + POTCAR `ZVAL` (or `--zval "Pt:10,O:6"`) and reports net charge per element with the **per-atom spread** — the spread is the point: when it exceeds the difference between the structures you are comparing, the charge is a weak oxidation-state discriminator (`knowledge/electronic-structure.md`). Use it to feed the atoms-colored-by-charge figure too.
+`scripts/bader_summary.py` reads `ACF.dat` + POSCAR/CONTCAR + POTCAR `ZVAL` (or `--zval "Pt:10,O:6"`) and reports net charge per element with the **per-atom spread** — the spread is the point: when it exceeds the difference between the structures you are comparing, the charge is a weak oxidation-state discriminator (`references/knowledge/electronic-structure.md`). Use it to feed the atoms-colored-by-charge figure too.
 
 Do **not** use `bader CHGCAR` alone for a charge-state claim (plain `CHGCAR` is valence-only; it
 omits core density). Preserve `ACF.dat`, `BCF.dat`, `AVF.dat`, `CHGCAR_sum`, the POTCAR `ZVAL`
@@ -53,9 +53,9 @@ claim explicitly needs spatial charge redistribution.
 
 For report-level figures, do not hide the subtraction inside a one-off plotting or
 result-parsing script. The accepted figure artifact should show that the workflow read
-`tools/vasp/references/electronic-analysis.md`, recorded the density-difference source
+`electronic-analysis.md`, recorded the density-difference source
 and sign/grid provenance, and rendered the resulting CHGCAR-like file through
-`tools/vasp/references/volumetric-visualization.md`.
+`volumetric-visualization.md`.
 
 ## Partial charge density (`PARCHG`)
 
@@ -130,4 +130,4 @@ core-electron localization.
 - Degenerate band edges treated as a group.
 - Work-function plots show a real vacuum plateau and dipole status.
 
-*Interpretation, evidence chains, and Bader-to-structure figure rules: `knowledge/electronic-structure.md`.*
+*Interpretation, evidence chains, and Bader-to-structure figure rules: `references/knowledge/electronic-structure.md`.*

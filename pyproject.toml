@@ -62,12 +62,21 @@ module-name = ["electromind", "app"]
 # 显式声明 sdist 收集范围，与 module-name 的动态模块发现解耦，双保险：
 # 即使后端再次出现 find_roots 静默失效（0.8.x 已证实），src/** 也会被显式
 # glob 收集，两种 archive 内容都确定。
-source-include = ["src/**", "pyproject.toml", "README.md"]
+# A+ W6: sdist 是作者分发（含完整 skills/，含 knowledge/ 作者事实源与
+# sync-map.toml/sync-manifest.json，供作者维护与同步）；运行时 wheel 不含
+# knowledge/（wheel-exclude，见下）。
+source-include = ["src/**", "pyproject.toml", "README.md", "skills/**"]
+# A+ W6（约束 5）: 顶层 knowledge/ 是作者事实源，不进入运行时 wheel ——
+# wheel-exclude 对 data 目录同样生效（已实测），sdist 不受影响（保留完整
+# skills/）。每个 skill 携带自己的 references/knowledge/ 提交副本。
+# A+ CLEAN-003: skills/README.md 是作者文档，保留在 git/sdist，不进运行时 wheel。
+wheel-exclude = ["skills/knowledge/**", "skills/README.md", "skills/**/__pycache__/**"]
 
-# SKILL-8: bundle the built-in scientific skill bundle (skills/ with
-# procedures/ + tools/ + knowledge/) into installed artifacts.  uv_build's
+# SKILL-8 + A+ W5/W6: bundle the built-in scientific skill bundle
+# (skills/procedures + skills/tools) into installed artifacts.  uv_build's
 # `data` type installs the directory contents over the virtualenv root, so
-# `electromind.skills.builtin.builtin_roots()` probes <sys.prefix>/skills.
+# `electromind.skills.builtin.builtin_roots()` probes the flat roots under
+# <sys.prefix>/skills.
 [tool.uv.build-backend.data]
 data = "skills"
 

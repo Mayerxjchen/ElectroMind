@@ -40,7 +40,7 @@ Default seed artifacts:
 - `model-observable-decision` — the model, observable, success criterion, and why it answers the source claim.
 - `triage-plan` — task route, dependencies, cost/risk notes, missing inputs, and reproduction/exploration label.
 
-If `.research/` does not exist yet but the task qualifies for durable state, initialize it through `procedures/research-orchestrator/` or hand off to `comp-chem-workflow` to do so before execution planning. `workflow.md` is only a human-readable summary; it does not replace these artifacts.
+If `.research/` does not exist yet but the task qualifies for durable state, initialize it through the `research-orchestrator` skill or hand off to `comp-chem-workflow` to do so before execution planning. `workflow.md` is only a human-readable summary; it does not replace these artifacts.
 
 ## Route
 

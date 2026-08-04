@@ -15,7 +15,7 @@ jobs), enter this skill before drafting the script and read the target
 
 If the project has `.research/` state and the execution task declares
 `execution_policy.requires_claim: true`, do not submit until that task has an active
-lease from `procedures/research-orchestrator/scripts/claim_task.py`. Record the lease
+lease from the `research-orchestrator` skill's `scripts/claim_task.py`. Record the lease
 ID alongside the job ID, heartbeat while monitoring long work, and run
 `reconcile_leases.py` before any recovery or rerun after disconnects. When `.research/`
 uses `check_pre_submit.py`, register an accepted `cluster-guide-read` artifact in the
@@ -26,7 +26,7 @@ machine-checkable evidence that the site guide was consulted.
 
 **Already running on the target cluster?** Then there's nothing to connect to and no file transfer — commands run locally. Skip tier 1 and the rsess session; read `~/.cluster-agents.md` and the MOTD as local files, and submit directly. The tiers below cover the remote case.
 
-Every cluster is different. **Do not connect to any server, guess any hostname/partition/module, or submit anything until you know the target machine.** Discover its facts in three tiers, cheapest first (full rules in `AGENTS.md` "Site environment"):
+Every cluster is different. **Do not connect to any server, guess any hostname/partition/module, or submit anything until you know the target machine.** Discover its facts in three tiers, cheapest first:
 
 1. **Local bootstrap — just enough to connect.** The minimum to reach the box and move files: connection command/alias + file-transfer (scp/rsync) pattern. Lives locally (a small file the user points to, your own memory, or taught this session) — never guessed, never in this repo. For a stateful shell that survives disconnects, the `rsess` skill is recommended: open a session once per campaign, then `rsess run` for every remote command.
 2. **On login, read the MOTD/banner.** Partitions, quotas, and policy are often announced there; follow any pointer it gives to an operating guide.

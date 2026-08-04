@@ -113,7 +113,7 @@ The `structure-critic` consumes candidate structures and checks:
 - whether the adsorbate is too close, floating too far from the surface, on the wrong
   side of the slab, or connected to an unintended site.
 
-Use `tools/structure-prep/scripts/audit_structure.py` when possible to produce a
+Use the `structure-prep` skill's `scripts/audit_structure.py` when possible to produce a
 deterministic geometry summary. The script does not decide chemistry by itself; the
 critic interprets its distances against the intended model.
 

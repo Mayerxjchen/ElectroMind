@@ -47,21 +47,70 @@ DEFAULT_MAP_REL = Path("skills/knowledge/sync-map.toml")
 SKILL_DIRS = ("procedures", "tools")
 CHUNK = 1 << 16
 
+# P0-1: 路径约束 — source 只能位于作者事实源目录，target 只能位于各 skill 的
+# committed runtime copy 目录。拒绝绝对路径、``..`` 与 symlink 穿越。
+SOURCE_PREFIX = ("skills", "knowledge")
+TARGET_PREFIX = ("skills", "procedures", "tools")
+TARGET_SUFFIX = ("references", "knowledge")
+
 
 class MapError(ValueError):
     """A mapping/manifest problem that aborts before any write."""
 
 
-# ---------------------------------------------------------------------------
-# mapping + manifest
-# ---------------------------------------------------------------------------
+def _validate_rel_path(kind: str, value: str, where: str) -> str:
+    """Validate one mapping path; returns the normalized form."""
+    raw = value.strip()
+    if not raw:
+        raise MapError(f"{where}: {kind} must be a non-empty string")
+    p = Path(raw)
+    if p.is_absolute():
+        raise MapError(f"{where}: {kind} must be repo-root relative, got {raw!r}")
+    if ".." in p.parts:
+        raise MapError(f"{where}: {kind} must not contain '..', got {raw!r}")
+    if kind == "source":
+        if p.parts[:2] != SOURCE_PREFIX or len(p.parts) != 3:
+            raise MapError(
+                f"{where}: source must be under skills/knowledge/<file>.md, got {raw!r}"
+            )
+    else:
+        if len(p.parts) != 6:
+            raise MapError(
+                f"{where}: target must be "
+                f"skills/{{procedures,tools}}/<skill>/references/knowledge/<file>, "
+                f"got {raw!r}"
+            )
+        if p.parts[0] != "skills" or p.parts[1] not in SKILL_DIRS:
+            raise MapError(
+                f"{where}: target must start with "
+                f"skills/{{procedures,tools}}/<skill>/, got {raw!r}"
+            )
+        if p.parts[3:5] != TARGET_SUFFIX:
+            raise MapError(
+                f"{where}: target must be "
+                f"skills/{{procedures,tools}}/<skill>/references/knowledge/<file>, "
+                f"got {raw!r}"
+            )
+    return raw
+
+
+def _no_symlink_components(root: Path, rel: str, where: str) -> None:
+    """Reject any symlink in the ancestry of ``root/rel`` (P0-1)."""
+    cursor = root
+    for part in Path(rel).parts:
+        cursor = cursor / part
+        if cursor.is_symlink():
+            raise MapError(f"{where}: symlink not allowed in path: {rel!r}")
+        if cursor.exists() and not cursor.is_dir() and part != Path(rel).parts[-1]:
+            raise MapError(f"{where}: not a directory: {rel!r}")
 
 
 def load_map(path: Path) -> list[tuple[str, list[str]]]:
     """Parse the TOML mapping into ``(source, targets)`` entries.
 
-    Raises :class:`MapError` on missing/malformed files and on duplicate or
-    conflicting targets (check 4).
+    Raises :class:`MapError` on missing/malformed files, on duplicate or
+    conflicting targets (check 4), and on any path that escapes the allowed
+    directories (P0-1).
     """
     if not path.is_file():
         raise MapError(f"mapping file not found: {path}")
@@ -72,25 +121,27 @@ def load_map(path: Path) -> list[tuple[str, list[str]]]:
     entries: list[tuple[str, list[str]]] = []
     seen: dict[str, str] = {}
     for i, ref in enumerate(data.get("references", []), start=1):
+        where = f"references[{i}]"
         source = ref.get("source")
         targets = ref.get("targets")
         if not isinstance(source, str) or not source.strip():
-            raise MapError(f"references[{i}]: missing non-empty 'source'")
+            raise MapError(f"{where}: missing non-empty 'source'")
         if not isinstance(targets, list) or not targets:
-            raise MapError(f"references[{i}]: missing non-empty 'targets' list")
+            raise MapError(f"{where}: missing non-empty 'targets' list")
+        src = _validate_rel_path("source", source, where)
         normalized: list[str] = []
         for t in targets:
-            if not isinstance(t, str) or not t.strip():
-                raise MapError(f"references[{i}]: target must be a non-empty string")
-            norm = t.strip()
+            if not isinstance(t, str):
+                raise MapError(f"{where}: target must be a string")
+            norm = _validate_rel_path("target", t, where)
             if norm in seen:
                 raise MapError(
                     f"conflicting target {norm!r}: declared by both "
-                    f"{seen[norm]!r} and {source.strip()!r}"
+                    f"{seen[norm]!r} and {src!r}"
                 )
-            seen[norm] = source.strip()
+            seen[norm] = src
             normalized.append(norm)
-        entries.append((source.strip(), normalized))
+        entries.append((src, normalized))
     return entries
 
 
@@ -132,6 +183,30 @@ def sha256_of(path: Path) -> str:
     return h.hexdigest()
 
 
+def _atomic_copy(src: Path, dest: Path) -> None:
+    """Byte-copy *src* to *dest* atomically (same-dir temp + os.replace).
+
+    P0-1: readers never observe a partially-written copy, and a failed
+    copy leaves no partial file behind.
+    """
+    import os
+    import tempfile
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(dir=dest.parent, prefix=".sync-", suffix=".tmp")
+    tmp = Path(tmp_name)
+    try:
+        with os.fdopen(fd, "wb") as out:
+            with src.open("rb") as inp:
+                shutil.copyfileobj(inp, out)
+            out.flush()
+            os.fsync(out.fileno())
+        os.replace(tmp, dest)
+    except BaseException:
+        tmp.unlink(missing_ok=True)
+        raise
+
+
 def skill_knowledge_dirs(root: Path) -> list[Path]:
     """All ``<skill>/references/knowledge/`` dirs under skills/{procedures,tools}."""
     dirs: list[Path] = []
@@ -162,6 +237,12 @@ def run_check(root: Path, map_path: Path, manifest_path: Path) -> list[str]:
 
     errors: list[str] = []
     for source, targets in entries:
+        try:
+            _no_symlink_components(root, source, f"source {source!r}")
+            for target in targets:
+                _no_symlink_components(root, target, f"target {target!r}")
+        except MapError as exc:
+            return [str(exc)]
         src = root / source
         if not src.is_file():
             errors.append(f"missing source: {source}")
@@ -211,9 +292,12 @@ def run_sync(root: Path, map_path: Path, manifest_path: Path) -> tuple[int, int,
     sync leaves the tree untouched.
     """
     entries = load_map(map_path)  # raises MapError on conflicts
-    for source, _ in entries:
+    for source, targets in entries:
         if not (root / source).is_file():
             raise MapError(f"missing source: {source}")
+        _no_symlink_components(root, source, f"source {source!r}")
+        for target in targets:
+            _no_symlink_components(root, target, f"target {target!r}")
     mapped_targets = {t for _, targets in entries for t in targets}
 
     copied = 0
@@ -223,8 +307,7 @@ def run_sync(root: Path, map_path: Path, manifest_path: Path) -> tuple[int, int,
         for target in targets:
             tgt = root / target
             if not tgt.is_file() or sha256_of(tgt) != src_sha:
-                tgt.parent.mkdir(parents=True, exist_ok=True)
-                shutil.copyfile(src, tgt)
+                _atomic_copy(src, tgt)
                 copied += 1
 
     pruned = 0

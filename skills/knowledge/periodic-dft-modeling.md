@@ -2,7 +2,7 @@
 
 > Covers: tool-agnostic practice for periodic DFT models - cells, PBC/vacuum, k-points versus supercells, basis and grid convergence, energy comparisons, smearing, relaxation strategy, and reporting.
 
-This file is code-independent. Use `tools/vasp`, `tools/cp2k`, or another engine skill for actual input syntax.
+This file is code-independent. Activate `vasp`, `cp2k`, or another engine skill for actual input syntax.
 
 ## Model before code
 

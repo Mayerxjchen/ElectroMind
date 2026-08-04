@@ -1,10 +1,10 @@
 # Running VASP Electrochemistry: CHE Inputs, VASPsol, VASPsol++
 
-> Load this when: using VASP outputs to assemble CHE step diagrams, preparing VASP calculations for OER/ORR/HER intermediates, or setting up VASPsol/VASPsol++ implicit-solvent and constant-potential calculations. The model equations and interpretation live in `knowledge/electrochemistry.md`.
+> Load this when: using VASP outputs to assemble CHE step diagrams, preparing VASP calculations for OER/ORR/HER intermediates, or setting up VASPsol/VASPsol++ implicit-solvent and constant-potential calculations. The model equations and interpretation live in `references/knowledge/electrochemistry.md`.
 
 ## Use the knowledge layer first
 
-Before touching INCARs, write the electrochemical cycle from `knowledge/electrochemistry.md`:
+Before touching INCARs, write the electrochemical cycle from `references/knowledge/electrochemistry.md`:
 
 - reaction and elementary steps;
 - potential scale, SHE or RHE;
@@ -37,7 +37,7 @@ Rules:
 
 Gas/liquid references should be computed or imported with the same DFT convention and documented thermochemical corrections. For OER/ORR, back-calculate O2 from H2O/H2 and 4.92 eV unless intentionally using a different thermodynamic cycle.
 
-In the tables below, `DeltaG correction` is the free-energy correction added to the VASP electronic energy. For isolated molecules such as H2, H2O, O2, CO, or CO2, first run a molecular frequency calculation, then use VASPKIT task 502 to obtain temperature- and pressure-dependent thermodynamic corrections. For surface adsorbates such as `*OH`, `*O`, `*OOH`, or `*H`, run a slab frequency calculation with the slab atoms fixed and only the adsorbate/reacting atoms mobile, then use VASPKIT task 501 for the adsorbate vibrational free-energy correction. See `knowledge/thermochemistry-and-free-energy.md` for the thermodynamic bookkeeping and `tools/vaspkit/references/thermochemistry.md` for the VASPKIT 501/502 workflow.
+In the tables below, `DeltaG correction` is the free-energy correction added to the VASP electronic energy. For isolated molecules such as H2, H2O, O2, CO, or CO2, first run a molecular frequency calculation, then use VASPKIT task 502 to obtain temperature- and pressure-dependent thermodynamic corrections. For surface adsorbates such as `*OH`, `*O`, `*OOH`, or `*H`, run a slab frequency calculation with the slab atoms fixed and only the adsorbate/reacting atoms mobile, then use VASPKIT task 501 for the adsorbate vibrational free-energy correction. See `references/knowledge/thermochemistry-and-free-energy.md` for the thermodynamic bookkeeping and the `vaspkit` skill's `references/thermochemistry.md` for the VASPKIT 501/502 workflow.
 
 Do not apply gas-phase translational/rotational entropy to a bound adsorbate. Treat adsorbate translations/rotations as frustrated vibrations unless a deliberately different model is documented.
 

@@ -18,7 +18,7 @@ try:
 except ImportError as exc:  # pragma: no cover - reached only outside uv/pep723
     raise SystemExit(
         "PyYAML is required. Run with: uv run "
-        "procedures/research-orchestrator/scripts/validate_gate.py GATE.yaml"
+        "<skill-root>/scripts/validate_gate.py GATE.yaml"
     ) from exc
 
 from validate_state import Finding, load_jsonl, rel, resolve_research_dir

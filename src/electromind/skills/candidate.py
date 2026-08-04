@@ -352,7 +352,6 @@ def registry_from_candidates(
             resources=(),
             source_id=candidate.source.source_id,
             skill_root=candidate.descriptor.root_path,
-            skills_root=candidate.source.root,
             sha256=candidate.descriptor.content_digest,
         )
         registry.register(skill)
@@ -374,7 +373,7 @@ def validate_agents_frontmatter(
     """Validate a SKILL.md frontmatter against the Agent Skills standard.
 
     Returns ``(errors, warnings)``.  Errors violate the standard (missing name /
-    description, invalid name); warnings are non-fatal (name != directory name).
+    description, invalid name, name != directory name — A+ W3 hard error).
     """
     from .skill import validate_skill_name
 
@@ -391,7 +390,7 @@ def validate_agents_frontmatter(
         if name_err:
             errors.append(name_err)
         elif dir_name is not None and name != dir_name:
-            warnings.append(
+            errors.append(
                 f"frontmatter name {name!r} does not match directory {dir_name!r}"
             )
 

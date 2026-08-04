@@ -12,7 +12,7 @@ Deep Potential Molecular Dynamics uses a trained DP model to provide energies an
 | Situation | Go to |
 |---|---|
 | prepare dpdata datasets, write `input.json`, train/freeze/compress/test, run LAMMPS DPMD | `references/running.md` |
-| scheduler/job script for `dp train`, GPU training, `dp test`, or DPMD deployment | `tools/hpc-submit/SKILL.md`; read the target `~/.cluster-agents.md` before writing the script |
+| scheduler/job script for `dp train`, GPU training, `dp test`, or DPMD deployment | activate `hpc-submit` (its `SKILL.md`); read the target `~/.cluster-agents.md` before writing the script |
 | decide whether a DP model is usable, read `lcurve.out`/`dp test`, model-deviation thresholds, or read the automatic DPMD handoff verdict | `references/validation.md` |
 | visualize dataset coverage/distribution with short DPA1 descriptors, PCA, or t-SNE | `references/dataset-embedding.md` |
 | run the default one-chain DeepMD workflow: `dp train` -> lcurve plot -> `dp freeze` -> `dp test` -> parity plots -> DFT train/val/test PCA -> QA verdict | `scripts/run_deepmd_chain.py`; see `references/running.md` |
@@ -63,4 +63,4 @@ Deep Potential Molecular Dynamics uses a trained DP model to provide energies an
 - The descriptor PCA for the fixed QA package is run over all compatible DFT-labeled
   `train`, `val`, and `test` frames by default. DPMD trajectory overlays are useful
   follow-up diagnostics, but they do not replace the DFT-all split coverage map.
-- Scientific observables come from equilibrated production trajectory segments only; use `knowledge/molecular-dynamics.md` for MSD/RDF/VACF/free-energy interpretation and `knowledge/machine-learning-potentials.md` for MLP-wide principles.
+- Scientific observables come from equilibrated production trajectory segments only; use `references/knowledge/molecular-dynamics.md` for MSD/RDF/VACF/free-energy interpretation and `references/knowledge/machine-learning-potentials.md` for MLP-wide principles.

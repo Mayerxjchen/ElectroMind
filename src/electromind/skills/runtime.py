@@ -181,12 +181,10 @@ class SkillRuntime:
         from .candidate import registry_from_candidates
 
         registry = registry_from_candidates(catalog.candidates)
-        agents_md = _agents_md_from_catalog(catalog)
         return SkillRunView(
             generation=catalog.generation,
             digest=catalog.catalog_digest,
             registry=registry,
-            agents_md=agents_md,
             mounted_roots=dict(self.mounts),
             catalog=catalog,
         )
@@ -273,7 +271,7 @@ class SkillRuntime:
         if catalog is None:
             return _empty_prompt_block()
         budget = build_model_catalog(catalog)
-        return _render_catalog_prompt(budget, agents_md=target_view.agents_md)
+        return _render_catalog_prompt(budget)
 
     # ── wire payload ─────────────────────────────────────────────────
 
@@ -406,37 +404,12 @@ def _replace_skills_section(system: str, new_block: str) -> str:
     return new_block
 
 
-def _agents_md_from_catalog(catalog: MultiCandidateCatalog) -> str | None:
-    """Concatenated AGENTS.md content from the catalog's structured sources.
-
-    Legacy ``SkillRunView.agents_md`` carried the AGENTS.md text; the catalog
-    does not store it, so it is re-read once at view construction from the
-    sources' roots (structured layout only).
-    """
-    texts: list[str] = []
-    seen: set[str] = set()
-    for c in catalog.candidates:
-        src_root = c.source.root
-        if src_root in seen:
-            continue
-        seen.add(src_root)
-        agents_md = src_root / "AGENTS.md"
-        if agents_md.is_file():
-            try:
-                texts.append(agents_md.read_text(encoding="utf-8"))
-            except OSError:
-                continue
-    if not texts:
-        return None
-    return "\n---\n".join(texts)
-
-
 def _empty_prompt_block() -> str:
     """The marker block for an empty catalog."""
     return f"{SKILLS_START}\n(暂无可用 skill)\n{SKILLS_END}\n"
 
 
-def _render_catalog_prompt(budget, *, agents_md: str | None) -> str:
+def _render_catalog_prompt(budget) -> str:
     """Render the budgeted model-visible catalog as the skills prompt block.
 
     Keeps the legacy marker contract (``<!-- electromind:skills:start -->``)
@@ -444,10 +417,6 @@ def _render_catalog_prompt(budget, *, agents_md: str | None) -> str:
     working; the entries come from the model-visible budget (RFC 十一).
     """
     lines: list[str] = []
-    if agents_md:
-        cleaned = agents_md.strip()
-        if cleaned:
-            lines.append(cleaned)
     lines.append(SKILLS_START)
     if budget.entries:
         lines.append("你可以按需加载这些 skill：")

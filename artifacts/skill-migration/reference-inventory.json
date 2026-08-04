@@ -1,0 +1,126 @@
+{
+  "authoring_sources": [
+    "skills/knowledge/bonding-analysis.md",
+    "skills/knowledge/catalytic-reaction-pathways.md",
+    "skills/knowledge/electrochemistry.md",
+    "skills/knowledge/electronic-structure.md",
+    "skills/knowledge/excited-state-and-core-spectroscopy.md",
+    "skills/knowledge/force-fields.md",
+    "skills/knowledge/hubbard-u-and-magnetism.md",
+    "skills/knowledge/machine-learning-potentials.md",
+    "skills/knowledge/molecular-dynamics.md",
+    "skills/knowledge/molecular-qc-practical-rules.md",
+    "skills/knowledge/periodic-electrostatics.md",
+    "skills/knowledge/reaction-kinetics.md",
+    "skills/knowledge/scientific-visualization.md",
+    "skills/knowledge/surface-thermodynamics.md",
+    "skills/knowledge/thermochemistry-and-free-energy.md",
+    "skills/knowledge/vibrational-phonon-analysis.md"
+  ],
+  "copy_count": 71,
+  "targets": {
+    "skills/knowledge/bonding-analysis.md": [
+      "skills/procedures/comp-chem-workflow/references/knowledge/bonding-analysis.md",
+      "skills/procedures/research-orchestrator/references/knowledge/bonding-analysis.md",
+      "skills/procedures/review-response/references/knowledge/bonding-analysis.md",
+      "skills/tools/cp2k/references/knowledge/bonding-analysis.md",
+      "skills/tools/lobster/references/knowledge/bonding-analysis.md",
+      "skills/tools/multiwfn/references/knowledge/bonding-analysis.md",
+      "skills/tools/report/references/knowledge/bonding-analysis.md",
+      "skills/tools/vasp/references/knowledge/bonding-analysis.md",
+      "skills/tools/vaspkit/references/knowledge/bonding-analysis.md"
+    ],
+    "skills/knowledge/catalytic-reaction-pathways.md": [
+      "skills/procedures/comp-chem-workflow/references/knowledge/catalytic-reaction-pathways.md"
+    ],
+    "skills/knowledge/electrochemistry.md": [
+      "skills/procedures/comp-chem-workflow/references/knowledge/electrochemistry.md",
+      "skills/procedures/research-orchestrator/references/knowledge/electrochemistry.md",
+      "skills/tools/vasp/references/knowledge/electrochemistry.md"
+    ],
+    "skills/knowledge/electronic-structure.md": [
+      "skills/procedures/comp-chem-workflow/references/knowledge/electronic-structure.md",
+      "skills/procedures/research-orchestrator/references/knowledge/electronic-structure.md",
+      "skills/procedures/review-response/references/knowledge/electronic-structure.md",
+      "skills/tools/cp2k/references/knowledge/electronic-structure.md",
+      "skills/tools/multiwfn/references/knowledge/electronic-structure.md",
+      "skills/tools/report/references/knowledge/electronic-structure.md",
+      "skills/tools/vasp/references/knowledge/electronic-structure.md",
+      "skills/tools/vaspkit/references/knowledge/electronic-structure.md"
+    ],
+    "skills/knowledge/excited-state-and-core-spectroscopy.md": [
+      "skills/tools/cp2k/references/knowledge/excited-state-and-core-spectroscopy.md"
+    ],
+    "skills/knowledge/force-fields.md": [
+      "skills/tools/cp2k/references/knowledge/force-fields.md",
+      "skills/tools/deepmd/references/knowledge/force-fields.md",
+      "skills/tools/lammps/references/knowledge/force-fields.md",
+      "skills/tools/report/references/knowledge/force-fields.md",
+      "skills/tools/vasp/references/knowledge/force-fields.md",
+      "skills/tools/vaspkit/references/knowledge/force-fields.md"
+    ],
+    "skills/knowledge/hubbard-u-and-magnetism.md": [
+      "skills/tools/cp2k/references/knowledge/hubbard-u-and-magnetism.md",
+      "skills/tools/vasp/references/knowledge/hubbard-u-and-magnetism.md"
+    ],
+    "skills/knowledge/machine-learning-potentials.md": [
+      "skills/tools/deepmd/references/knowledge/machine-learning-potentials.md",
+      "skills/tools/mlp/references/knowledge/machine-learning-potentials.md"
+    ],
+    "skills/knowledge/molecular-dynamics.md": [
+      "skills/tools/cp2k/references/knowledge/molecular-dynamics.md",
+      "skills/tools/deepmd/references/knowledge/molecular-dynamics.md",
+      "skills/tools/lammps/references/knowledge/molecular-dynamics.md",
+      "skills/tools/report/references/knowledge/molecular-dynamics.md",
+      "skills/tools/vasp/references/knowledge/molecular-dynamics.md",
+      "skills/tools/vaspkit/references/knowledge/molecular-dynamics.md"
+    ],
+    "skills/knowledge/molecular-qc-practical-rules.md": [
+      "skills/tools/multiwfn/references/knowledge/molecular-qc-practical-rules.md"
+    ],
+    "skills/knowledge/periodic-electrostatics.md": [
+      "skills/procedures/comp-chem-workflow/references/knowledge/periodic-electrostatics.md",
+      "skills/procedures/research-orchestrator/references/knowledge/periodic-electrostatics.md",
+      "skills/procedures/review-response/references/knowledge/periodic-electrostatics.md",
+      "skills/tools/cp2k/references/knowledge/periodic-electrostatics.md",
+      "skills/tools/multiwfn/references/knowledge/periodic-electrostatics.md",
+      "skills/tools/report/references/knowledge/periodic-electrostatics.md",
+      "skills/tools/vasp/references/knowledge/periodic-electrostatics.md",
+      "skills/tools/vaspkit/references/knowledge/periodic-electrostatics.md"
+    ],
+    "skills/knowledge/reaction-kinetics.md": [
+      "skills/tools/cp2k/references/knowledge/reaction-kinetics.md",
+      "skills/tools/vasp/references/knowledge/reaction-kinetics.md"
+    ],
+    "skills/knowledge/scientific-visualization.md": [
+      "skills/procedures/research-orchestrator/references/knowledge/scientific-visualization.md",
+      "skills/procedures/review-response/references/knowledge/scientific-visualization.md",
+      "skills/tools/cp2k/references/knowledge/scientific-visualization.md",
+      "skills/tools/multiwfn/references/knowledge/scientific-visualization.md",
+      "skills/tools/report/references/knowledge/scientific-visualization.md",
+      "skills/tools/vasp/references/knowledge/scientific-visualization.md"
+    ],
+    "skills/knowledge/surface-thermodynamics.md": [
+      "skills/procedures/comp-chem-workflow/references/knowledge/surface-thermodynamics.md",
+      "skills/procedures/research-orchestrator/references/knowledge/surface-thermodynamics.md",
+      "skills/procedures/review-response/references/knowledge/surface-thermodynamics.md",
+      "skills/tools/cp2k/references/knowledge/surface-thermodynamics.md",
+      "skills/tools/multiwfn/references/knowledge/surface-thermodynamics.md",
+      "skills/tools/report/references/knowledge/surface-thermodynamics.md",
+      "skills/tools/vasp/references/knowledge/surface-thermodynamics.md",
+      "skills/tools/vaspkit/references/knowledge/surface-thermodynamics.md"
+    ],
+    "skills/knowledge/thermochemistry-and-free-energy.md": [
+      "skills/tools/cp2k/references/knowledge/thermochemistry-and-free-energy.md",
+      "skills/tools/report/references/knowledge/thermochemistry-and-free-energy.md",
+      "skills/tools/vasp/references/knowledge/thermochemistry-and-free-energy.md",
+      "skills/tools/vaspkit/references/knowledge/thermochemistry-and-free-energy.md"
+    ],
+    "skills/knowledge/vibrational-phonon-analysis.md": [
+      "skills/tools/cp2k/references/knowledge/vibrational-phonon-analysis.md",
+      "skills/tools/report/references/knowledge/vibrational-phonon-analysis.md",
+      "skills/tools/vasp/references/knowledge/vibrational-phonon-analysis.md",
+      "skills/tools/vaspkit/references/knowledge/vibrational-phonon-analysis.md"
+    ]
+  }
+}

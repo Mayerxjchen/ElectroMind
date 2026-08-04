@@ -26,19 +26,19 @@ Examples are small state directories for validating the research-orchestrator pr
 Smoke-test commands:
 
 ```bash
-uv run procedures/research-orchestrator/scripts/smoke_tests.py
+uv run ../scripts/smoke_tests.py
 
-uv run procedures/research-orchestrator/scripts/validate_state.py \
-  procedures/research-orchestrator/examples/minimal-project/.research
-uv run procedures/research-orchestrator/scripts/ready_tasks.py \
-  procedures/research-orchestrator/examples/minimal-project/.research
-uv run procedures/research-orchestrator/scripts/ready_tasks.py \
-  procedures/research-orchestrator/examples/role-handoff-project/.research
-uv run procedures/research-orchestrator/scripts/ready_tasks.py \
-  procedures/research-orchestrator/examples/structure-review-project/.research
-uv run procedures/research-orchestrator/scripts/check_pre_report.py \
-  procedures/research-orchestrator/examples/iterative-followup-project/.research T006
-uv run procedures/research-orchestrator/scripts/reconcile_leases.py \
-  procedures/research-orchestrator/examples/stale-lease-project/.research \
+uv run ../scripts/validate_state.py \
+  ../examples/minimal-project/.research
+uv run ../scripts/ready_tasks.py \
+  ../examples/minimal-project/.research
+uv run ../scripts/ready_tasks.py \
+  ../examples/role-handoff-project/.research
+uv run ../scripts/ready_tasks.py \
+  ../examples/structure-review-project/.research
+uv run ../scripts/check_pre_report.py \
+  ../examples/iterative-followup-project/.research T006
+uv run ../scripts/reconcile_leases.py \
+  ../examples/stale-lease-project/.research \
   --now 2026-06-25T00:30:00+08:00
 ```

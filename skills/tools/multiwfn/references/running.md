@@ -2,7 +2,7 @@
 
 > Load this when: choosing a Multiwfn analysis, preparing `.fchk`/`.wfn`/`.molden` input, exporting cube files, or post-processing Gaussian TD-DFT outputs.
 
-Keep this operational. The science of what a charge/orbital/bonding claim means lives in `knowledge/electronic-structure.md`, `knowledge/bonding-analysis.md`, and `knowledge/molecular-qc-practical-rules.md`.
+Keep this operational. The science of what a charge/orbital/bonding claim means lives in `references/knowledge/electronic-structure.md`, `references/knowledge/bonding-analysis.md`, and `references/knowledge/molecular-qc-practical-rules.md`.
 
 ## Input preparation
 

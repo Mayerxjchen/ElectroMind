@@ -212,6 +212,10 @@ class SshBackend:
             await self.sftp.stat(path)
         except (FileNotFoundError, OSError):
             return False
+        except asyncssh.SFTPError:
+            # asyncssh 的 SFTPNoSuchFile 等不是 OSError 子类 —— 远端
+            # 文件不存在必须返回 False，不能冒泡（真实 loopback 测试发现）。
+            return False
         return True
 
     async def remove(self, path: str, *, recursive: bool = False) -> None:

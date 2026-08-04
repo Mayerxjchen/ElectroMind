@@ -1,0 +1,205 @@
+{
+  "count": 25,
+  "rules": [
+    {
+      "enforcement": "machine",
+      "id": "R-001",
+      "owner": "catalog name+description",
+      "rule": "\u8def\u7531\uff1a\u8bf7\u6c42\u7c7b\u578b \u2192 skill \u9009\u62e9",
+      "status": "done",
+      "test": "test_project_skill_autodiscovery.py"
+    },
+    {
+      "enforcement": "machine",
+      "id": "R-002",
+      "owner": "research-orchestrator",
+      "rule": ".research \u72b6\u6001\u534f\u8bae",
+      "status": "done",
+      "test": "test_skill_w8_runtime_enforcement.py"
+    },
+    {
+      "enforcement": "partial",
+      "id": "R-003",
+      "owner": "research-orchestrator",
+      "rule": "\u7ed3\u6784\u5efa\u6a21 review gate",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "machine",
+      "id": "R-004",
+      "owner": "research-orchestrator+hpc-submit",
+      "rule": "\u6602\u8d35\u6267\u884c\u5355\u4e00 owner + lease",
+      "status": "done",
+      "test": "test_skill_w8_runtime_enforcement.py"
+    },
+    {
+      "enforcement": "machine",
+      "id": "R-005",
+      "owner": "research-orchestrator",
+      "rule": "\u72b6\u6001\u8bed\u4e49 completed/validated/accepted",
+      "status": "done",
+      "test": "test_skill_w8_runtime_enforcement.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-006",
+      "owner": "\u5404 skill Where-to-find",
+      "rule": "\u5148\u67e5\u5df2\u4ea4\u4ed8\u5185\u5bb9\u518d\u81ea\u5199",
+      "status": "done",
+      "test": "test_skill_isolation_checker.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-007",
+      "owner": "comp-chem-workflow",
+      "rule": "\u751f\u547d\u5468\u671f\u987a\u5e8f",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-008",
+      "owner": "comp-chem-workflow+engines",
+      "rule": "\u4e0d\u4f2a\u9020\u53c2\u6570\u6216\u8bc1\u636e",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "partial",
+      "id": "R-009",
+      "owner": "engine skills",
+      "rule": "\u8ba1\u7b97\u5b8c\u6210 \u2260 \u6536\u655b",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-010",
+      "owner": "comp-chem-workflow",
+      "rule": "\u6587\u732e\u6d3e\u751f\u6a21\u578b exploratory",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "partial",
+      "id": "R-011",
+      "owner": "research-orchestrator+structure-prep",
+      "rule": "\u7f3a\u5931\u7ed3\u6784\u4e0d\u662f\u505c\u6b62\u6761\u4ef6",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "partial",
+      "id": "R-012",
+      "owner": "comp-chem-workflow+.research",
+      "rule": "\u4fdd\u7559 provenance",
+      "status": "done",
+      "test": "test_skill_w8_runtime_enforcement.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-013",
+      "owner": "comp-chem-workflow",
+      "rule": "\u5355\u4f4d\u7ea6\u5b9a",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-014",
+      "owner": "\u5404 tool skill",
+      "rule": "\u8bb8\u53ef\u6570\u636e\u4e0d\u6253\u5370",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-015",
+      "owner": "\u5404 tool skill",
+      "rule": "\u53c2\u8003\u503c\u4e0d\u662f\u80cc\u4e66",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-016",
+      "owner": "comp-chem-workflow",
+      "rule": "\u64cd\u4f5c\u6a21\u5f0f semi/autonomous",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "machine",
+      "id": "R-017",
+      "owner": "hpc-submit+runtime+.research approval",
+      "rule": "\u6602\u8d35 HPC \u4f5c\u4e1a\u5ba1\u6279",
+      "status": "done",
+      "test": "test_skill_w8_runtime_enforcement.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-018",
+      "owner": "comp-chem-workflow+review-response",
+      "rule": "\u8986\u76d6/\u5220\u9664/\u6a21\u578b\u9009\u62e9\u5ba1\u6279",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "partial",
+      "id": "R-019",
+      "owner": "hpc-submit",
+      "rule": "\u96c6\u7fa4\u4e09 tier \u53d1\u73b0",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-020",
+      "owner": "rsess",
+      "rule": "\u8fdc\u7a0b\u8fde\u63a5\u89c4\u5219",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-021",
+      "owner": "hpc-submit",
+      "rule": "\u73b0\u4ee3 Python/uv \u7ea6\u5b9a",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "prompt",
+      "id": "R-022",
+      "owner": "comp-chem-workflow",
+      "rule": "\u4fe1\u606f\u7f3a\u5931\u53ea\u95ee\u4e00\u4e2a\u95ee\u9898",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "machine",
+      "id": "R-023",
+      "owner": "sandbox policy",
+      "rule": "\u8def\u5f84\u8bbf\u95ee\u8fb9\u754c",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "machine",
+      "id": "R-024",
+      "owner": "runtime permission/policy",
+      "rule": "\u5371\u9669\u547d\u4ee4\u5ba1\u6279",
+      "status": "done",
+      "test": "test_skill_w8_self_containment.py"
+    },
+    {
+      "enforcement": "machine",
+      "id": "R-025",
+      "owner": "hpc-submit+lease",
+      "rule": "\u907f\u514d\u91cd\u590d\u63d0\u4ea4",
+      "status": "done",
+      "test": "test_skill_w8_runtime_enforcement.py"
+    }
+  ]
+}

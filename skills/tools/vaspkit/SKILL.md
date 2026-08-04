@@ -22,10 +22,10 @@ Use this skill when VASP data already exist or VASP helper inputs must be genera
 | configure VASPKIT, run interactively or non-interactively, choose task families | `references/running.md` |
 | preflight a directory before running VASPKIT; validate generated files and parsed outputs | `uv run scripts/check_vaspkit.py`, then `references/validation.md` |
 | automate one VASPKIT task across many directories | `uv run scripts/run_vaspkit_task.py`, then `references/running.md` |
-| DOS/band postprocessing: TDOS/PDOS, projected bands, d-band center, Fermi-level shift, adsorbate/surface orbital extraction | `references/dos-band.md`; pair with `tools/vasp/references/dos-band.md` |
-| electronic-analysis postprocessing: charge-density difference, planar average, work function, Bader coloring, real-space wavefunction, partial/orbital charge | `references/electronic-analysis.md`; pair with `tools/vasp/references/electronic-analysis.md` |
-| thermochemistry/free energy: fix atoms for frequencies, VASPKIT 501/502, gas chemical potentials for high-temperature work, surface thermodynamics, reaction profiles, and single-atom/defect stability diagrams | `references/thermochemistry.md`; for the science pair with `knowledge/thermochemistry-and-free-energy.md` and `knowledge/surface-thermodynamics.md` |
-| AIMD post-processing: MSD/diffusion, VACF, VDOS, RDF/trajectory conversion, frame cuts and fit windows | `references/aimd-postprocessing.md`; pair with `tools/vasp/references/aimd.md` |
+| DOS/band postprocessing: TDOS/PDOS, projected bands, d-band center, Fermi-level shift, adsorbate/surface orbital extraction | `references/dos-band.md`; pair with the `vasp` skill's `references/dos-band.md` |
+| electronic-analysis postprocessing: charge-density difference, planar average, work function, Bader coloring, real-space wavefunction, partial/orbital charge | `references/electronic-analysis.md`; pair with the `vasp` skill's `references/electronic-analysis.md` |
+| thermochemistry/free energy: fix atoms for frequencies, VASPKIT 501/502, gas chemical potentials for high-temperature work, surface thermodynamics, reaction profiles, and single-atom/defect stability diagrams | `references/thermochemistry.md`; for the science pair with `references/knowledge/thermochemistry-and-free-energy.md` and `references/knowledge/surface-thermodynamics.md` |
+| AIMD post-processing: MSD/diffusion, VACF, VDOS, RDF/trajectory conversion, frame cuts and fit windows | `references/aimd-postprocessing.md`; pair with the `vasp` skill's `references/aimd.md` |
 | task fails, menu input hangs, output files are empty, plots look shifted | `references/errors.md` |
 | official docs, feature list, citation, VASP links | `references/resources.md` |
 | worked examples to copy and adapt | `examples/` |

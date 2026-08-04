@@ -1,6 +1,6 @@
 # Examples
 
-Each example is a self-contained directory: complete input files + a `README.md` + `expected-output.md`. Full conventions in the repo-root `STRUCTURE.md`.
+Each example is a self-contained directory: complete input files + a `README.md` + `expected-output.md`. Each example is self-contained: the skill directory (SKILL.md + references/) carries its own conventions.
 
 Rules:
 

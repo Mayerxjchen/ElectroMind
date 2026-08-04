@@ -414,22 +414,9 @@ def _render_skills_prompt(budget, catalog) -> str:
     """
     from ..skills.runtime import SKILLS_END, SKILLS_START
 
+    # A+ W5: no AGENTS.md global instructions — skills are self-contained;
+    # per-skill rules live in each SKILL.md and its references.
     lines: list[str] = []
-    # AGENTS.md global instructions first (structured sources)
-    seen: set = set()
-    for c in catalog.candidates:
-        src_root = c.source.root
-        if src_root in seen:
-            continue
-        seen.add(src_root)
-        agents_md = src_root / "AGENTS.md"
-        if agents_md.is_file():
-            try:
-                text = agents_md.read_text(encoding="utf-8").strip()
-                if text:
-                    lines.append(text)
-            except OSError:
-                continue
     lines.append(SKILLS_START)
     if budget.entries:
         lines.append("你可以按需加载这些 skill：")

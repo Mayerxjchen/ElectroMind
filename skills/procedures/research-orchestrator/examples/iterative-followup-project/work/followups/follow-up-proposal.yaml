@@ -23,7 +23,7 @@ recommended_tasks:
     success_criteria:
       - follow-up observable is computed and parsed
     required_refs:
-      - tools/vasp/SKILL.md
+      - vasp
     release_gates:
       - engine-parser-validation
   - id: T005
@@ -52,4 +52,4 @@ recommended_tasks:
     success_criteria:
       - follow-up evidence is classified against the registered objective
     required_refs:
-      - procedures/research-orchestrator/references/critic-contract.md
+      - references/critic-contract.md

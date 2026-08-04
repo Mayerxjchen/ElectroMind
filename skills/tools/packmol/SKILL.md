@@ -1,5 +1,5 @@
 ---
-name: packmol-generate
+name: packmol
 description: >
   Generate and validate initial Packmol configurations from specified molecule
   or ion structures, counts, target density or box dimensions. Use when a user
@@ -64,7 +64,7 @@ Create `packmol-task.json` from this exact schema, replacing example values:
   "system_name": "system",
   "components": [{
     "name": "H2O",
-    "template_path": "/home/zagent/water.xyz",
+    "template_path": "~/water.xyz",
     "template_origin": "provided",
     "count": 64,
     "formal_charge_e": 0,
@@ -78,9 +78,9 @@ Create `packmol-task.json` from this exact schema, replacing example values:
   "packmol": {
     "tolerance_A": 2.0,
     "seed": null,
-    "input_path": "/home/zagent/system.inp",
-    "log_path": "/home/zagent/packmol.out",
-    "output_path": "/home/zagent/system.xyz"
+    "input_path": "~/system.inp",
+    "log_path": "~/packmol.out",
+    "output_path": "~/system.xyz"
   },
   "provenance": {
     "confirmed_fields": [],

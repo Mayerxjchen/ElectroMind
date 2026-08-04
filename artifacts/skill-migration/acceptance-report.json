@@ -1,0 +1,50 @@
+{
+  "base_commit": "83e006c9f381a97edbcf47a4a04c8643cdbe3b52",
+  "branch": "main",
+  "coverage": 78.2094,
+  "generated_at": "2026-08-04T17:52:32.288761+00:00",
+  "install": {
+    "note": "scripts/test-uv-tool-install.sh\uff08INSTALL-001~010\uff09",
+    "result": "pass"
+  },
+  "isolation_clean": true,
+  "mount_parity": {
+    "container": "pass",
+    "local": "pass",
+    "note": "tests/test_skill_mount_parity.py\uff08container \u9700 docker/podman \u73af\u5883\uff09",
+    "ssh_loopback": "pass"
+  },
+  "reference_counts": {
+    "bare_md_missing_refs": 0,
+    "isolation_violations": 0,
+    "knowledge_root_relative_refs": 0
+  },
+  "rules": {
+    "done": 25,
+    "total": 25
+  },
+  "runtime_warnings": 0,
+  "schema_version": 1,
+  "scope_boundary": {
+    "collection_manifest_runtime": false,
+    "cross_skill_scenarios": {
+      "enforced_by": [
+        "tests/test_skill_activation.py",
+        "scripts/check-skill-isolation.py"
+      ],
+      "revision": "docs/design/skill-aplus-v1-scope-revision.md"
+    },
+    "plugin_manager": false,
+    "semantic_slicing": false,
+    "skill_export": false
+  },
+  "status": "pass",
+  "sync_check_clean": true,
+  "tested_commit": "49766e76a4f481cf27e4a5a917683789f4415fc3",
+  "tests": {
+    "collected": 1490,
+    "failed": 0,
+    "passed": 1486,
+    "skipped": 4
+  }
+}

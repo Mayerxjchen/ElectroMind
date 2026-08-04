@@ -9,10 +9,32 @@ from pathlib import Path
 
 import pytest
 
-from electromind.skills.discovery import discover_skill_sources, load_skill_catalog
+from electromind.skills.discovery import load_skill_catalog
 from electromind.skills.skill import build_skills_system_prompt
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _repo_flat_sources():
+    """The repo skills bundle as two plain flat legacy sources (A+ W5)."""
+    from electromind.skills.discovery import SkillSource as LegacySkillSource
+
+    return (
+        LegacySkillSource(
+            id="builtin:procedures",
+            kind="standard",
+            scope="project",
+            root=(REPO_ROOT / "skills" / "procedures").resolve(),
+            priority=1,
+        ),
+        LegacySkillSource(
+            id="builtin:tools",
+            kind="standard",
+            scope="project",
+            root=(REPO_ROOT / "skills" / "tools").resolve(),
+            priority=1,
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -22,9 +44,15 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 @pytest.fixture(scope="module")
 def repo_catalog():
-    """Load the real repository skill bundle once per test run."""
-    sources = discover_skill_sources(str(REPO_ROOT))
-    return load_skill_catalog(sources)
+    """Load the real repository skills bundle once per test run.
+
+    A+ W5: the bundle is discovered through its two plain flat roots
+    (``skills/procedures`` and ``skills/tools``); there is no structured
+    root or AGENTS.md marker.
+    """
+    from electromind.skills.discovery import load_skill_catalog
+
+    return load_skill_catalog(_repo_flat_sources())
 
 
 # ---------------------------------------------------------------------------
@@ -68,15 +96,13 @@ def test_knowledge_is_not_registered_as_skill(repo_catalog):
 # ---------------------------------------------------------------------------
 
 
-def test_global_instructions_precede_skill_catalog(repo_catalog):
-    """AGENTS.md content must appear before the skill catalog markers."""
+def test_no_agents_routing_in_prompt(repo_catalog):
+    """A+ W8: AGENTS.md is gone — no routing section leaks into the prompt."""
     prompt = build_skills_system_prompt(repo_catalog)
     if "<!-- electromind:skills:start -->" not in prompt:
         return  # no catalog section, nothing to assert
     pos_routing = prompt.find("Routing")
-    pos_start = prompt.find("<!-- electromind:skills:start -->")
-    assert pos_routing >= 0, "AGENTS.md 'Routing' section must be present"
-    assert pos_routing < pos_start, "Global instructions must precede the skill catalog"
+    assert pos_routing < 0, "AGENTS.md 'Routing' must NOT be in the prompt"
 
 
 def test_skill_has_source_id_and_sha256(repo_catalog):
@@ -91,8 +117,7 @@ def test_skill_has_source_id_and_sha256(repo_catalog):
 
 def test_catalog_fingerprint_is_stable(repo_catalog):
     """Loading the same sources twice must produce the same fingerprint."""
-    sources = discover_skill_sources(str(REPO_ROOT))
-    catalog2 = load_skill_catalog(sources)
+    catalog2 = load_skill_catalog(_repo_flat_sources())
     assert repo_catalog.fingerprint == catalog2.fingerprint
 
 
@@ -139,8 +164,7 @@ def test_skill_registration_does_not_execute_anything(repo_catalog):
     try:
         subprocess.Popen = _fake_popen  # type: ignore[assignment]
         builtins.open = _fake_open  # type: ignore[assignment]
-        sources = discover_skill_sources(str(REPO_ROOT))
-        load_skill_catalog(sources)
+        load_skill_catalog(_repo_flat_sources())
     finally:
         subprocess.Popen = real_popen  # type: ignore[assignment]
         builtins.open = real_open  # type: ignore[assignment]
@@ -190,14 +214,7 @@ def test_use_skill_is_present_as_tool_when_catalog_non_empty(repo_catalog):
 # ---------------------------------------------------------------------------
 
 
-def test_agents_md_is_included_in_global_instructions(repo_catalog):
-    """The full ``skills/AGENTS.md`` text must be present in global instructions
-    so the agent can see routing guidance and execution-mode notes."""
-    instructions = "\n".join(repo_catalog.global_instructions)
-    assert "Routing" in instructions, (
-        "AGENTS.md Routing section must be in global instructions"
-    )
-    assert "hpc-submit" in instructions, (
-        "hpc-submit must be mentioned in global instructions"
-    )
-    assert "rsess" in instructions, "rsess must be mentioned in global instructions"
+def test_catalog_has_no_global_instructions(repo_catalog):
+    """A+ W8: the catalog carries no global-instructions field — the
+    attribute was removed with the AGENTS.md plumbing."""
+    assert not hasattr(repo_catalog, "global_instructions")

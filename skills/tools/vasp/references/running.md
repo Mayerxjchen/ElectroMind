@@ -6,7 +6,7 @@ Community-standard starting points. A reproduction target's published settings a
 
 Before writing generated VASP inputs, record an input-standard note in the
 engine-input-set or method fingerprint: task type, source reference used from
-`tools/vasp`, ENCUT policy, k-policy, smearing, spin/U policy, executable
+this skill, ENCUT policy, k-policy, smearing, spin/U policy, executable
 (`vasp_std`/`vasp_gam`/`vasp_ncl`), parallel layout (`NPAR=4` for routine CPU
 production relax/static work, `KPAR` when deliberately used, or an explicit
 GPU/site-default rationale), and any intentional departure from this file.
@@ -249,7 +249,7 @@ Directory layout `00/`(initial) through `0N/`(final) with relaxed endpoints' POS
 
 **Reaction energetics** — write the energy expression *first*, with reference states and sign convention, e.g. `E_ads = E(slab+CO) - E(slab) - E(CO_gas)`; gas molecule in a >=15 A box, Gamma-only, same functional. Every energy entering one expression must use identical functional, ENCUT, k-density (per area), and convergence criteria; same cell for slab and slab+adsorbate. Report which corrections (ZPE, entropy, solvation, dipole) are and are not included.
 
-**Electrochemical CHE / implicit solvent** — for OER/ORR/HER step diagrams, write the CHE cycle before running: adsorbate states, H2/H2O references, O2 back-calculation, pH, and potential scale (SHE/RHE). Use `knowledge/electrochemistry.md` for CHE formulas and constant-potential concepts; use `electrochemistry.md` here for `oer.xlsx`-style VASP energy assembly, VASPsol tags, and VASPsol++ setup.
+**Electrochemical CHE / implicit solvent** — for OER/ORR/HER step diagrams, write the CHE cycle before running: adsorbate states, H2/H2O references, O2 back-calculation, pH, and potential scale (SHE/RHE). Use `references/knowledge/electrochemistry.md` for CHE formulas and constant-potential concepts; use `electrochemistry.md` here for `oer.xlsx`-style VASP energy assembly, VASPsol tags, and VASPsol++ setup.
 
 **NEB / Dimer transition states** — both endpoints fully relaxed with identical settings before imaging; interpolated images checked for atoms passing through each other; climbing-image (`LCLIMB=.TRUE.`) for barriers. Use a VTST-enabled VASP build. A converged TS should show exactly one imaginary mode along the path if frequencies are computed.
 

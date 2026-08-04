@@ -208,7 +208,7 @@ class TestCliSkillsFlags:
         monkeypatch.chdir(proj)
         # 隔离内置 bundle，使候选数可精确断言
         monkeypatch.setattr(
-            "electromind.skills.builtin._candidate_builtin_roots",
+            "electromind.skills.builtin._candidate_builtin_bases",
             lambda: [],
         )
 

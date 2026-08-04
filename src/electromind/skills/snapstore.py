@@ -23,7 +23,7 @@ import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Sequence
 
 from .snapshot import hash_content
 
@@ -67,14 +67,25 @@ class PrivateSnapshotStore:
         name: str,
         body: str,
         resources_dir: Path | None = None,
+        resources: Sequence[tuple[str, bytes]] | None = None,
     ) -> SkillSnapshotRef:
         """Store a snapshot content-addressed on *body* + resource contents.
+
+        ``resources`` carries the frozen catalog bytes (P0-2) and takes
+        precedence over the legacy live-disk ``resources_dir`` — activation
+        must never re-read resource files mid-run.
 
         Same digest → single copy (existing snapshot is reused).
         Returns a ``SkillSnapshotRef`` into the private store.
         """
-        resource_paths = self._resource_paths(resources_dir)
-        digest = self._snapshot_digest(body, resource_paths)
+        if resources is not None:
+            resource_items = list(resources)
+        else:
+            resource_items = [
+                (rel, full.read_bytes() if full.is_file() else b"")
+                for rel, full in self._resource_paths(resources_dir)
+            ]
+        digest = self._snapshot_digest(body, resource_items)
 
         target = self.root / digest
         if target.is_dir():
@@ -90,19 +101,19 @@ class PrivateSnapshotStore:
             os_chmod_private(target)
             (target / "SKILL.md").write_text(body, encoding="utf-8")
 
-            if resources_dir is not None and resource_paths:
+            if resource_items:
                 res_target = target / "resources"
                 res_target.mkdir(exist_ok=True)
-                for rel, src in resource_paths:
+                for rel, data in resource_items:
                     dst = res_target / rel
                     dst.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(src, dst)
+                    dst.write_bytes(data)
 
             manifest = {
                 "name": name,
                 "digest": digest,
                 "created_at": _now_iso(),
-                "resources": sorted(rel for rel, _ in resource_paths),
+                "resources": sorted(rel for rel, _ in resource_items),
                 "export_policy": "private",
             }
             (target / "manifest.json").write_text(
@@ -130,6 +141,25 @@ class PrivateSnapshotStore:
             return None
         md = target / "SKILL.md"
         return md.read_text(encoding="utf-8") if md.is_file() else None
+
+    def read_resources(self, ref: SkillSnapshotRef) -> tuple[str, ...]:
+        """Return the snapshot's resource paths (excluding ``SKILL.md``).
+
+        A+ §7: the activation payload exposes the mounted resources as
+        relative paths under the skill root.
+        """
+        target = self.path_for(ref)
+        if target is None:
+            return ()
+        manifest = target / "manifest.json"
+        if not manifest.is_file():
+            return ()
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            return ()
+        resources = data.get("resources", [])
+        return tuple(r for r in resources if isinstance(r, str) and r != "SKILL.md")
 
     # -- GC ---------------------------------------------------------------
 
@@ -183,17 +213,12 @@ class PrivateSnapshotStore:
         return pairs
 
     def _snapshot_digest(
-        self, body: str, resource_paths: list[tuple[str, Path]]
+        self, body: str, resource_items: list[tuple[str, bytes]]
     ) -> str:
         parts = [body]
-        for rel, full in sorted(resource_paths):
+        for rel, data in sorted(resource_items):
             parts.append(rel)
-            try:
-                parts.append(
-                    hash_content(*(full.read_bytes().decode("utf-8", "replace"),))
-                )
-            except OSError:
-                parts.append("unreadable")
+            parts.append(hash_content(*(data.decode("utf-8", "replace"),)))
         return hash_content(*parts)
 
     def _age_days(self, manifest: Path, now: float) -> float | None:

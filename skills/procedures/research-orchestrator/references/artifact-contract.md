@@ -34,7 +34,7 @@ Recommended:
 - `content_hash`: hash for immutable files or bundles when available.
 - `summary`: human-readable summary.
 - `units`: required for numeric results.
-- `knowledge_used`: `knowledge/` files consulted for the artifact.
+- `knowledge_used`: `references/knowledge/` files consulted for the artifact.
 - `validated_by`: checker/parser artifact or command.
 - `accepted_by`: decision ID, critic task ID, or user approval.
 - `lease_id`: execution lease that owned generation, for expensive or stateful runs.
@@ -166,9 +166,9 @@ Some artifact types should not be accepted without named release gates:
   `CHGCAR`, `CHGDIFF`, `PARCHG`, `ELFCAR`, spin density, Delta rho / charge-density
   difference, wavefunction/WAVECAR-derived grids, or another CHGCAR-like VASP source,
   the figure artifact, consumed report manifest, or sidecar must name
-  `tools/vasp/references/volumetric-visualization.md`. Charge-density-difference
+  the `vasp` skill's `references/volumetric-visualization.md`. Charge-density-difference
   figures must also name
-  `tools/vasp/references/electronic-analysis.md`.
+  the `vasp` skill's `references/electronic-analysis.md`.
 - `docx-report` — report readiness checklist.
 
 Gate verdict artifacts should usually be `status: accepted` before a downstream task

@@ -7,7 +7,7 @@
 Run:
 
 ```bash
-uv run tools/vaspkit/scripts/check_vaspkit.py RUNDIR
+uv run ../scripts/check_vaspkit.py RUNDIR
 ```
 
 Minimum pass criteria:
@@ -15,7 +15,7 @@ Minimum pass criteria:
 - `vaspkit` executable is found, or the run record states the absolute executable path.
 - `~/.vaspkit` exists for tasks that need pseudopotentials, plotting, or utilities.
 - Required VASP inputs/outputs for the task family exist and are non-empty.
-- Upstream VASP calculation has been validated by `tools/vasp/scripts/parse_vasp.py` if the task uses final energies, eigenvalues, charge density, forces, stress, or trajectories.
+- Upstream VASP calculation has been validated by the `vasp` skill's `scripts/parse_vasp.py` if the task uses final energies, eigenvalues, charge density, forces, stress, or trajectories.
 
 ## Output validation by task
 

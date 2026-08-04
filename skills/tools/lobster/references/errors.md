@@ -19,4 +19,4 @@
 - Treating poor-spilling COHP as quantitative.
 - Quoting `-COHP` plots while reporting raw COHP signs without explanation.
 
-(Interpretation pitfalls — comparing unlike pairs, fragment-from-PDOS claims — are in `knowledge/bonding-analysis.md`.)
+(Interpretation pitfalls — comparing unlike pairs, fragment-from-PDOS claims — are in `references/knowledge/bonding-analysis.md`.)

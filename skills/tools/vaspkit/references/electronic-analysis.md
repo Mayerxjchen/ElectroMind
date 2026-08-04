@@ -1,6 +1,6 @@
 # VASPKIT Electronic-Analysis Workflows
 
-> Load this when: using VASPKIT for charge-density difference, spin density, planar averages, work functions, Bader visualization helpers, partial charge density, or real-space wavefunction/orbital plots. Pair this with `knowledge/electronic-structure.md` for the scientific interpretation, `tools/vasp/references/electronic-analysis.md` for the VASP-side run settings, and `tools/vasp/references/volumetric-visualization.md` for PyVista/VESTA-style rendering of generated CHGCAR-like files.
+> Load this when: using VASPKIT for charge-density difference, spin density, planar averages, work functions, Bader visualization helpers, partial charge density, or real-space wavefunction/orbital plots. Pair this with `references/knowledge/electronic-structure.md` for the scientific interpretation, the `vasp` skill's `references/electronic-analysis.md` for the VASP-side run settings, and the `vasp` skill's `references/volumetric-visualization.md` for PyVista/VESTA-style rendering of generated CHGCAR-like files.
 
 Task numbers can shift between VASPKIT releases. Confirm the local menu before automating, and record the VASPKIT version, task ID, menu answers, input files, and output files.
 
@@ -8,7 +8,7 @@ When a final report includes a VASP volumetric figure (`CHGCAR`, `CHGDIFF`, `PAR
 `ELFCAR`, spin density, Delta rho / charge-density difference, or wavefunction/WAVECAR
 derived grids) and VASPKIT was used, the accepted figure artifact should keep the
 version, task ID, exact menu input or automation transcript, source files, generated
-CHGCAR-like output, and downstream `tools/vasp/references/volumetric-visualization.md`
+CHGCAR-like output, and downstream the `vasp` skill's `references/volumetric-visualization.md`
 rendering provenance. VASPKIT is not mandatory for every volumetric figure, but a
 VASPKIT-derived figure without its task/log/menu provenance is not reproducible.
 
@@ -28,7 +28,7 @@ VASPKIT-derived figure without its task/log/menu provenance is not reproducible.
 
 Use this for spin-polarized charge rearrangement or magnetic-state visualization when the upstream calculation is converged and the spin channel is meaningful. The generated spin-density file is a CHGCAR-like volumetric target: render positive and negative isosurfaces with equal magnitude, or make 2D slices through the magnetic center or adsorbate bond.
 
-Record the VASPKIT version, exact task ID, prompt answers, source `CHGCAR`/spin-polarized run, and output filename. For PyVista rendering of the generated file, load `tools/vasp/references/volumetric-visualization.md`.
+Record the VASPKIT version, exact task ID, prompt answers, source `CHGCAR`/spin-polarized run, and output filename. For PyVista rendering of the generated file, load the `vasp` skill's `references/volumetric-visualization.md`.
 
 ## Charge-density difference with task 314
 
@@ -131,7 +131,7 @@ Real-space orbital/partial charge density, commonly task 515:
 printf '51\n515\n1\n20\n' | vaspkit > vaspkit.515.log 2>&1
 ```
 
-The exact submenu and prompt sequence vary by version; confirm interactively. Record spin channel, k-point index, band index, energy, output filename such as `WFN_REAL_B0005_K0001.vasp`, and whether equivalent degenerate bands were merged. For PyVista rendering of the generated CHGCAR-like file, load `tools/vasp/references/volumetric-visualization.md`.
+The exact submenu and prompt sequence vary by version; confirm interactively. Record spin channel, k-point index, band index, energy, output filename such as `WFN_REAL_B0005_K0001.vasp`, and whether equivalent degenerate bands were merged. For PyVista rendering of the generated CHGCAR-like file, load the `vasp` skill's `references/volumetric-visualization.md`.
 
 Use cases:
 

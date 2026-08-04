@@ -30,8 +30,8 @@ stage synthesis rather than a final report.
 | is the report ready to submit? the human-readability checklist (gates) | `references/validation.md` |
 | assemble the docx from a manifest | `scripts/build_report.py` (python-docx; run with `uv run`) |
 | a worked manifest to copy | `examples/` |
-| model figures: orthographic top+side, atoms colored by charge | `knowledge/scientific-visualization.md` |
-| the science of what to show and why | `knowledge/scientific-visualization.md` |
+| model figures: orthographic top+side, atoms colored by charge | `references/knowledge/scientific-visualization.md` |
+| the science of what to show and why | `references/knowledge/scientific-visualization.md` |
 
 ## Hard guardrails (the human-readability spec — enforced by `validation.md`)
 

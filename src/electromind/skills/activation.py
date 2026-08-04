@@ -277,6 +277,7 @@ class SkillActivationService:
             # 4. content-addressed snapshot
             item = self._with_status(item, SNAPSHOTTING)
             ref = self._snapshot(resolved.candidate, substituted)
+            resources = self.store.read_resources(ref)
             # 5. target-environment mount
             item = self._with_status(item, MOUNTING)
             mounted_root = await self._mount(ref)
@@ -296,6 +297,7 @@ class SkillActivationService:
                     body=substituted,
                     ref=ref,
                     candidate=resolved.candidate,
+                    resources=resources,
                 ),
             )
         except SkillResolutionError as exc:
@@ -320,6 +322,7 @@ class SkillActivationService:
         empty body — the caller sees a degraded but honest payload.
         """
         body = ""
+        resources: tuple[str, ...] = ()
         if item.snapshot_ref:
             ref = SkillSnapshotRef(
                 digest=item.snapshot_ref,
@@ -329,7 +332,14 @@ class SkillActivationService:
             stored = self.store.read_body(ref)
             if stored is not None:
                 body = stored
-        payload = _build_payload(item)
+            resources = self.store.read_resources(ref)
+        # P1-4: replay keeps the full payload contract — candidate metadata
+        # (resource_digest etc.) is resolved from the frozen catalog.
+        candidate = next(
+            (c for c in self.catalog.candidates if c.skill_id == item.skill_id),
+            None,
+        )
+        payload = _build_payload(item, candidate=candidate, resources=resources)
         payload["instructions"] = body
         return payload
 
@@ -376,14 +386,14 @@ class SkillActivationService:
     def _snapshot(
         self, candidate: SkillCandidate, substituted_body: str
     ) -> SkillSnapshotRef:
+        # P0-2: build the snapshot ONLY from the frozen catalog resources —
+        # never a live re-read of resource files (TOCTOU closure).
+        frozen = self.catalog.frozen_resources or {}
+        resources = frozen.get(candidate.skill_id)
         return self.store.save(
             name=candidate.descriptor.name,
             body=substituted_body,
-            resources_dir=(
-                candidate.descriptor.root_path
-                if candidate.descriptor.root_path.is_dir()
-                else None
-            ),
+            resources=resources,
         )
 
     async def _mount(self, ref: SkillSnapshotRef) -> str | None:
@@ -497,6 +507,9 @@ def make_activation_use_skill_tool(
                 {
                     "ok": False,
                     "error": f"无法解析 skill: {name!r}（无可用候选或存在歧义）",
+                    "error_code": "skill_unresolved",
+                    "skill_id": name,
+                    "status": f"required capability unavailable: {name}",
                     "available": service.catalog.names(),
                 },
                 ensure_ascii=False,
@@ -512,7 +525,13 @@ def make_activation_use_skill_tool(
             result = await service.activate(request)
         except ActivationError as exc:
             return json.dumps(
-                {"ok": False, "error": str(exc), "needs_trust": exc.needs_trust},
+                {
+                    "ok": False,
+                    "error": str(exc),
+                    "error_code": "activation_failed",
+                    "skill_id": name,
+                    "needs_trust": exc.needs_trust,
+                },
                 ensure_ascii=False,
             )
         return json.dumps(result.payload, ensure_ascii=False)
@@ -521,6 +540,8 @@ def make_activation_use_skill_tool(
         name="use_skill",
         description=(
             "加载一个 skill 的完整说明书并挂载其资源。"
+            "当任意 skill 文档说“Activate the `X` skill”时，即表示调用本工具"
+            "（name=X）。"
             "返回 JSON：{ok, name, skill_id, instructions, snapshot_ref, "
             "mounted_root, generation, status}。"
         ),
@@ -564,7 +585,11 @@ def make_activate_skill_tool(
         request_id = _new_request_id()
         if skillId is None and name is None:
             return json.dumps(
-                {"ok": False, "error": "skillId or name is required"},
+                {
+                    "ok": False,
+                    "error": "skillId or name is required",
+                    "error_code": "invalid_request",
+                },
                 ensure_ascii=False,
             )
         target = skillId or name or ""
@@ -579,6 +604,9 @@ def make_activate_skill_tool(
                     {
                         "ok": False,
                         "error": f"无法解析 skill: {target!r}（无可用候选或存在歧义）",
+                        "error_code": "skill_unresolved",
+                        "skill_id": target,
+                        "status": f"required capability unavailable: {target}",
                         "available": service.catalog.names(),
                     },
                     ensure_ascii=False,
@@ -596,7 +624,13 @@ def make_activate_skill_tool(
             result = await service.activate(request)
         except ActivationError as exc:
             return json.dumps(
-                {"ok": False, "error": str(exc), "needs_trust": exc.needs_trust},
+                {
+                    "ok": False,
+                    "error": str(exc),
+                    "error_code": "activation_failed",
+                    "skill_id": target,
+                    "needs_trust": exc.needs_trust,
+                },
                 ensure_ascii=False,
             )
         return json.dumps(result.payload, ensure_ascii=False)
@@ -605,7 +639,8 @@ def make_activate_skill_tool(
         name="activate_skill",
         description=(
             "激活一个 skill：解析候选、校验信任、创建快照、挂载资源后返回"
-            "完整说明书。skillId 优先（qualified id），否则按 name 解析。"
+            "完整说明书。当任意 skill 文档说“Activate the `X` skill”时，即表示"
+            "调用本工具（name=X）。skillId 优先（qualified id），否则按 name 解析。"
         ),
         parameters={
             "type": "object",
@@ -670,12 +705,18 @@ def _build_payload(
     body: str = "",
     ref: SkillSnapshotRef | None = None,
     candidate: SkillCandidate | None = None,
+    resources: tuple[str, ...] = (),
 ) -> dict:
     """The payload the caller may inject into the model context.
 
     Only called after the transaction fully succeeded.  Includes the legacy
     ``description`` field when the candidate is known so the phase-2 runtime
     keeps the compat ``use_skill`` contract (RFC section 九).
+
+    A+ §7: during the compat period the payload carries both the legacy
+    ``mounted_root`` and the standard-skill ``skill_root`` (equal for now),
+    plus the mounted ``resources`` as skill-relative paths.  No destructive
+    payload removal happens in this migration.
     """
     payload = {
         "ok": True,
@@ -685,12 +726,16 @@ def _build_payload(
         "instructions": body,
         "snapshot_ref": str(ref) if ref else item.snapshot_ref,
         "mounted_root": item.mounted_root,
+        "skill_root": item.mounted_root,
         "generation": item.catalog_generation,
         "status": item.status,
     }
     if candidate is not None:
         payload["description"] = candidate.descriptor.description
         payload["resource_digest"] = candidate.descriptor.resource_digest
+    # P1-4: `resources` is always present (empty list for resource-less
+    # skills) so the payload schema is stable across activations/replays.
+    payload["resources"] = list(resources)
     return payload
 
 

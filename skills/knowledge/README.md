@@ -12,7 +12,7 @@ the routing table, not installed by `install.sh`. They are **starting points to 
 from, not rules** — an agent reads the relevant doc, takes what fits the problem, and adapts
 freely; it never has to pick one or follow it as-is. Discovery is by cross-links from the
 procedure/tool skills (e.g. `tools/vasp/SKILL.md` points the science of surface energy here)
-plus the `AGENTS.md` routing note and this index.
+plus the routing descriptions in each skill's `SKILL.md` and this index.
 
 ## Conventions
 

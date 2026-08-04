@@ -1,6 +1,6 @@
 ---
 name: lobster
-description: Run LOBSTER to project a plane-wave (VASP) wavefunction onto a local orbital basis and compute COHP/COOP/ICOHP bonding analysis, Mulliken/Loewdin populations, and projected DOS. Use to set up the VASP static that feeds LOBSTER, write lobsterin, run lobster, and check projection (spilling) quality. For the *interpretation* of the bonding numbers, see knowledge/bonding-analysis.md.
+description: Run LOBSTER to project a plane-wave (VASP) wavefunction onto a local orbital basis and compute COHP/COOP/ICOHP bonding analysis, Mulliken/Loewdin populations, and projected DOS. Use to set up the VASP static that feeds LOBSTER, write lobsterin, run lobster, and check projection (spilling) quality. For the *interpretation* of the bonding numbers, see references/knowledge/bonding-analysis.md.
 ---
 
 # LOBSTER
@@ -8,7 +8,7 @@ description: Run LOBSTER to project a plane-wave (VASP) wavefunction onto a loca
 LOBSTER reads a VASP wavefunction and projects it onto a local orbital basis to produce
 COHP/COOP/ICOHP and population analysis. It is a separate program from VASP (no recompile
 needed). This skill covers **operating it**; the **science of reading** COHP/ICOHP is in
-`knowledge/bonding-analysis.md`.
+`references/knowledge/bonding-analysis.md`.
 
 ## Required inputs
 
@@ -25,7 +25,7 @@ needed). This skill covers **operating it**; the **science of reading** COHP/ICO
 | spilling/projection-quality checks, output files, reporting checklist | `references/validation.md` |
 | stale WAVECAR, missing `ISYM=-1`, basis/PAW mismatch, high spilling, gamma-only | `references/errors.md` |
 | official program, manual, basis sets, citation | `references/resources.md` |
-| the science — what COHP/ICOHP mean and how to argue a bond-strength claim | `knowledge/bonding-analysis.md` |
+| the science — what COHP/ICOHP mean and how to argue a bond-strength claim | `references/knowledge/bonding-analysis.md` |
 
 ## Workflow
 
@@ -33,7 +33,7 @@ needed). This skill covers **operating it**; the **science of reading** COHP/ICO
 2. Write `lobsterin` (basis matched to the PAW potential; pairs or generator).
 3. Run `lobster` on a compute node (OpenMP).
 4. Check `lobsterout` charge spilling before trusting anything (`references/validation.md`).
-5. Read the bonding result using `knowledge/bonding-analysis.md`.
+5. Read the bonding result using `references/knowledge/bonding-analysis.md`.
 
 ## Hard guardrails
 
