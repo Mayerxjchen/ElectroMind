@@ -2,7 +2,7 @@
 //
 // 把宿主转发来的 Wire 事件流渲染成 DOM。本模块只碰 DOM，不碰 vscode/Node。
 //
-// 事件语义（见 src/pagentv4/core/events.py）：
+// 事件语义（见 src/electromind/core/events.py）：
 //   RunBegin   一轮运行开始（params.user_input）
 //   TextDelta  正文增量（params.text），流式拼接
 //   TurnResult 一个模型 turn 的完整结果（params.content 等）
@@ -20,7 +20,7 @@
 //   - 运行态占位：用户发出到首个增量到达之间，在 assistant 位插一个“思考中”动画气泡，
 //     首个 TextDelta/ReasoningDelta 或 RunEnd 时撤下，避免界面看起来卡住。
 //   - 智能滚动：仅当用户已贴近底部时才自动跟随流式内容；上翻历史不被拽回。
-//   - 角色标签 + 空状态：每条消息上方标 you/pagent；无消息时显示一句引导。
+//   - 角色标签 + 空状态：每条消息上方标 you/electromind；无消息时显示一句引导。
 
 import DOMPurify from "dompurify";
 import { marked } from "marked";
@@ -905,7 +905,7 @@ export class ChatRenderer {
     msg.className = "msg assistant notice";
     const label = document.createElement("div");
     label.className = "role-label";
-    label.textContent = "pagent";
+    label.textContent = "electromind";
     msg.appendChild(label);
     const bubble = document.createElement("div");
     bubble.className = "bubble assistant notice";
@@ -1050,7 +1050,7 @@ function summarizeLine(text: string): string {
 function makeRoleLabel(role: "user" | "assistant"): HTMLElement {
   const label = document.createElement("div");
   label.className = "role-label";
-  label.textContent = role === "user" ? "you" : "pagent";
+  label.textContent = role === "user" ? "you" : "electromind";
   return label;
 }
 

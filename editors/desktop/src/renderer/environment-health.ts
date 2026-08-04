@@ -179,7 +179,7 @@ export function renderHealthPanel(env: EnvironmentCheck): string {
 export type HealthActionHandlers = {
   onRefresh: () => void | Promise<void>;
   onCopyCommands: () => void | Promise<void>;
-  onInstallPagent: () => void | Promise<void>;
+  onInstallElectromind: () => void | Promise<void>;
 };
 
 export function bindHealthPanel(root: HTMLElement, handlers: HealthActionHandlers): void {
@@ -190,6 +190,6 @@ export function bindHealthPanel(root: HTMLElement, handlers: HealthActionHandler
     void handlers.onCopyCommands();
   });
   root.querySelector<HTMLButtonElement>("[data-health-install-electromind]")?.addEventListener("click", () => {
-    void handlers.onInstallPagent();
+    void handlers.onInstallElectromind();
   });
 }

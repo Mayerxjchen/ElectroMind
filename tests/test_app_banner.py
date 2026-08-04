@@ -62,7 +62,7 @@ def test_banner_contains_key_fields():
         run_state = RunState()
 
     text = format_banner(FakeRunner(), color=False)
-    assert "pagent" in text
+    assert "electromind" in text
     assert "thread-demo" in text
     assert "空闲" in text
     assert "deepseek-v4-flash" in text

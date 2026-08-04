@@ -58,16 +58,16 @@ def test_parse_repl_config_sandbox_tools_rejects_non_list():
 def test_thread_overrides_from_config():
     config = ReplConfig(
         backend="ssh",
-        ssh_host="pagent",
+        ssh_host="dev-host",
         ssh_config="~/.ssh/config",
-        ssh_workdir="~/pagent",
+        ssh_workdir="~/electromind",
         model="deepseek-v4-flash",
     )
     assert config.thread_overrides() == {
         "backend": "ssh",
-        "ssh_host": "pagent",
+        "ssh_host": "dev-host",
         "ssh_config": "~/.ssh/config",
-        "ssh_workdir": "~/pagent",
+        "ssh_workdir": "~/electromind",
         "model": "deepseek-v4-flash",
         # project_path 留空 → 冻结成启动时的 cwd 绝对路径（thread.toml 写具体值）。
         "project_path": os.path.abspath(os.getcwd()),
@@ -120,7 +120,7 @@ def test_refresh_provider_from_disk_picks_up_new_key(tmp_path, monkeypatch):
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     stale = ReplConfig()
     assert stale.resolved_api_key() is None
-    (home / "electromind.toml").write_text(
+    (home / "config.toml").write_text(
         '[provider]\napi_key = "sk-after-setup"\nmodel = "deepseek-v4-flash"\n',
         encoding="utf-8",
     )
@@ -134,7 +134,7 @@ def test_resolved_max_turns_default():
 
 
 def test_config_from_file(tmp_path, monkeypatch):
-    # 隔离真实 ~/.pagent，避免本机用户配置污染默认值断言。
+    # 隔离真实 ~/.electromind，避免本机用户配置污染默认值断言。
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
     parser = build_parser()
@@ -142,13 +142,13 @@ def test_config_from_file(tmp_path, monkeypatch):
     assert config.thread_id is None
     assert config.resolved_model() == "deepseek-v4-flash"
     assert config.backend == "local"
-    assert config.image == "pagent:latest"
+    assert config.image == "electromind:latest"
     assert config.container_ttl == 300
     assert config.ssh_host == "machine_root"
     assert config.command_policy == "workdir"
     assert config.resolved_max_turns() == 24
     assert config.ssh_config == "~/.ssh/config"
-    assert config.ssh_workdir == "~/pagent"
+    assert config.ssh_workdir == "~/electromind"
 
 
 def test_thread_id_from_cli_only(tmp_path, monkeypatch):
@@ -163,7 +163,7 @@ def test_thread_id_from_cli_only(tmp_path, monkeypatch):
 def test_backend_from_cli_overrides_project_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "electromind.toml").write_text(
+    (tmp_path / "config.toml").write_text(
         '[sandbox]\nbackend = "local"\n',
         encoding="utf-8",
     )
@@ -175,7 +175,7 @@ def test_backend_from_cli_overrides_project_config(tmp_path, monkeypatch):
 def test_runtime_modes_from_cli_override_project_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     monkeypatch.chdir(tmp_path)
-    (tmp_path / "electromind.toml").write_text(
+    (tmp_path / "config.toml").write_text(
         '[permission]\nmode = "prompt"\n\n[sandbox.ssh]\nhost = "old"\n',
         encoding="utf-8",
     )
@@ -234,51 +234,44 @@ def test_parse_repl_config_nested_sandbox_blocks():
         "sandbox": {
             "backend": "container",
             "command_policy": "workdir",
-            "container": {"image": "pagent:latest", "container_ttl": 300},
+            "container": {"image": "electromind:latest", "container_ttl": 300},
             "ssh": {"host": "gpu", "config_path": "/tmp/cfg", "workdir": "~/work"},
         },
     }
     config = parse_repl_config(data)
     assert config.backend == "container"
     assert config.command_policy == "workdir"
-    assert config.image == "pagent:latest"
+    assert config.image == "electromind:latest"
     assert config.container_ttl == 300
     assert config.ssh_host == "gpu"
     assert config.ssh_config == "/tmp/cfg"
     assert config.ssh_workdir == "~/work"
 
 
-def test_parse_repl_config_bundled_template():
+def test_parse_repl_config_bundled_default():
     config = load_config_file(BUNDLED_CONFIG)
     assert config.backend == "local"
-    assert config.image == "pagent:latest"
+    assert config.image == "electromind:latest"
     assert config.container_ttl == 300
     assert config.ssh_host == "machine_root"
-    assert config.ssh_workdir == "~/pagent"
+    assert config.ssh_workdir == "~/electromind"
 
 
-def test_bundled_and_reference_templates_parse_identically():
-    # 运行时默认层（src/app）与全字段模板（src/template）终点是归一。
-    # 归一形态未定前，先用测试锁死两份解析结果完全一致，漂移即红。
-    template = BUNDLED_CONFIG.parent.parent / "template" / "electromind.toml"
-    assert load_config_file(BUNDLED_CONFIG) == load_config_file(template)
-
-
-def test_reference_template_parses_full_schema():
-    # src/template/electromind.toml 是收拢中的全字段参考模板，锁定它能被解析器解析且不腐烂成死字段。
-    template = BUNDLED_CONFIG.parent.parent / "template" / "electromind.toml"
-    config = load_config_file(template)
+def test_bundled_default_parses_full_schema():
+    # src/electromind/resources/default-config.toml 是包内唯一内置默认，
+    # 锁定它能被解析器解析且不腐烂成死字段。
+    config = load_config_file(BUNDLED_CONFIG)
     assert config.max_turns == 24
     assert config.model == "deepseek-v4-flash"
     assert config.backend == "local"
     assert config.command_policy == "workdir"
-    assert config.image == "pagent:latest"
+    assert config.image == "electromind:latest"
     assert config.container_ttl == 300
     assert config.ssh_host == "machine_root"
     assert config.ssh_config == "~/.ssh/config"
-    assert config.ssh_workdir == "~/pagent"
+    assert config.ssh_workdir == "~/electromind"
     assert config.resolved_user_label() == "you"
-    assert config.resolved_assistant_label() == "pagent"
+    assert config.resolved_assistant_label() == "electromind"
     assert config.permission_mode == "prompt"
     assert config.resolved_runner_location() == "local"
     # tools 解除注释后应列全 8 个，与 SANDBOX_TOOL_NAMES 一致（防止漏项或写错名）。
@@ -296,7 +289,7 @@ def test_runner_location_parses_local():
 
 
 def test_runner_location_rejects_unknown():
-    with pytest.raises(ValueError, match="runner.location must be one of"):
+    with pytest.raises(ValueError, match="runner.location: 非法值"):
         parse_repl_config({"runner": {"location": "moon"}})
 
 
@@ -316,7 +309,7 @@ def test_parse_repl_config_labels():
 def test_bundled_config_default_labels():
     config = load_config_file(BUNDLED_CONFIG)
     assert config.resolved_user_label() == "you"
-    assert config.resolved_assistant_label() == "pagent"
+    assert config.resolved_assistant_label() == "electromind"
     assert not config.permission_auto()
 
 
@@ -389,7 +382,7 @@ def test_load_project_config(tmp_path, monkeypatch):
     activate_home("dev", tmp_path)
     project_home = tmp_path / ".electromind"
     project_home.mkdir()
-    (project_home / "electromind.toml").write_text(
+    (project_home / "config.toml").write_text(
         '[runner]\nmax_turns = 24\n\n[provider]\nmodel = "custom-model"\n',
         encoding="utf-8",
     )
@@ -423,19 +416,19 @@ def test_find_user_config(tmp_path, monkeypatch):
     assert find_user_config(str(tmp_path)) is None
     user_dir = tmp_path / ".electromind"
     user_dir.mkdir()
-    user_toml = user_dir / "electromind.toml"
+    user_toml = user_dir / "config.toml"
     user_toml.write_text('[provider]\napi_key = "sk-user"\n', encoding="utf-8")
     assert find_user_config(str(tmp_path)) == user_toml
 
 
 def test_dev_mode_materializes_missing_config(tmp_path, monkeypatch):
-    """--dev 指向空目录时，从包内模板物化 ./.electromind/electromind.toml，只认这一个文件。"""
+    """--dev 指向空目录时，从包内模板物化 ./.electromind/config.toml，只认这一个文件。"""
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
     project = tmp_path / "proj"
     project.mkdir()
     activate_home("dev", project)
 
-    target = project / ".electromind" / "electromind.toml"
+    target = project / ".electromind" / "config.toml"
     assert not target.exists()
 
     config = load_config(workdir=str(project))
@@ -453,7 +446,7 @@ def test_ensure_home_config_keeps_existing(tmp_path, monkeypatch):
     project = tmp_path / "proj"
     home = project / ".electromind"
     home.mkdir(parents=True)
-    existing = home / "electromind.toml"
+    existing = home / "config.toml"
     existing.write_text('[provider]\nmodel = "kept-model"\n', encoding="utf-8")
     activate_home("dev", project)
 
@@ -463,7 +456,7 @@ def test_ensure_home_config_keeps_existing(tmp_path, monkeypatch):
 
 
 def test_project_home_does_not_read_user_home(tmp_path, monkeypatch):
-    """开发模式只用项目 home，不混读 ~/.pagent。"""
+    """开发模式只用项目 home，不混读 ~/.electromind。"""
     home = tmp_path / "home"
     project = tmp_path / "project"
     home.mkdir()
@@ -473,13 +466,13 @@ def test_project_home_does_not_read_user_home(tmp_path, monkeypatch):
 
     user_dir = home / ".electromind"
     user_dir.mkdir()
-    (user_dir / "electromind.toml").write_text(
+    (user_dir / "config.toml").write_text(
         '[provider]\napi_key = "sk-user"\nmodel = "user-model"\n',
         encoding="utf-8",
     )
     project_home = project / ".electromind"
     project_home.mkdir()
-    (project_home / "electromind.toml").write_text(
+    (project_home / "config.toml").write_text(
         '[provider]\nmodel = "project-model"\n',
         encoding="utf-8",
     )
@@ -496,7 +489,7 @@ def test_explicit_config_merges_active_home(tmp_path, monkeypatch):
     activate_home("prod")
     user_dir = home / ".electromind"
     user_dir.mkdir()
-    (user_dir / "electromind.toml").write_text(
+    (user_dir / "config.toml").write_text(
         '[provider]\napi_key = "sk-user"\n',
         encoding="utf-8",
     )

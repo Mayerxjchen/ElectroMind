@@ -117,3 +117,32 @@ class BackendGuard:
     def effective_workdir(self) -> str | None:
         getter = getattr(self.inner, "effective_workdir", None)
         return getter() if callable(getter) else None
+
+    @property
+    def execution_documents(self) -> tuple:
+        """Expose SSH context documents from the inner backend."""
+        return getattr(self.inner, "execution_documents", ())
+
+    @property
+    def context_diagnostics(self) -> tuple:
+        """Expose SSH context fetch diagnostics from the inner backend."""
+        return getattr(self.inner, "_context_diagnostics", ())
+
+
+def backend_type_name(backend) -> str:
+    """返回 backend 的真实类型名（"local" / "docker" / "podman" / "ssh"）。
+
+    自动解包 BackendGuard，因此无论是否被 Guard 包装都能正确识别。
+    无法识别时返回内部类名的小写形式。
+    """
+    inner = getattr(backend, "inner", backend)
+    class_name = inner.__class__.__name__
+    if class_name == "LocalBackend":
+        return "local"
+    if class_name == "DockerBackend":
+        return "docker"
+    if class_name == "PodmanBackend":
+        return "podman"
+    if class_name == "SshBackend":
+        return "ssh"
+    return class_name.lower()

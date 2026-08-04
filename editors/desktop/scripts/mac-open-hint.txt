@@ -28,6 +28,6 @@ electromind Desktop — macOS 打开说明
 方式 C — 暂不安装，用 VS Code 插件
 -----------------------------------
 
-https://synclionpaw.github.io/electromind/zh/vscode
+https://mayerxjchen.github.io/electromind/zh/vscode
 
-文档：https://synclionpaw.github.io/electromind/zh/desktop
+文档：https://mayerxjchen.github.io/electromind/zh/desktop

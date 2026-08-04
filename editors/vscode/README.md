@@ -1,17 +1,17 @@
-# pagent VS Code 插件
+# electromind VS Code 插件
 
-把 pagent Agent 接进 VS Code 的插件，按 20 课渐进式实现，最终对齐 Cursor Agent 模式。
-课程大纲见 [ROADMAP.md](https://github.com/SyncLionPaw/pagent/blob/main/editors/vscode/ROADMAP.md)。
+把 electromind Agent 接进 VS Code 的插件，按 20 课渐进式实现，最终对齐 Cursor Agent 模式。
+课程大纲见 [ROADMAP.md](https://github.com/Mayerxjchen/ElectroMind/blob/main/editors/vscode/ROADMAP.md)。
 
 本目录是 monorepo 的一部分，走独立的 npm 工具链，不进 PyPI 发布包
 （`pyproject.toml` 的 `module-name` 只打 `src/` 下的 Python 包）。
 
 ## 开发
 
-需要 Node 18+（本机用 nvm 管理，node v22），以及用 **uv tool** 装好的全局 `pagent`：
+需要 Node 18+（本机用 nvm 管理，node v22），以及用 **uv tool** 装好的全局 `electromind`：
 
 ```bash
-uv tool install pagent
+uv tool install electromind
 ```
 
 开发本仓库、想跟源码联动时：
@@ -20,8 +20,9 @@ uv tool install pagent
 uv tool install --editable --force .
 ```
 
-插件默认启动 `pagent --wire`，**不再**在打开的工作区里 `uv run`。
-数据根二选一（配置 / threads / skills 同根）：工作区有 `.pagent/`（或根目录遗留 `pagent.toml`）用 `./.pagent`，否则用 `~/.pagent`。
+插件默认启动 `electromind --wire`，**不再**在打开的工作区里 `uv run`。
+插件始终以生产模式启动后端（不带 `--dev`），数据根固定为 `~/.electromind`
+（配置 / threads / skills 同根），不随工作区变化。
 
 ```bash
 cd editors/vscode
@@ -37,15 +38,15 @@ npm run check    # 只做类型检查
 
 阶段 A —— 骨架与通信：
 
-- 第 1 课：最小可激活插件。命令面板运行 `pagent: Hello` 会弹出激活确认通知。
-- 第 2 课：活动栏出现 pagent 图标，展开是一个侧边栏 Webview 视图（占位内容 + 视图脚本）。
+- 第 1 课：最小可激活插件。命令面板运行 `electromind: Hello` 会弹出激活确认通知。
+- 第 2 课：活动栏出现 electromind 图标，展开是一个侧边栏 Webview 视图（占位内容 + 视图脚本）。
 - 第 3 课：视图有输入框，回车把文本经 postMessage 回传宿主，宿主回显到视图与输出通道。
-- 第 4 课：宿主 spawn `pagent --wire` 子进程，把用户输入转成 JSON 命令喂进 stdin，
-  子进程 stdout 事件行 / stderr 日志打进“输出”面板的 pagent 通道。
+- 第 4 课：宿主 spawn `electromind --wire` 子进程，把用户输入转成 JSON 命令喂进 stdin，
+  子进程 stdout 事件行 / stderr 日志打进“输出”面板的 electromind 通道。
 - 第 5 课：宿主把 stdout 逐行按 JSON-RPC notification 解析成 `{method, params}` 事件，
   在输出通道里显示结构化事件。
 
-Python 侧新增 `pagent --wire`（[src/app/wire.py](../../src/app/wire.py)）：stdin 收 JSON 命令
+Python 侧新增 `electromind --wire`（[src/app/wire.py](../../src/app/wire.py)）：stdin 收 JSON 命令
 （`{"cmd":"user","text":...}`），stdout 出 Wire 事件 NDJSON。
 
 阶段 B —— 聊天体验：
@@ -61,9 +62,9 @@ Python 侧新增 `pagent --wire`（[src/app/wire.py](../../src/app/wire.py)）�
   `onDidChangeActiveColorTheme` 把主题类别（亮/暗/高对比度）推给视图写进 `<body data-theme>`，
   高对比度主题下给气泡补明显描边。
 - 第 10 课：多轮对话与会话恢复。多轮天然保持（同一子进程/thread 累积历史）。会话级操作
-  收进视图原生标题栏（与「PAGENT: CHAT」同一行）：「新会话」发 `{"cmd":"reset"}`，Python 侧
+  收进视图原生标题栏（与「ELECTROMIND: CHAT」同一行）：「新会话」发 `{"cmd":"reset"}`，Python 侧
   关旧 runner、开一个干净 `thread-<时间戳>`；「恢复会话」发 `{"cmd":"list_threads"}`，由
-  Python 按 cwd 解析 pagent home（`./.pagent` 或 `~/.pagent`）回 `ThreadList`，宿主
+  Python 按固定生产 home（`~/.electromind`，插件不带 `--dev`）回 `ThreadList`，宿主
   `showQuickPick` 后再 `{"cmd":"resume","thread_id":...}`。reset/resume 后端都回发
   `HistoryReplay`（空数组=新会话），前端据此清屏并逐条重建气泡/思考面板/工具卡。
 
@@ -83,12 +84,12 @@ UI 打磨（贯穿阶段 B/C，非独立课）：
 - 智能滚动：流式内容仅在贴近底部时自动跟随，上翻历史不被拽回。
 - 多行输入：`textarea` 自适应高度，回车发送 / Shift+Enter 换行，独立发送按钮。
 - 运行模式：输入框左下角显示 `LOCAL` / `SSH`，点击后保存到工作区设置
-  `pagent.sandboxMode` 并重启 Wire 后端。SSH 连接读取项目 `pagent.toml` 的
-  `[ssh] host/config_path/workdir`。
+  `electromind.sandboxMode` 并重启 Wire 后端。SSH 连接读取生效配置
+  （`~/.electromind/config.toml`）的 `[sandbox.ssh] host/config_path/workdir`。
 - 布局稳定：聊天区预留滚动条槽位，长回复触发滚动条时不改变消息区域宽度。
 - 会话加载：选择历史线程后显示模拟 user/assistant 布局的骨架屏，历史完整返回后淡出并
   切换为实际内容；加载期间锁定输入，超时或后端退出时恢复可操作状态并提示用户。
-- 空状态与角色标签：首开/新会话显示引导文案，每条消息标 you/pagent。
+- 空状态与角色标签：首开/新会话显示引导文案，每条消息标 you/electromind。
 - 图标：接入 `@vscode/codicons`（官方图标字体），发送按钮用图标；由 esbuild
   把 `codicon.css` + `codicon.ttf` 拷进 `dist/`，CSP 加 `font-src` 放行字体。标题栏的
   「新会话」/「恢复会话」按钮走 VS Code 原生渲染，图标用 `$(add)` / `$(history)`。
@@ -113,7 +114,7 @@ UI 打磨（贯穿阶段 B/C，非独立课）：
   `updated_at`/`message_count`）。`thread-<时间戳>` 是内部管理编号，「恢复会话」列表用 `title`
   面向用户展示，thread id 降级为副标题。
 - 编辑器区面板：侧栏视图受工作台约束无法设默认宽度或强制放右侧。标题栏「在编辑器区打开」
-  （`pagent.chat.openInEditor`）用 `createWebviewPanel` + `ViewColumn.Beside` 在编辑器区开一个
+  （`electromind.chat.openInEditor`）用 `createWebviewPanel` + `ViewColumn.Beside` 在编辑器区开一个
   更宽、可由用户拖到右侧的聊天面板，与侧栏共用同一子进程，事件广播到两侧。
 
 ## 分层

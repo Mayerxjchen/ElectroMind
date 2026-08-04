@@ -20,7 +20,7 @@ from electromind.ithread import SPEC_FILENAME, ThreadSpec
 from electromind.paths import default_electromind_home
 
 if TYPE_CHECKING:
-    from electromind.runtime.thread import Thread as ThreadCls
+    pass
 
 # ---------------------------------------------------------------------------
 # Data
@@ -39,6 +39,9 @@ class SessionInfo:
     created_at: str = ""  # ISO datetime
     updated_at: str = ""  # ISO datetime
     backend: str = "local"
+    status: str = (
+        ""  # 最近一次 Run 状态：completed | cancelled | failed（来自 metainfo）
+    )
     deleted: bool = False
 
     # Filled after parsing
@@ -55,7 +58,11 @@ def _iter_thread_dirs(root: Path) -> list[Path]:
     if not root.is_dir():
         return []
     return sorted(
-        (child for child in root.iterdir() if child.is_dir() and (child / SPEC_FILENAME).is_file()),
+        (
+            child
+            for child in root.iterdir()
+            if child.is_dir() and (child / SPEC_FILENAME).is_file()
+        ),
         key=lambda p: p.name,
         reverse=True,
     )
@@ -163,10 +170,21 @@ def list_sessions(*, home: Path | None = None) -> list[SessionInfo]:
                 title=title,
                 project_path=project_path,
                 project_name=_project_basename(project_path),
-                message_count=meta.get("message_count", 0) if isinstance(meta.get("message_count"), int) else 0,
-                created_at=meta.get("created_at", "") if isinstance(meta.get("created_at"), str) else "",
-                updated_at=meta.get("updated_at", "") if isinstance(meta.get("updated_at"), str) else "",
+                message_count=meta.get("message_count", 0)
+                if isinstance(meta.get("message_count"), int)
+                else 0,
+                created_at=meta.get("created_at", "")
+                if isinstance(meta.get("created_at"), str)
+                else "",
+                updated_at=meta.get("updated_at", "")
+                if isinstance(meta.get("updated_at"), str)
+                else "",
                 backend=spec.backend if spec else "local",
+                status=(
+                    meta.get("last_run_status")
+                    if isinstance(meta.get("last_run_status"), str)
+                    else ""
+                ),
                 _raw_meta=meta,
             )
         )
@@ -187,7 +205,9 @@ def find_latest_session(project_path: str | None = None) -> SessionInfo | None:
     Returns:
         The most recent SessionInfo, or None if no sessions exist for this project.
     """
-    resolved = os.path.abspath(project_path) if project_path else os.path.abspath(os.getcwd())
+    resolved = (
+        os.path.abspath(project_path) if project_path else os.path.abspath(os.getcwd())
+    )
     sessions = list_sessions()
     matching = [
         s
@@ -218,28 +238,31 @@ def format_session_table(sessions: list[SessionInfo]) -> str:
 
     Example output::
 
-          最近更新        标题                  项目         消息
-        5 分钟前        配置 SSH sandbox       electromind   32
-        昨天            测试 DeepSeek provider  —             10
+          ID         最近更新        标题                  项目         消息
+        thread-9    5 分钟前        配置 SSH sandbox       electromind   32
+        thread-2    昨天            测试 DeepSeek provider  —             10
     """
     if not sessions:
         return "(no sessions)"
 
     # Compute column widths
+    id_width = max(max(len(s.id) for s in sessions), 2)
     time_width = max(max(len(_relative_time(s.updated_at)) for s in sessions), 6)
     title_width = max(max(len(s.title or "(无标题)") for s in sessions), 4)
     proj_width = max(max(len(s.project_name) for s in sessions), 4)
+    status_width = max(max(len(s.status or "—") for s in sessions), 4)
     msg_width = max(max(len(str(s.message_count)) for s in sessions), 4)
 
     lines = [
-        f"  {'最近更新':<{time_width}}  {'标题':<{title_width}}  {'项目':<{proj_width}}  {'消息':>{msg_width}}",
+        f"  {'ID':<{id_width}}  {'最近更新':<{time_width}}  {'标题':<{title_width}}  {'项目':<{proj_width}}  {'状态':<{status_width}}  {'消息':>{msg_width}}",
     ]
 
     for s in sessions:
         time_str = _relative_time(s.updated_at)
         title_str = s.title or "(无标题)"
+        status_str = s.status or "—"
         lines.append(
-            f"  {time_str:<{time_width}}  {title_str:<{title_width}}  {s.project_name:<{proj_width}}  {s.message_count:>{msg_width}}"
+            f"  {s.id:<{id_width}}  {time_str:<{time_width}}  {title_str:<{title_width}}  {s.project_name:<{proj_width}}  {status_str:<{status_width}}  {s.message_count:>{msg_width}}"
         )
 
     return "\n".join(lines)
@@ -282,7 +305,11 @@ def interactive_session_picker(
         if not query:
             return sessions
         q = query.lower()
-        return [s for s in sessions if q in s.title.lower() or q in s.project_name.lower() or q in s.id.lower()]
+        return [
+            s
+            for s in sessions
+            if q in s.title.lower() or q in s.project_name.lower() or q in s.id.lower()
+        ]
 
     def _read_key() -> str:
         """Read a single keypress from the terminal (arrow keys, enter, esc, etc.)."""
@@ -341,7 +368,9 @@ def interactive_session_picker(
             sys.stdout.write("\n  === 会话选择器 ===\n")
             if query:
                 sys.stdout.write(f"  搜索: {query}\n")
-            sys.stdout.write(f"  {'最近更新':<10} {'标题':<30} {'项目':<15} {'消息':>6}\n")
+            sys.stdout.write(
+                f"  {'最近更新':<10} {'标题':<30} {'项目':<15} {'消息':>6}\n"
+            )
             sys.stdout.write(f"  {'-' * 10} {'-' * 30} {'-' * 15} {'-' * 6}\n")
 
             if not filtered:
@@ -373,13 +402,19 @@ def interactive_session_picker(
             elif key == "\r" or key == "\n":  # Enter
                 filtered_now = _filtered()
                 if filtered_now:
-                    print(f"\n  已选择: {filtered_now[idx].title or filtered_now[idx].id}")
+                    print(
+                        f"\n  已选择: {filtered_now[idx].title or filtered_now[idx].id}"
+                    )
                     return filtered_now[idx].id
             elif key.lower() == "d":
                 filtered_now = _filtered()
                 if filtered_now:
                     target = filtered_now[idx]
-                    print(f"\n  确认删除 '{target.title or target.id}'? (y/N): ", end="", flush=True)
+                    print(
+                        f"\n  确认删除 '{target.title or target.id}'? (y/N): ",
+                        end="",
+                        flush=True,
+                    )
                     confirm = input()
                     if confirm.lower() == "y":
                         from app.wire import soft_delete_thread
@@ -396,8 +431,8 @@ def interactive_session_picker(
                 return None
     finally:
         # Ensure terminal is restored in case of unexpected exit
-        import termios
         import sys as _sys
+        import termios
 
         try:
             termios.tcflush(_sys.stdin.fileno(), termios.TCIOFLUSH)

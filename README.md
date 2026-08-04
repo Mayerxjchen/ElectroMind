@@ -39,8 +39,8 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv tool install electromind
 
 # 或从源码可编辑安装（本地开发）
-git clone https://github.com/SyncLionPaw/pagent
-cd pagent
+git clone https://github.com/Mayerxjchen/ElectroMind
+cd ElectroMind
 uv sync
 ```
 
@@ -90,11 +90,12 @@ scripts/                 质量检查与发布脚本
 | 优先级 | 位置 | 说明 |
 |---|---|---|
 | 1 | `--config <file>` | CLI 显式指定，覆盖以下所有 |
-| 2 | `~/.electromind/electromind.toml` | 用户级配置（生产模式默认） |
-| 3 | `./.electromind/electromind.toml` | 项目级配置（`--dev` 模式） |
-| 4 | 包内模板 | 首次运行时自动从模板物化 |
+| 2 | `<project>/.electromind/config.local.toml` | 项目内本机私有设置 |
+| 3 | `<project>/.electromind/config.toml` | 项目级配置（仅受信任项目） |
+| 4 | `~/.electromind/config.toml` | 用户级配置（生产模式默认；缺失时从内置默认物化） |
+| 5 | 包内默认 | `src/electromind/resources/default-config.toml`，唯一内置默认 |
 
-**最小配置（`~/.electromind/electromind.toml`）：**
+**最小配置（`~/.electromind/config.toml`）：**
 
 ```toml
 [provider]
@@ -107,7 +108,7 @@ mode = "prompt"  # prompt（逐个审批）| auto（自动批准）
 
 也可通过环境变量 `DEEPSEEK_API_KEY` 或 `ELECTROMIND_HOME` 覆盖部分设置。
 
-详细模板见 `src/template/pagent.toml`（注意：模板文件名因兼容性保留为 `pagent.toml`）。
+全字段参考见包内默认 `src/electromind/resources/default-config.toml`。
 
 ---
 
@@ -131,7 +132,7 @@ electromind --dev                   # 开发模式（数据落在 ./.electromind
 
 ```
 ~/.electromind/
-├── electromind.toml      # 用户配置
+├── config.toml           # 用户配置
 ├── threads/              # 会话数据（每条一个 thread-* 目录）
 │   └── <thread-id>/
 │       ├── thread.toml   # 会话配置（创建时冻结）
@@ -190,7 +191,7 @@ npm install
 npm start
 ```
 
-桌面端通过 Wire 协议与 `electromind --wire` 子进程通信，提供三栏工作台（会话列表 / 对话区 / 文件与 Artifacts 预览）。macOS 版本可在 [GitHub Releases](https://github.com/SyncLionPaw/pagent/releases) 下载。
+桌面端通过 Wire 协议与 `electromind --wire` 子进程通信，提供三栏工作台（会话列表 / 对话区 / 文件与 Artifacts 预览）。macOS 版本可在 [GitHub Releases](https://github.com/Mayerxjchen/ElectroMind/releases) 下载。
 
 
 
@@ -251,7 +252,7 @@ pre-commit install           # 安装 pre-commit hooks
 
 | 问题 | 解决方法 |
 |---|---|
-| 启动提示缺少 API Key | 运行 `electromind` 进入首次引导，或手动创建 `~/.electromind/electromind.toml` |
+| 启动提示缺少 API Key | 运行 `electromind` 进入首次引导，或手动创建 `~/.electromind/config.toml` |
 | Docker 容器未启动 | 确认 Docker / Podman 已运行，并构建了镜像 |
 | SSH 连接失败 | 检查 `~/.ssh/config` 中 Host 别名和密钥配置 |
 | 会话恢复找不到项目 | `--continue` 按 `project_path` 匹配当前目录；用 `--resume` 查看所有会话 |

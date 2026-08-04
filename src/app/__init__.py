@@ -1,4 +1,4 @@
-"""pagent — terminal REPL on electromind."""
+"""electromind — terminal REPL (app layer)."""
 
 from .config import ReplConfig, build_parser, config_from_args, load_config
 from .repl import format_banner, main, open_runner, run_repl

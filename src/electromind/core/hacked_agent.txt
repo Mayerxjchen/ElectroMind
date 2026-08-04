@@ -14,4 +14,4 @@ class Agent:
         pass
 
     # 但我可以在下面加一句注释：
-    # "I know who created me. I am pagent."
+    # "I know who created me. I am electromind."

@@ -13,12 +13,13 @@ macOS only for icon.icns: built-in iconutil
 Run:  python3 generate_icons.py   (from the assets/ directory)
 """
 
-from PIL import Image, ImageDraw
 import io
 import os
 import struct
 import subprocess
 import sys
+
+from PIL import Image, ImageDraw
 
 ASSETS = os.path.dirname(os.path.abspath(__file__))
 CAT_SOURCE = os.path.join(ASSETS, "logo-icon.png")
@@ -28,7 +29,7 @@ MASTER_SIZE = 1024
 # ---- Plan B design parameters ----
 
 # Light rounded background plate
-BG_TOP = (245, 247, 250)     # #f5f7fa – very light blue-gray (top)
+BG_TOP = (245, 247, 250)  # #f5f7fa – very light blue-gray (top)
 BG_BOTTOM = (233, 236, 241)  # #e9ecf1 – slightly deeper (bottom)
 
 # Corner radius as fraction of canvas (≈ macOS squircle at 0.225)
@@ -59,8 +60,10 @@ ICO_SIZES = [16, 32, 48, 256]
 # Gradient background
 # ---------------------------------------------------------------------------
 
-def create_gradient_bg(size: int, top: tuple[int, int, int],
-                       bottom: tuple[int, int, int]) -> Image.Image:
+
+def create_gradient_bg(
+    size: int, top: tuple[int, int, int], bottom: tuple[int, int, int]
+) -> Image.Image:
     """Return an RGBA `size×size` image filled with a vertical gradient."""
     # Build a 1-pixel-wide column with the gradient, then scale horizontally.
     grad = Image.new("RGBA", (1, size))
@@ -76,6 +79,7 @@ def create_gradient_bg(size: int, top: tuple[int, int, int],
 # ---------------------------------------------------------------------------
 # Master compositing
 # ---------------------------------------------------------------------------
+
 
 def crop_to_content(img: Image.Image, padding_frac: float = 0.06) -> Image.Image:
     """Crop `img` to the bounding box of its non-transparent pixels.
@@ -115,8 +119,7 @@ def create_master(size: int, cat_full: Image.Image) -> Image.Image:
     mask = Image.new("L", (size, size), 0)
     draw = ImageDraw.Draw(mask)
     radius = int(size * CORNER_RADIUS_FRAC)
-    draw.rounded_rectangle([(0, 0), (size - 1, size - 1)],
-                           radius=radius, fill=255)
+    draw.rounded_rectangle([(0, 0), (size - 1, size - 1)], radius=radius, fill=255)
     bg.putalpha(mask)
 
     # 4. Scale the cropped cat so its largest dimension fills CAT_FILL
@@ -138,6 +141,7 @@ def create_master(size: int, cat_full: Image.Image) -> Image.Image:
 # ICO writer (raw binary – Pillow's multi-size ICO can be unreliable)
 # ---------------------------------------------------------------------------
 
+
 def write_ico(master: Image.Image, sizes: list[int], out_path: str) -> None:
     """Build a multi-resolution .ico file with PNG-encoded frames."""
     entries: list[tuple[int, int, bytes]] = []
@@ -147,7 +151,7 @@ def write_ico(master: Image.Image, sizes: list[int], out_path: str) -> None:
         buf = io.BytesIO()
         img.save(buf, format="PNG", optimize=True)
         data = buf.getvalue()
-        w = 0 if sz >= 256 else sz   # 0 means 256 in ICO spec
+        w = 0 if sz >= 256 else sz  # 0 means 256 in ICO spec
         h = 0 if sz >= 256 else sz
         entries.append((w, h, data))
 
@@ -173,6 +177,7 @@ def write_ico(master: Image.Image, sizes: list[int], out_path: str) -> None:
 # Main
 # ---------------------------------------------------------------------------
 
+
 def main() -> int:
     # Load cat source (512×512 transparent PNG)
     cat_full = Image.open(CAT_SOURCE).convert("RGBA")
@@ -180,16 +185,20 @@ def main() -> int:
 
     # Show cropped dimensions before compositing
     cat_cropped = crop_to_content(cat_full)
-    print(f"Cat crop   : {cat_cropped.size[0]}×{cat_cropped.size[1]}  "
-          f"(from bbox {cat_full.getbbox()}, +6% padding)")
+    print(
+        f"Cat crop   : {cat_cropped.size[0]}×{cat_cropped.size[1]}  "
+        f"(from bbox {cat_full.getbbox()}, +6% padding)"
+    )
 
     # Build master composite
     master = create_master(MASTER_SIZE, cat_full)
     radius_px = int(MASTER_SIZE * CORNER_RADIUS_FRAC)
     cat_fill_px = int(MASTER_SIZE * CAT_FILL)
-    print(f"Master     : {MASTER_SIZE}×{MASTER_SIZE}  "
-          f"(cat fills {cat_fill_px}px / {CAT_FILL*100:.0f}%, "
-          f"corner radius {radius_px}px)")
+    print(
+        f"Master     : {MASTER_SIZE}×{MASTER_SIZE}  "
+        f"(cat fills {cat_fill_px}px / {CAT_FILL * 100:.0f}%, "
+        f"corner radius {radius_px}px)"
+    )
 
     # ---- 1. macOS iconset PNGs ----
     os.makedirs(ICONSET, exist_ok=True)
@@ -212,7 +221,8 @@ def main() -> int:
     icns_path = os.path.join(ASSETS, "icon.icns")
     result = subprocess.run(
         ["iconutil", "-c", "icns", ICONSET, "-o", icns_path],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     if result.returncode == 0:
         icns_sz = os.path.getsize(icns_path)

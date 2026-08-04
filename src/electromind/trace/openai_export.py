@@ -1,4 +1,4 @@
-"""把 pagent 轨迹（messages.jsonl）导出为 OpenAI Chat Completions messages。"""
+"""把 electromind 轨迹（messages.jsonl）导出为 OpenAI Chat Completions messages。"""
 
 from __future__ import annotations
 
@@ -17,7 +17,7 @@ def messages_to_openai_json(source: str, *, compact: bool = False) -> str:
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="electromind-openai",
-        description="Convert pagent messages.jsonl (or thread id) to OpenAI chat messages JSON.",
+        description="Convert electromind messages.jsonl (or thread id) to OpenAI chat messages JSON.",
     )
     parser.add_argument(
         "source",

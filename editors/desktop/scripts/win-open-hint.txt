@@ -22,12 +22,12 @@ electromind Desktop — Windows 打开说明
 个别杀毒软件可能对未签名的 Electron 应用误报。可将解压目录加入信任，
 或改用 VS Code 插件：
 
-  https://synclionpaw.github.io/electromind/zh/vscode
+  https://mayerxjchen.github.io/electromind/zh/vscode
 
 前置依赖
 --------
 
 桌面端需要本机安装 electromind 命令行。若应用提示无法启动后端，
-请先安装：https://synclionpaw.github.io/electromind/zh/guide/install
+请先安装：https://mayerxjchen.github.io/electromind/zh/guide/install
 
-文档：https://synclionpaw.github.io/electromind/zh/desktop
+文档：https://mayerxjchen.github.io/electromind/zh/desktop

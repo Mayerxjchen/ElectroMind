@@ -1,6 +1,6 @@
-// 宿主层 —— pagent 子进程桥（第 4 课）。
+// 宿主层 —— electromind 子进程桥（第 4 课）。
 //
-// 用 child_process.spawn 起一个 Python 进程跑 `pagent --wire`：
+// 用 child_process.spawn 起一个 Python 进程跑 `electromind --wire`：
 //   - 子进程 stdout：每行一个事件（Wire NDJSON），本课先原样转发给回调。
 //   - 子进程 stdin：每行一个 JSON 命令，驱动 Agent。
 //   - 子进程 stderr：诊断日志。
@@ -13,7 +13,7 @@ import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { enrichedPath } from "./cli";
 
 export type AgentBridgeOptions = {
-  // 启动子进程的命令与参数。默认全局 `pagent --wire`（uv tool install）。
+  // 启动子进程的命令与参数。默认全局 `electromind --wire`（uv tool install）。
   command: string;
   args: string[];
   // 子进程工作目录，通常是当前工作区根目录（只影响会话落盘，不用于找包）。

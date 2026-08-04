@@ -1,6 +1,6 @@
-# pagent VS Code 插件 —— 20 课渐进式路线
+# electromind VS Code 插件 —— 20 课渐进式路线
 
-面向读者：想从零把 pagent 接进 VS Code、并最终对齐 Cursor Agent 模式的开发者。
+面向读者：想从零把 electromind 接进 VS Code、并最终对齐 Cursor Agent 模式的开发者。
 
 ## 设计原则
 
@@ -11,11 +11,11 @@
 3. **VS Code API 就近注释**：凡是调用 `vscode.*` 的地方，都写清楚这个 API 做什么、为什么这样用、
    有什么坑（激活时机、生命周期、Webview 沙箱限制等）。
 
-## 与 pagent 的对接点
+## 与 electromind 的对接点
 
-插件不重写 Agent。它 `spawn` 一个 Python 子进程跑 pagent，通过 stdio 走 **Wire 协议**
+插件不重写 Agent。它 `spawn` 一个 Python 子进程跑 electromind，通过 stdio 走 **Wire 协议**
 （NDJSON，每行一个 JSON-RPC 2.0 notification：`{"jsonrpc":"2.0","method":"<事件类名>","params":{...}}`）。
-事件类型见 `src/pagentv4/core/events.py`，序列化见 `src/pagentv4/adapters/acp.py` 的 `encode_event_line`。
+事件类型见 `src/electromind/core/events.py`，序列化见 `src/electromind/adapters/acp.py` 的 `encode_event_line`。
 
 - 出站（Python → 插件）：`RunBegin` / `TurnBegin` / `TextDelta` / `ReasoningDelta` /
   `ToolCallBegin` / `ToolResult` / `TurnResult` / `TurnEnd` / `RunEnd`。
@@ -36,7 +36,7 @@ editors/vscode/
     ├── extension.ts      # 宿主入口：activate/deactivate，注册视图与命令
     ├── host/
     │   ├── wire.ts       # NDJSON 行缓冲 + JSON-RPC notification 解析
-    │   ├── agent.ts      # spawn pagent 子进程，桥接 stdout→事件 / 命令→stdin
+    │   ├── agent.ts      # spawn electromind 子进程，桥接 stdout→事件 / 命令→stdin
     │   └── panel.ts      # WebviewViewProvider：托管侧边栏、转发消息
     └── webview/
         ├── main.ts       # 视图入口：收事件渲染、发用户输入
@@ -53,7 +53,7 @@ editors/vscode/
 | 01 | 空插件能激活，弹一句 hello | `package.json` + `extension.ts` + esbuild + F5 |
 | 02 | 侧边栏出现一个空 Webview 视图 | `WebviewViewProvider` 注册、`views` 贡献点 |
 | 03 | 视图里有输入框，回车能把文本回显到宿主日志 | Webview→宿主 `postMessage` 桥、CSP |
-| 04 | 宿主 spawn `pagent --wire`，把 stdout 原样打进输出通道 | `child_process.spawn` + Python 侧 `--wire` 入口 |
+| 04 | 宿主 spawn `electromind --wire`，把 stdout 原样打进输出通道 | `child_process.spawn` + Python 侧 `--wire` 入口 |
 | 05 | NDJSON 逐行解析成事件对象，打日志 | `host/wire.ts` 行缓冲 + JSON-RPC 校验 |
 
 阶段 B —— 聊天体验（6-10）
@@ -64,7 +64,7 @@ editors/vscode/
 | 07 | `TextDelta` 流式打字机效果 | 视图侧增量拼接渲染 |
 | 08 | `ReasoningDelta` 折叠“思考”块 | 复用 trace 的 thinking 面板样式 |
 | 09 | 主题同步：亮/暗随 VS Code 切换 | `--vscode-*` CSS 变量 + `onDidChangeActiveColorTheme` |
-| 10 | 多轮对话与会话保持 | 复用 pagent `thread_id`，视图侧只存映射 |
+| 10 | 多轮对话与会话保持 | 复用 electromind `thread_id`，视图侧只存映射 |
 
 阶段 C —— 工具与上下文（11-15）
 

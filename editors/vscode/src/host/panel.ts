@@ -5,7 +5,7 @@
 // 交给我们填充 HTML。视图被折叠再展开时，VS Code 可能销毁并重建，所以不要在
 // 这里持有一次性的长生命周期状态。
 //
-// 第 4 课：用户输入 → spawn `pagent --wire` 子进程 → 事件行/stderr 打进输出通道。
+// 第 4 课：用户输入 → spawn `electromind --wire` 子进程 → 事件行/stderr 打进输出通道。
 
 import * as vscode from "vscode";
 import { execSync } from "node:child_process";
@@ -21,7 +21,7 @@ import type {
   ViewToHost,
 } from "../protocol";
 import { AgentBridge } from "./agent";
-import { ensurePagentCli, resolveCliCommand } from "./cli";
+import { ensureElectromindCli, resolveCliCommand } from "./cli";
 import { ensureApiKeySetup, promptAndSaveProvider } from "./setup";
 import { parseWireLine } from "./wire";
 
@@ -34,12 +34,12 @@ type ThreadListPayload = {
 
 export class ChatViewProvider implements vscode.WebviewViewProvider {
   // 与 package.json 里 contributes.views 的视图 id 保持一致。
-  public static readonly viewId = "pagent.chat";
+  public static readonly viewId = "electromind.chat";
 
   // 所有已挂载的 webview（侧栏视图 + 编辑器区面板）；事件广播到全部，保持两侧同步。
   private readonly webviews = new Set<vscode.Webview>();
 
-  // pagent 子进程桥；首次发送时惰性创建，侧栏与编辑器面板共用一个。
+  // electromind 子进程桥；首次发送时惰性创建，侧栏与编辑器面板共用一个。
   private bridge: AgentBridge | undefined;
 
   // 主题变化监听器；只挂一次，变化时广播给所有 webview。
@@ -53,8 +53,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   // 首次缺 Key / CLI 时的 setup；失败/取消后清空以便重试。
   private setupPromise: Promise<boolean> | undefined;
 
-  // 解析后的全局 pagent 可执行路径（uv tool install）。
-  private pagentCommand: string | undefined;
+  // 解析后的全局 electromind 可执行路径（uv tool install）。
+  private electromindCommand: string | undefined;
 
   // 最近一段 stderr，进程异常退出时带进 Error 提示，避免只有 code。
   private recentStderr = "";
@@ -63,7 +63,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   // 用户发消息后若长时间没有任何 Wire 事件，主动报超时（避免一直三点转圈）。
   private turnWatchTimer: ReturnType<typeof setTimeout> | undefined;
 
-  // 等待后端 ThreadList（list_threads）；路径由 Python resolve_pagent_home 判定。
+  // 等待后端 ThreadList（list_threads）；路径由 Python resolve_electromind_home 判定。
   private threadListWaiters: Array<(payload: ThreadListPayload) => void> = [];
 
   // extensionUri 用来把打包产物（dist/webview.js）转成 webview 能加载的受限 URI。
@@ -95,8 +95,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     // ViewColumn.Beside 在当前编辑器旁边开一列；用户可再拖到右侧编辑器组。
     // retainContextWhenHidden 让面板隐藏时保留 DOM，切回不丢已渲染的对话。
     const panel = vscode.window.createWebviewPanel(
-      "pagent.chatEditor",
-      "pagent 聊天",
+      "electromind.chatEditor",
+      "electromind 聊天",
       vscode.ViewColumn.Beside,
       {
         enableScripts: true,
@@ -251,12 +251,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     return this.setupPromise;
   }
 
-  /** 先确保全局 pagent（uv tool），再确保 API Key。 */
+  /** 先确保全局 electromind（uv tool），再确保 API Key。 */
   private async runBootstrap(): Promise<boolean> {
     const configured = vscode.workspace
-      .getConfiguration("pagent")
-      .get<string>("command", "pagent");
-    const cli = await ensurePagentCli(
+      .getConfiguration("electromind")
+      .get<string>("command", "electromind");
+    const cli = await ensureElectromindCli(
       this.extensionUri,
       this.output,
       configured,
@@ -264,7 +264,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!cli) {
       return false;
     }
-    this.pagentCommand = cli;
+    this.electromindCommand = cli;
     return ensureApiKeySetup(this.output);
   }
 
@@ -282,9 +282,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   async runSetup(): Promise<void> {
     this.setupPromise = undefined;
     const configured = vscode.workspace
-      .getConfiguration("pagent")
-      .get<string>("command", "pagent");
-    const cli = await ensurePagentCli(
+      .getConfiguration("electromind")
+      .get<string>("command", "electromind");
+    const cli = await ensureElectromindCli(
       this.extensionUri,
       this.output,
       configured,
@@ -292,7 +292,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (!cli) {
       return;
     }
-    this.pagentCommand = cli;
+    this.electromindCommand = cli;
     const ok = await promptAndSaveProvider(this.output);
     if (!ok) {
       return;
@@ -321,12 +321,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       payload = await this.requestThreadList();
     } catch (error) {
       const detail = error instanceof Error ? error.message : String(error);
-      void vscode.window.showWarningMessage(`pagent：列会话失败：${detail}`);
+      void vscode.window.showWarningMessage(`electromind：列会话失败：${detail}`);
       return;
     }
     if (payload.threads.length === 0) {
       void vscode.window.showInformationMessage(
-        `pagent：还没有可恢复的会话（home=${payload.home}）。`,
+        `electromind：还没有可恢复的会话（home=${payload.home}）。`,
       );
       return;
     }
@@ -347,7 +347,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     );
   }
 
-  /** 向 wire 要 ThreadList；路径由子进程 cwd 上的 resolve_pagent_home 决定。 */
+  /** 向 wire 要 ThreadList；路径由子进程 cwd 上的 resolve_electromind_home 决定。 */
   private requestThreadList(): Promise<ThreadListPayload> {
     return new Promise((resolvePromise, reject) => {
       const timer = setTimeout(() => {
@@ -389,10 +389,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return this.bridge;
     }
     // getConfiguration 读用户设置（package.json 的 contributes.configuration）。
-    const config = vscode.workspace.getConfiguration("pagent");
-    const configuredCommand = config.get<string>("command", "pagent");
+    const config = vscode.workspace.getConfiguration("electromind");
+    const configuredCommand = config.get<string>("command", "electromind");
     const command =
-      this.pagentCommand ?? resolveCliCommand(configuredCommand);
+      this.electromindCommand ?? resolveCliCommand(configuredCommand);
     const configuredArgs = config.get<string[]>("args", ["--wire"]);
     const args = withRuntimeArgs(configuredArgs, {
       mode: this.sandboxMode(),
@@ -400,7 +400,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       sshConfig: this.sshConfigPath(),
       yolo: this.yoloMode(),
     });
-    // cwd = 当前工作区：决定 pagent home（./.pagent 或 ~/.pagent），配置/thread 同根。
+    // cwd = 当前工作区：决定 electromind home（./.electromind 或 ~/.electromind），配置/thread 同根。
     const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
     this.recentStderr = "";
@@ -431,7 +431,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
           method: "Error",
           params: { message, where: "process" },
         });
-        void vscode.window.showErrorMessage(`pagent：${message}`);
+        void vscode.window.showErrorMessage(`electromind：${message}`);
         // 子进程退出后同步前端状态，确保 modeSwitching/yolo 被重置。
         void this.postRuntimeOptions();
       },
@@ -453,8 +453,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         method: "Error",
         params: {
           message:
-            "等待后端响应超时。请打开“输出 → pagent”查看日志；" +
-            "确认已 `uv tool install` 全局 pagent，且网络/API Key 可用。",
+            "等待后端响应超时。请打开“输出 → electromind”查看日志；" +
+            "确认已 `uv tool install` 全局 electromind，且网络/API Key 可用。",
           where: "timeout",
         },
       });
@@ -471,22 +471,22 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private sandboxMode(): SandboxMode {
     return vscode.workspace
-      .getConfiguration("pagent")
+      .getConfiguration("electromind")
       .get<SandboxMode>("sandboxMode", "local");
   }
 
   private sshHost(): string {
-    return vscode.workspace.getConfiguration("pagent").get<string>("sshHost", "");
+    return vscode.workspace.getConfiguration("electromind").get<string>("sshHost", "");
   }
 
   private sshConfigPath(): string {
     return vscode.workspace
-      .getConfiguration("pagent")
+      .getConfiguration("electromind")
       .get<string>("sshConfigPath", "~/.ssh/config");
   }
 
   private yoloMode(): boolean {
-    return vscode.workspace.getConfiguration("pagent").get<boolean>("yoloMode", false);
+    return vscode.workspace.getConfiguration("electromind").get<boolean>("yoloMode", false);
   }
 
   /** 保存 sandbox 目标并重启 Wire 后端。 */
@@ -499,7 +499,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     await this.postRuntimeOptions(undefined, true, { mode, sshHost });
     try {
-      const config = vscode.workspace.getConfiguration("pagent");
+      const config = vscode.workspace.getConfiguration("electromind");
       await config.update("sandboxMode", mode, vscode.ConfigurationTarget.Workspace);
       if (mode === "ssh" && sshHost) {
         await config.update("sshHost", sshHost, vscode.ConfigurationTarget.Workspace);
@@ -519,7 +519,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     } catch (error) {
       await this.postRuntimeOptions();
       const detail = error instanceof Error ? error.message : String(error);
-      void vscode.window.showErrorMessage(`pagent 模式切换失败：${detail}`);
+      void vscode.window.showErrorMessage(`electromind 模式切换失败：${detail}`);
     }
   }
 
@@ -527,7 +527,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private async setYoloMode(enabled: boolean): Promise<void> {
     await this.postRuntimeOptions(undefined, true, { yolo: enabled });
     await vscode.workspace
-      .getConfiguration("pagent")
+      .getConfiguration("electromind")
       .update("yoloMode", enabled, vscode.ConfigurationTarget.Workspace);
     this.cancelHistoryLoading();
     this.disposeBridge();
@@ -618,7 +618,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.historyLoadTimer = setTimeout(() => {
       this.historyLoadTimer = undefined;
       this.postToView({ type: "historyLoading", loading: false, failed: true });
-      void vscode.window.showWarningMessage("pagent：会话加载超时，请重试。");
+      void vscode.window.showWarningMessage("electromind：会话加载超时，请重试。");
     }, 15_000);
   }
 

@@ -25,7 +25,7 @@ from ..core.tool import FunctionTool, ToolOutput
 from ..sandbox import Sandbox
 from ..skills import SkillRegistry
 from ..skills.runtime import SkillRuntime
-from .base_runner import BaseRunner, assemble_run_resources
+from .base_runner import BaseRunner, _run_capabilities, assemble_run_resources
 from .helper import append_message
 from .hooks import PostToolHookContext, ToolHookContext, ToolHooks
 from .inbound import (
@@ -255,10 +255,29 @@ class Runner(BaseRunner):
         conversation_id = thread.messages_conversation_id
         messages = thread.load_messages()
 
+        # Phase-2: runtime SHARES the catalog service used at assembly time
+        # (same generation) and lazily mounts activated skills into the
+        # sandbox (backend-appropriate mounter).
+        from ..skills.mounting import LazySkillMounter, SshLazySkillMounter
+        from ..skills.snapstore import PrivateSnapshotStore
+
+        _store = PrivateSnapshotStore()
+        _mounter = None
+        if resources.sandbox is not None:
+            _backend = getattr(resources.sandbox, "backend", None)
+            backend_name = getattr(getattr(_backend, "__class__", None), "__name__", "")
+            if backend_name == "SshBackend":
+                _mounter = SshLazySkillMounter(resources.sandbox, store=_store)
+            else:
+                _mounter = LazySkillMounter(resources.sandbox, store=_store)
         skill_runtime = SkillRuntime(
             thread.spec.project_path,
             configured_roots=tuple(thread.spec.skills) + tuple(skill_roots),
+            mounter=_mounter,
+            service=resources.catalog_service,
+            capabilities=_run_capabilities(thread.spec),
         )
+        skill_runtime.prepare_turn()
 
         runner = cls(
             thread=thread,

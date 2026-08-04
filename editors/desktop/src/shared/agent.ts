@@ -349,8 +349,9 @@ export function resolveElectromindWireInvocation(
   projectRoot: string,
   options?: { yolo?: boolean },
 ): CliInvocation {
-  // 桌面端默认 local sandbox：不依赖本机 Docker daemon。
-  const wireArgs = ["--wire", "--backend", "local"];
+  // Desktop defaults to local execution mode to avoid requiring
+  // Docker/Podman. Users can opt into sandbox mode in Settings.
+  const wireArgs = ["--wire", "--execution-mode", "local"];
   if (options?.yolo) {
     wireArgs.push("--permission-mode", "auto");
   }

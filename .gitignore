@@ -39,8 +39,10 @@ htmlcov/
 .env
 .env.*
 !.env.example
-# 项目根 pagent.toml 常含 api_key，勿提交（bundled 默认在 src/app/pagent.toml）
+# 项目根遗留 pagent.toml / electromind.toml 常含 api_key，勿提交
+#（内置默认配置在 src/electromind/resources/default-config.toml）
 /pagent.toml
+/electromind.toml
 
 # OS / editor
 .DS_Store
@@ -51,6 +53,7 @@ debug
 
 # example runtime data
 .pagent/
+.electromind/
 artifacts/
 benchmarks/
 .trae
@@ -58,3 +61,5 @@ benchmarks/
 # web dev state
 editors/web/tsconfig.tsbuildinfo
 .superpowers/
+# 临时 agent worktrees（嵌套 git 仓库，勿跟踪）
+.claude/worktrees/

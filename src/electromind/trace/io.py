@@ -1,4 +1,4 @@
-"""Load pagent message trajectories from jsonl, thread id, or stdin."""
+"""Load electromind message trajectories from jsonl, thread id, or stdin."""
 
 from __future__ import annotations
 

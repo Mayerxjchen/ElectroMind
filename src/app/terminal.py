@@ -13,13 +13,10 @@ from prompt_toolkit.formatted_text import ANSI, FormattedText
 from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.patch_stdout import patch_stdout
 
-from .layout_terminal import LayoutTerminal
-
 _session: PromptSession | None = None
 _patched_stdout: ContextVar[bool] = ContextVar("patched_stdout", default=False)
-layout_terminal: ContextVar[LayoutTerminal | None] = ContextVar(
-    "layout_terminal", default=None
-)
+# TUI 输出适配器（NoticeSink 等）：emit() 在 TUI 模式下把文本送进时间线。
+layout_terminal: ContextVar[object | None] = ContextVar("layout_terminal", default=None)
 
 
 def prompt_session() -> PromptSession:
@@ -63,6 +60,12 @@ def emit(
     stream = file or sys.stdout
     buffer = getattr(stream, "buffer", None)
     if buffer is not None and getattr(buffer, "closed", False):
+        _builtin_emit(text, end=end, file=file, flush=flush)
+        return
+
+    # prompt_toolkit 的 print_formatted_text 会为终端兼容把换行写成 \r\n；
+    # 非 TTY（管道、测试捕获、StringIO）下应使用平台原生换行 \n。
+    if not stream.isatty():
         _builtin_emit(text, end=end, file=file, flush=flush)
         return
 

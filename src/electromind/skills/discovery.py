@@ -1,9 +1,12 @@
 """Skill source discovery and catalog snapshots.
 
-Deterministic discovery across project, configured, and user roots.  AICC-shaped
-bundles (``skills/`` with ``AGENTS.md`` + ``procedures/`` + ``tools/``) are
-recognised as a unit; standard per-skill directories (``<root>/<name>/SKILL.md``)
-are discovered from ``.agents/skills``, ``.electromind/skills``, and user home.
+Deterministic discovery across project, configured, and user roots.  Two
+directory layouts are supported:
+
+- **Structured root**: ``skills/`` with ``AGENTS.md`` + ``procedures/`` +
+  ``tools/`` + ``knowledge/`` (project skills).
+- **Flat root**: ``<root>/<skill-name>/SKILL.md`` (``.agents/skills``,
+  ``.electromind/skills``, user home).
 
 Public entry points:
 - ``discover_skill_sources()`` → ordered tuple of ``SkillSource``
@@ -20,13 +23,43 @@ from typing import Literal
 from .skill import (
     Skill,
     SkillRegistry,
+    has_symlinks,
     load_skill,
-    load_skills_from_root,
+    validate_skill_name,
 )
+from .snapshot import hash_content  # shared fingerprint hasher
 
 # ---------------------------------------------------------------------------
 # Models
 # ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True, slots=True)
+class DiscoveredSkill:
+    """A skill candidate found during discovery, before full content loading.
+
+    Discovery only locates skills, determines sources, and resolves priorities.
+    Snapshot building reads the full content later.
+
+    Attributes:
+        name: Skill name (from frontmatter or directory name).
+        description: From frontmatter.
+        kind: ``"procedure"``, ``"tool"``, or ``"standard"``.
+        source_id: Stable source identifier.
+        source_priority: Lower = higher priority for duplicate resolution.
+        source_root: Absolute path to the source root.
+        skill_root: Absolute path to the skill directory.
+        skill_md: Absolute path to ``SKILL.md``.
+    """
+
+    name: str
+    description: str
+    kind: str
+    source_id: str
+    source_priority: int
+    source_root: Path
+    skill_root: Path
+    skill_md: Path
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,14 +68,15 @@ class SkillSource:
 
     Attributes:
         id: Stable identifier derived from scope, kind, and normalised path.
-        kind: ``"aicc"`` for AICC-shaped bundles, ``"standard"`` for per-skill dirs.
+        kind: ``"structured"`` for ``skills/`` roots with AGENTS.md,
+            ``"standard"`` for flat per-skill directories.
         scope: ``"project"``, ``"configured"``, or ``"user"``.
         root: Absolute filesystem path to the source root.
         priority: Lower number = higher priority in duplicate resolution.
     """
 
     id: str
-    kind: Literal["aicc", "standard"]
+    kind: Literal["structured", "standard"]
     scope: Literal["project", "configured", "user"]
     root: Path
     priority: int
@@ -64,7 +98,7 @@ class SkillMount:
 
     source_root: str
     skill_root: str
-    bundle_root: str | None = None
+    skills_root: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -74,7 +108,8 @@ class SkillCatalogSnapshot:
     Attributes:
         registry: The populated ``SkillRegistry``.
         sources: Ordered discovery sources.
-        global_instructions: ``AGENTS.md`` content from AICC bundles (one per bundle).
+        global_instructions: ``AGENTS.md`` content from structured skill
+            roots (one per source).
         diagnostics: Non-fatal issues found during discovery/loading.
         fingerprint: SHA-256 hash of the catalog content for change detection.
     """
@@ -90,25 +125,36 @@ class SkillCatalogSnapshot:
 # Discovery
 # ---------------------------------------------------------------------------
 
-AICC_MARKER = "AGENTS.md"
+STRUCTURED_MARKER = "AGENTS.md"
 STANDARD_MARKER = "SKILL.md"
 
-# Subdirectories of an AICC bundle that contain Skills.
-_AICC_SKILL_DIRS = ("procedures", "tools")
-# Subdirectories of an AICC bundle that are never Skills.
-_AICC_SKIP_DIRS = ("knowledge",)
+# Subdirectories of a structured skill root that contain Skills.
+_STRUCTURED_SKILL_DIRS = ("procedures", "tools")
+# Subdirectories of a structured skill root that are never Skills.
+_STRUCTURED_SKIP_DIRS = ("knowledge",)
 
 
 def _make_source_id(scope: str, kind: str, root: Path) -> str:
-    """Derive a stable, human-readable source id."""
-    return f"{scope}-{kind}-{root.as_posix()}"
+    """Derive a stable, human-readable source id.
+
+    Uses a short content hash of the normalised path to avoid leaking
+    host directory structure into mount paths and diagnostics.
+    """
+    h = hashlib.sha256(root.as_posix().encode("utf-8")).hexdigest()[:12]
+    return f"{scope}-{kind}-{h}"
 
 
-def _hash_content(*parts: str) -> str:
-    """Return SHA-256 hex digest of the concatenated parts."""
+# _hash_content is imported from .snapshot as hash_content; keep alias for
+# internal consistency.
+_hash_content = hash_content
+
+
+def _hash_file_hex(path: Path) -> str:
+    """Return SHA-256 hex digest of a file's content."""
     h = hashlib.sha256()
-    for part in parts:
-        h.update(part.encode("utf-8"))
+    with open(path, "rb") as f:
+        while chunk := f.read(65536):
+            h.update(chunk)
     return h.hexdigest()
 
 
@@ -121,7 +167,7 @@ def discover_skill_sources(
     """Return an ordered, deterministic list of Skill sources.
 
     Priority order (first = highest):
-    1. ``<project>/skills`` when it has AICC shape
+    1. ``<project>/skills`` when it has a structured layout (contains AGENTS.md)
     2. ``<project>/.agents/skills``
     3. ``<project>/.electromind/skills``
     4. configured / legacy roots (``configured_roots``)
@@ -135,14 +181,14 @@ def discover_skill_sources(
     if project_path:
         proj = Path(project_path).expanduser().resolve()
 
-        aicc_root = proj / "skills"
-        if (aicc_root / AICC_MARKER).exists():
+        skills_root = proj / "skills"
+        if (skills_root / STRUCTURED_MARKER).exists():
             sources.append(
                 SkillSource(
-                    id=_make_source_id("project", "aicc", aicc_root),
-                    kind="aicc",
+                    id=_make_source_id("project", "skills", skills_root),
+                    kind="structured",
                     scope="project",
-                    root=aicc_root,
+                    root=skills_root,
                     priority=1,
                 )
             )
@@ -204,8 +250,10 @@ def discover_skill_sources(
     return tuple(sources)
 
 
-def _load_aicc_source(source: SkillSource) -> tuple[list[Skill], list[str], list[SkillDiagnostic]]:
-    """Load Skills and global instructions from an AICC-shaped bundle.
+def _load_structured_source(
+    source: SkillSource,
+) -> tuple[list[Skill], list[str], list[SkillDiagnostic]]:
+    """Load Skills and global instructions from a structured skill root.
 
     Returns ``(skills, global_instructions, diagnostics)``.
     """
@@ -213,21 +261,21 @@ def _load_aicc_source(source: SkillSource) -> tuple[list[Skill], list[str], list
     instructions: list[str] = []
     diagnostics: list[SkillDiagnostic] = []
 
-    agents_md = source.root / AICC_MARKER
+    agents_md = source.root / STRUCTURED_MARKER
     if agents_md.exists():
         try:
             instructions.append(agents_md.read_text(encoding="utf-8"))
         except OSError as exc:
             diagnostics.append(
                 SkillDiagnostic(
-                    code="aicc_agents_md_read_error",
+                    code="structured_agents_md_read_error",
                     message=f"cannot read AGENTS.md: {exc}",
                     path=str(agents_md),
                     severity="error",
                 )
             )
 
-    for subdir_name in _AICC_SKILL_DIRS:
+    for subdir_name in _STRUCTURED_SKILL_DIRS:
         sub = source.root / subdir_name
         if not sub.is_dir():
             continue
@@ -249,7 +297,39 @@ def _load_aicc_source(source: SkillSource) -> tuple[list[Skill], list[str], list
                         )
                     )
                     continue
+
+                # Reject symlinks anywhere in the skill tree
+                syms = has_symlinks(resolved)
+                if syms:
+                    for sym_path in syms:
+                        diagnostics.append(
+                            SkillDiagnostic(
+                                code="skill_symlink_rejected",
+                                message=(
+                                    f"skill {entry.name!r} contains a symlink: "
+                                    f"{sym_path.relative_to(resolved)}"
+                                ),
+                                path=str(sym_path),
+                                severity="error",
+                            )
+                        )
+                    continue
+
                 skill = load_skill(resolved)
+
+                # Validate name
+                name_err = validate_skill_name(skill.name)
+                if name_err:
+                    diagnostics.append(
+                        SkillDiagnostic(
+                            code="skill_name_invalid",
+                            message=name_err,
+                            path=str(resolved),
+                            severity="error",
+                        )
+                    )
+                    continue
+
                 skill = Skill(
                     name=skill.name,
                     description=skill.description,
@@ -258,13 +338,13 @@ def _load_aicc_source(source: SkillSource) -> tuple[list[Skill], list[str], list
                     resources=skill.resources,
                     source_id=source.id,
                     skill_root=skill.root,
-                    bundle_root=source.root,
+                    skills_root=source.root,
                 )
                 skills.append(skill)
             except Exception as exc:
                 diagnostics.append(
                     SkillDiagnostic(
-                        code="aicc_skill_load_error",
+                        code="structured_skill_load_error",
                         message=f"failed to load skill in {entry}: {exc}",
                         path=str(entry),
                         severity="error",
@@ -277,24 +357,47 @@ def _load_aicc_source(source: SkillSource) -> tuple[list[Skill], list[str], list
 def _load_standard_source(
     source: SkillSource,
 ) -> tuple[list[Skill], list[SkillDiagnostic]]:
-    """Load Skills from a standard directory of per-skill subdirectories."""
+    """Load Skills from a flat directory of per-skill subdirectories.
+
+    Each skill subdirectory is loaded individually — a single broken
+    SKILL.md does not discard the entire source.
+    """
+    from .skill import load_skill as _load_one
+
     diagnostics: list[SkillDiagnostic] = []
     loaded: list[Skill] = []
 
-    try:
-        raw_skills = load_skills_from_root(source.root)
-    except Exception as exc:
+    if not source.root.is_dir():
         diagnostics.append(
             SkillDiagnostic(
-                code="skill_source_load_error",
-                message=f"failed to scan source {source.root}: {exc}",
+                code="skill_source_not_found",
+                message=f"source root does not exist: {source.root}",
                 path=str(source.root),
                 severity="error",
             )
         )
         return loaded, diagnostics
 
-    for skill in raw_skills:
+    for entry in sorted(source.root.iterdir()):
+        if not entry.is_dir() or entry.name.startswith("."):
+            continue
+        skill_md = entry / "SKILL.md"
+        if not skill_md.exists():
+            continue
+
+        try:
+            skill = _load_one(entry)
+        except Exception as exc:
+            diagnostics.append(
+                SkillDiagnostic(
+                    code="skill_load_error",
+                    message=f"failed to load skill {entry.name}: {exc}",
+                    path=str(entry),
+                    severity="error",
+                )
+            )
+            continue
+
         try:
             resolved = skill.root.resolve()
             if not _path_is_within_root(resolved, source.root):
@@ -303,6 +406,36 @@ def _load_standard_source(
                         code="skill_resolves_outside_root",
                         message=f"skill resolves outside its source root: {skill.root}",
                         path=str(skill.root),
+                        severity="error",
+                    )
+                )
+                continue
+
+            # Reject symlinks anywhere in the skill tree
+            syms = has_symlinks(resolved)
+            if syms:
+                for sym_path in syms:
+                    diagnostics.append(
+                        SkillDiagnostic(
+                            code="skill_symlink_rejected",
+                            message=(
+                                f"skill {skill.name!r} contains a symlink: "
+                                f"{sym_path.relative_to(resolved)}"
+                            ),
+                            path=str(sym_path),
+                            severity="error",
+                        )
+                    )
+                continue
+
+            # Validate name
+            name_err = validate_skill_name(skill.name)
+            if name_err:
+                diagnostics.append(
+                    SkillDiagnostic(
+                        code="skill_name_invalid",
+                        message=name_err,
+                        path=str(resolved),
                         severity="error",
                     )
                 )
@@ -327,7 +460,7 @@ def _load_standard_source(
                 resources=skill.resources,
                 source_id=source.id,
                 skill_root=skill.root,
-                bundle_root=None,
+                skills_root=None,
             )
         )
 
@@ -353,17 +486,27 @@ def _build_fingerprint(
 
     # Hash source metadata in order
     for src in sources:
-        parts.append(f"{src.id}|{src.kind}|{src.scope}|{src.root.as_posix()}|{src.priority}")
+        parts.append(
+            f"{src.id}|{src.kind}|{src.scope}|{src.root.as_posix()}|{src.priority}"
+        )
 
     # Hash global instructions
     parts.extend(global_instructions)
 
-    # Hash each skill in name-sorted order
+    # Hash each skill in name-sorted order, including resource content
     for skill in sorted(skills, key=lambda s: s.name):
         parts.append(f"{skill.name}|{skill.description}|{skill.source_id}")
         parts.append(skill.instructions)
         parts.append(skill.sha256 if skill.sha256 else "")
-        parts.extend(skill.resources)
+        # Include resource content hashes so file changes are detected
+        skill_dir = skill.skill_root or skill.root
+        for res_path in sorted(skill.resources):
+            full = skill_dir / res_path
+            try:
+                res_hash = _hash_file_hex(full)
+                parts.append(f"{res_path}|{res_hash}")
+            except OSError:
+                parts.append(res_path)
 
     return _hash_content(*parts)
 
@@ -382,8 +525,8 @@ def load_skill_catalog(
     all_diagnostics: list[SkillDiagnostic] = []
 
     for source in sources:
-        if source.kind == "aicc":
-            skills, instructions, diags = _load_aicc_source(source)
+        if source.kind == "structured":
+            skills, instructions, diags = _load_structured_source(source)
             all_instructions.extend(instructions)
         else:
             skills, diags = _load_standard_source(source)

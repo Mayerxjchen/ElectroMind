@@ -10,6 +10,9 @@
         "check": "tsc --noEmit",
         "test:layout": "node --test scripts/renderer-layout.test.mjs",
         "test:skills-state": "node --test scripts/skills-state.test.mjs",
+        "test:execution-context-state": "node --test scripts/execution-context-state.test.mjs",
+        "test:file-api-unsupported": "node --test scripts/file-api-unsupported.test.mjs",
+        "test:ipc-contract": "node --test scripts/ipc-contract.test.mjs",
         "start": "npm run compile && electron --no-sandbox --disable-gpu .",
         "package": "node scripts/package.js",
         "generate-icons": "cd assets && python3 -m venv .venv && .venv/bin/pip install -q Pillow && .venv/bin/python3 generate_icons.py"
@@ -18,6 +21,8 @@
         "@electron/packager": "^18.3.6",
         "@types/node": "^24.0.15",
         "@types/qrcode": "^1.5.6",
+        "@types/react": "^19.2.18",
+        "@types/react-dom": "^19.2.4",
         "electron": "^37.10.3",
         "esbuild": "^0.25.8",
         "typescript": "^5.9.2"
@@ -28,6 +33,9 @@
         "highlight.js": "^11.11.1",
         "lucide": "^1.24.0",
         "marked": "^16.2.1",
-        "qrcode": "^1.5.4"
+        "qrcode": "^1.5.4",
+        "react": "^19.2.8",
+        "react-dom": "^19.2.8",
+        "zustand": "^5.0.14"
     }
 }

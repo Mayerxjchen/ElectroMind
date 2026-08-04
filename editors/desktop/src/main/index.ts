@@ -1,12 +1,14 @@
 import {
   app,
   BrowserWindow,
+  clipboard,
   dialog,
   ipcMain,
   nativeImage,
   shell,
   type OpenDialogOptions,
 } from "electron";
+import * as crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
   existsSync,
@@ -16,6 +18,7 @@ import {
   statSync,
   writeFileSync,
 } from "node:fs";
+import * as fs from "node:fs";
 import type { Dirent } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
@@ -33,6 +36,7 @@ import type {
   ArtifactPreview,
   ArtifactSummary,
   DesktopEvent,
+  ExecutionStatePayload,
   NewSessionOptions,
   ResetSessionOptions,
   RuntimeState,
@@ -102,6 +106,7 @@ let sandboxStatus: SandboxStatusPayload = {
 let threadListWaiters: Array<(payload: ThreadListPayload) => void> = [];
 let sandboxTreeWaiters: SandboxTreeWaiter[] = [];
 let sandboxStatusWaiters: SandboxStatusWaiter[] = [];
+let executionState: ExecutionStatePayload | undefined;
 import { DOCUMENTATION_URL } from "../shared/docs";
 
 /** dock/about 用带透明边距的高清图标（符合 macOS 图标网格，避免视觉偏大）。 */
@@ -316,7 +321,7 @@ function artifactsDirectory(): string {
 }
 
 function settingsFilePath(): string {
-  return path.join(userElectromindHome(), "electromind.toml");
+  return path.join(userElectromindHome(), "config.toml");
 }
 
 function threadsDirectory(): string {
@@ -382,6 +387,7 @@ function runtimeState(): RuntimeState {
     transport: activeTransport,
     status: bridgeStatus,
     lastError: lastError || undefined,
+    executionState,
   };
 }
 
@@ -437,6 +443,36 @@ function normalizeSandboxStatus(
     backend: typeof params.backend === "string" ? params.backend : "",
     alive: params.alive === true,
     workdir: typeof params.workdir === "string" ? params.workdir : "",
+  };
+}
+
+function normalizeExecutionState(
+  params: Record<string, unknown>,
+): ExecutionStatePayload {
+  const diagsRaw = Array.isArray(params.diagnostics) ? params.diagnostics : [];
+  const diagnostics: ExecutionStatePayload["diagnostics"] = [];
+  for (const d of diagsRaw) {
+    if (typeof d !== "object" || d === null) continue;
+    const item = d as Record<string, unknown>;
+    diagnostics.push({
+      code: typeof item.code === "string" ? item.code : "",
+      severity: typeof item.severity === "string" ? item.severity : "info",
+      message: typeof item.message === "string" ? item.message : "",
+    });
+  }
+  const modeRaw = params.mode;
+  const mode = typeof modeRaw === "string" && ["local", "sandbox", "ssh"].includes(modeRaw)
+    ? (modeRaw as "local" | "sandbox" | "ssh")
+    : null;
+  const backend = typeof params.resolved_backend === "string" ? params.resolved_backend : null;
+  const thread_id = typeof params.thread_id === "string" ? params.thread_id : null;
+  return {
+    mode,
+    resolved_backend: (backend === "local" || backend === "docker" || backend === "podman" || backend === "ssh") ? backend : null,
+    isolated: params.isolated === true,
+    warning: typeof params.warning === "string" ? params.warning : null,
+    diagnostics,
+    thread_id,
   };
 }
 
@@ -572,9 +608,6 @@ function resolveArtifactPath(filePath: string): string | undefined {
 }
 
 const ARTIFACT_TEXT_LIMIT = 512 * 1024;
-const ARTIFACT_IMAGE_LIMIT = 8 * 1024 * 1024;
-const ARTIFACT_HTML_LIMIT = 4 * 1024 * 1024;
-const ARTIFACT_PDF_LIMIT = 32 * 1024 * 1024;
 
 const ARTIFACT_LANGUAGES: Record<string, string> = {
   ".ts": "typescript",
@@ -626,40 +659,37 @@ const ARTIFACT_TEXT_EXT = new Set([
   ".conf",
 ]);
 
-/** 读取 artifact 内容供右侧面板内联预览：markdown/html/pdf 富渲染，代码/文本高亮，图片转 data URL，其余标记为二进制。 */
+/** 读取 artifact 内容供右侧面板内联预览：markdown/文本高亮；图片/PDF/HTML
+ * 不再整体编码为 Data URL（违反大文件协议）——标记为"需外部打开"。 */
 function readArtifactPreview(filePath: string): ArtifactPreview {
   const target = resolveArtifactPath(filePath);
   const name = path.basename(filePath);
   if (!target) {
     return { name, path: filePath, size: 0, kind: "binary", reason: "文件不存在" };
   }
+  return readConstrainedPreview(target, name);
+}
+
+/** 读取一个【已通过 containment 授权】的规范路径供内联预览。
+ *  与 artifact 路径解析解耦：preview-file 传入 resolveProjectPath 的结果，
+ *  read-artifact 传入 resolveArtifactPath 的结果，二者共用此读取逻辑。 */
+function readConstrainedPreview(target: string, _name: string): ArtifactPreview {
   const stat = statSync(target);
   const ext = path.extname(target).toLowerCase();
   const base = { name: path.basename(target), path: target, size: stat.size };
 
+  // Binary/rich media: no Data URL — open externally (openArtifact).
   const imageMime = ARTIFACT_IMAGE_MIME[ext];
   if (imageMime) {
-    if (stat.size > ARTIFACT_IMAGE_LIMIT) {
-      return { ...base, kind: "binary", reason: "图片过大，无法内联预览" };
-    }
-    const buffer = readFileSync(target);
-    return { ...base, kind: "image", dataUrl: `data:${imageMime};base64,${buffer.toString("base64")}` };
+    return { ...base, kind: "image", reason: "二进制内容，请使用「在系统中打开」" };
   }
 
   if (ext === ".pdf") {
-    if (stat.size > ARTIFACT_PDF_LIMIT) {
-      return { ...base, kind: "binary", reason: "PDF 过大，无法内联预览" };
-    }
-    const buffer = readFileSync(target);
-    return { ...base, kind: "pdf", dataUrl: `data:application/pdf;base64,${buffer.toString("base64")}` };
+    return { ...base, kind: "pdf", reason: "PDF 二进制内容，请使用「在系统中打开」" };
   }
 
   if (ext === ".html" || ext === ".htm") {
-    if (stat.size > ARTIFACT_HTML_LIMIT) {
-      return { ...base, kind: "binary", reason: "HTML 过大，无法内联预览" };
-    }
-    const buffer = readFileSync(target);
-    return { ...base, kind: "html", dataUrl: `data:text/html;base64,${buffer.toString("base64")}` };
+    return { ...base, kind: "html", reason: "HTML 请使用「在系统中打开」" };
   }
 
   const known = ext in ARTIFACT_LANGUAGES || ARTIFACT_TEXT_EXT.has(ext);
@@ -680,6 +710,107 @@ function readArtifactPreview(filePath: string): ArtifactPreview {
     text,
     truncated,
   };
+}
+
+// ── FileRef helpers ──────────────────────────────────────────────────
+
+function safeRealpath(p: string): string | null {
+  try {
+    return fs.realpathSync(p);
+  } catch {
+    return null; // Path doesn't exist yet — caller handles the null case
+  }
+}
+
+function resolveProjectPath(filePath: string): string | null {
+  if (!filePath) return null;
+  const resolved = path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(projectPath, filePath);
+  // Canonical containment: resolve symlinks on BOTH the project root and
+  // the target.  A project-local symlink pointing outside projectPath is
+  // rejected — string-prefix checks alone cannot catch this.
+  const rootReal = safeRealpath(projectPath) ?? path.normalize(projectPath);
+  const targetReal = safeRealpath(resolved) ?? path.normalize(resolved);
+  if (
+    targetReal !== rootReal &&
+    !targetReal.startsWith(rootReal + path.sep)
+  ) {
+    return null; // Symlink escape or path outside the project directory
+  }
+  return resolved;
+}
+
+function resolveFileMetadata(filePath: string, source: string) {
+  const resolved = resolveProjectPath(filePath);
+  const exists = resolved ? fs.existsSync(resolved) : false;
+  const stat = exists ? fs.statSync(resolved!) : null;
+  const isDir = stat?.isDirectory() ?? false;
+
+  return {
+    ref: {
+      id: `file-${Date.now().toString(36)}`,
+      source,
+      path: filePath,
+      name: path.basename(filePath),
+      kind: isDir ? "directory" : "file",
+      size: stat?.size,
+      mtimeMs: stat?.mtimeMs,
+      capabilities: {
+        preview: !isDir && exists,
+        attach: exists,
+        copyPath: true,
+        exportToLocal: source === "execution",
+        copyToProject: source === "execution",
+        copyToExecution: source === "project",
+        reveal: source === "project" && exists,
+        rename: source === "project" && exists,
+        delete: source === "project" && exists,
+      },
+    },
+    exists,
+  };
+}
+
+function formatFilePath(filePath: string, format: string): string {
+  switch (format) {
+    case "name":
+      return path.basename(filePath);
+    case "relative":
+      return filePath.startsWith(projectPath)
+        ? path.relative(projectPath, filePath)
+        : filePath;
+    case "uri":
+      return `electromind://file/${filePath}`;
+    case "absolute":
+    default:
+      return resolveProjectPath(filePath) ?? filePath;
+  }
+}
+
+async function exportFileToLocal(ref: {
+  path: string;
+  source: string;
+  name?: string;
+}) {
+  const resolved = resolveProjectPath(ref.path);
+  if (!resolved || !fs.existsSync(resolved)) {
+    return { ok: false, error: `文件不存在: ${ref.path}`, size: 0 };
+  }
+
+  const suggestedName = ref.name ?? path.basename(ref.path);
+  const { filePath } = await dialog.showSaveDialog({
+    defaultPath: suggestedName,
+    title: "导出文件",
+  });
+
+  if (!filePath) {
+    return { ok: false, error: "用户取消", size: 0 };
+  }
+
+  const stat = fs.statSync(resolved);
+  fs.copyFileSync(resolved, filePath);
+  return { ok: true, size: stat.size };
 }
 
 const PROJECT_FILE_IGNORE = new Set([
@@ -875,6 +1006,11 @@ function handleWireLine(line: string): void {
     for (const waiter of matched) {
       waiter.resolve(payload);
     }
+    return;
+  }
+  if (event.method === "ExecutionState") {
+    executionState = normalizeExecutionState(event.params);
+    notifyRuntimeState();
     return;
   }
   if (event.method === "CurrentThread" || event.method === "HistoryReplay") {
@@ -1229,6 +1365,55 @@ ipcMain.handle("desktop:open-artifact", async (_event, filePath: string) => {
 ipcMain.handle("desktop:read-artifact", async (_event, filePath: string): Promise<ArtifactPreview> => {
   return readArtifactPreview(filePath);
 });
+
+// ── FileRef operations ───────────────────────────────────────────────
+
+ipcMain.handle(
+  "desktop:get-file-metadata",
+  async (_event, ref: { path: string; source: string }) => {
+    return resolveFileMetadata(ref.path, ref.source);
+  },
+);
+
+ipcMain.handle(
+  "desktop:preview-file",
+  async (_event, ref: { path: string; source: string }): Promise<ArtifactPreview> => {
+    // Constrained: only project files are previewable in-process; binary
+    // content is never encoded as Data URL.  The resolved path is already
+    // containment-authorized — do NOT re-validate as an artifact.
+    const resolved = resolveProjectPath(ref.path);
+    if (!resolved || !fs.existsSync(resolved)) {
+      return { name: path.basename(ref.path), path: ref.path, size: 0, kind: "binary", reason: "文件不存在" };
+    }
+    return readConstrainedPreview(resolved, path.basename(resolved));
+  },
+);
+
+ipcMain.handle(
+  "desktop:copy-file-path",
+  async (_event, ref: { path: string }, format: string) => {
+    const text = formatFilePath(ref.path, format);
+    clipboard.writeText(text);
+  },
+);
+
+ipcMain.handle(
+  "desktop:export-file",
+  async (_event, ref: { path: string; source: string; name?: string }) => {
+    return exportFileToLocal(ref);
+  },
+);
+
+ipcMain.handle(
+  "desktop:reveal-in-finder",
+  async (_event, ref: { path: string; source: string }) => {
+    const resolved = resolveProjectPath(ref.path);
+    if (resolved && fs.existsSync(resolved)) {
+      shell.showItemInFolder(resolved);
+    }
+  },
+);
+
 ipcMain.handle("desktop:get-sandbox-status", async (): Promise<SandboxStatus> => {
   const payload = await requestSandboxStatus();
   return {
@@ -1280,15 +1465,36 @@ ipcMain.handle("desktop:delete-thread", async (_event, threadId: string) => {
   }
   return true;
 });
-ipcMain.handle("desktop:send-user-input", async (_event, text: string) => {
+ipcMain.handle("desktop:send-user-input", async (_event, text: string, requestId?: string, delivery?: string, mode?: string) => {
   clearLastError();
   const activeBridge = ensureBridge();
   if (!activeBridge) {
     return;
   }
-  activeBridge.send({ cmd: "user", text, project_path: projectPath });
+  const reqId = requestId && requestId.startsWith("req-")
+    ? requestId
+    : `req-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const dlv = delivery === "enqueue" || delivery === "immediate" || delivery === "auto"
+    ? delivery
+    : "auto";
+  activeBridge.send({
+    cmd: "input/send",
+    text,
+    delivery: dlv,
+    mode: mode && mode !== "agent" ? mode : undefined,
+    project_path: projectPath,
+    request_id: reqId,
+  });
 });
+const ALLOWED_WIRE_COMMANDS = new Set<string>(["skills", "cancel"]);
+
 ipcMain.handle("desktop:send-wire-command", async (_event, command: Record<string, unknown>) => {
+  // Defense in depth: the Renderer may only send allowlisted commands.
+  const cmd = String(command?.cmd ?? "");
+  if (!ALLOWED_WIRE_COMMANDS.has(cmd)) {
+    console.warn(`[main] rejected wire command: ${cmd}`);
+    return;
+  }
   const activeBridge = ensureBridge();
   if (!activeBridge) {
     return;
@@ -1315,8 +1521,20 @@ ipcMain.handle(
       cmd: "reset",
       project_path: nextProject,
     };
-    if (options?.backend) {
-      command.backend = options.backend;
+    // 将旧 backend 映射为新 execution_mode 协议：
+    //   local → execution_mode=local
+    //   container/docker/podman → execution_mode=sandbox, backend=...
+    //   ssh → execution_mode=ssh
+    const backend = options?.backend;
+    if (backend) {
+      if (backend === "local") {
+        command.execution_mode = "local";
+      } else if (backend === "container" || backend === "docker" || backend === "podman") {
+        command.execution_mode = "sandbox";
+        command.backend = backend;
+      } else if (backend === "ssh") {
+        command.execution_mode = "ssh";
+      }
     }
     if (options?.image?.trim()) {
       command.image = options.image.trim();
@@ -1373,16 +1591,27 @@ ipcMain.handle("desktop:select-project", async () => {
 ipcMain.handle("desktop:request-history", async () => {
   await restoreHistory();
 });
-ipcMain.handle("desktop:permit-tool-call", async (_event, toolCallId: string) => {
-  bridge?.send({ cmd: "permit", tool_call_id: toolCallId });
+ipcMain.handle("desktop:permit-tool-call", async (_event, payload: unknown) => {
+  const p = (typeof payload === "object" && payload !== null ? payload : {}) as Record<string, unknown>;
+  bridge?.send({
+    cmd: "permit",
+    tool_call_id: String(p.toolCallId ?? ""),
+    approval_id: String(p.approvalId ?? ""),
+    thread_id: String(p.threadId ?? ""),
+    run_id: String(p.runId ?? ""),
+  });
 });
 ipcMain.handle(
   "desktop:deny-tool-call",
-  async (_event, toolCallId: string, reason?: string) => {
+  async (_event, payload: unknown) => {
+    const p = (typeof payload === "object" && payload !== null ? payload : {}) as Record<string, unknown>;
     bridge?.send({
       cmd: "deny",
-      tool_call_id: toolCallId,
-      reason: reason ?? "",
+      tool_call_id: String(p.toolCallId ?? ""),
+      reason: String(p.reason ?? ""),
+      approval_id: String(p.approvalId ?? ""),
+      thread_id: String(p.threadId ?? ""),
+      run_id: String(p.runId ?? ""),
     });
   },
 );

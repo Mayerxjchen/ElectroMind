@@ -2,9 +2,18 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   DesktopApi,
   DesktopEvent,
+  FileMetadata,
+  FilePreview,
+  FileRef,
+  FileTransferResult,
+  PathFormat,
   ResetSessionOptions,
   RuntimeState,
+  WireCommand,
 } from "../shared/protocol";
+
+/** Wire commands the Renderer may send directly (capability boundary). */
+const ALLOWED_WIRE_COMMANDS = new Set<string>(["skills", "cancel"]);
 
 function subscribeToChannel<T>(
   channel: string,
@@ -90,8 +99,8 @@ const desktopApi: DesktopApi = {
   deleteThread(threadId: string) {
     return ipcRenderer.invoke("desktop:delete-thread", threadId);
   },
-  sendUserInput(text: string) {
-    return ipcRenderer.invoke("desktop:send-user-input", text);
+  sendUserInput(text: string, requestId?: string, delivery?: string, mode?: string) {
+    return ipcRenderer.invoke("desktop:send-user-input", text, requestId, delivery, mode);
   },
   clearLastError() {
     return ipcRenderer.invoke("desktop:clear-last-error");
@@ -102,20 +111,44 @@ const desktopApi: DesktopApi = {
   requestHistoryReplay() {
     return ipcRenderer.invoke("desktop:request-history");
   },
-  sendWireCommand(command: Record<string, unknown>) {
+  sendWireCommand(command: WireCommand) {
+    // Capability boundary: only allowlist commands may cross the bridge.
+    if (!ALLOWED_WIRE_COMMANDS.has(command.cmd)) {
+      return Promise.reject(
+        new Error(`wire command not allowed: ${String(command.cmd)}`),
+      );
+    }
     return ipcRenderer.invoke("desktop:send-wire-command", command);
   },
-  permitToolCall(toolCallId: string) {
-    return ipcRenderer.invoke("desktop:permit-tool-call", toolCallId);
+  permitToolCall(toolCallId: string, approvalId?: string, threadId?: string, runId?: string) {
+    return ipcRenderer.invoke("desktop:permit-tool-call", { toolCallId, approvalId, threadId, runId });
   },
-  denyToolCall(toolCallId: string, reason?: string) {
-    return ipcRenderer.invoke("desktop:deny-tool-call", toolCallId, reason);
+  denyToolCall(toolCallId: string, reason?: string, approvalId?: string, threadId?: string, runId?: string) {
+    return ipcRenderer.invoke("desktop:deny-tool-call", { toolCallId, reason, approvalId, threadId, runId });
   },
   onAgentEvent(listener: (event: DesktopEvent) => void) {
     return subscribeToChannel("desktop:event", listener);
   },
   onRuntimeState(listener: (state: RuntimeState) => void) {
     return subscribeToChannel("desktop:runtime-state", listener);
+  },
+
+  // ── File operations ────────────────────────────────────────────
+
+  getFileMetadata(ref: FileRef): Promise<FileMetadata> {
+    return ipcRenderer.invoke("desktop:get-file-metadata", ref);
+  },
+  previewFile(ref: FileRef): Promise<FilePreview> {
+    return ipcRenderer.invoke("desktop:preview-file", ref);
+  },
+  copyFilePath(ref: FileRef, format: PathFormat): Promise<void> {
+    return ipcRenderer.invoke("desktop:copy-file-path", ref, format);
+  },
+  exportFile(ref: FileRef, suggestedName?: string): Promise<FileTransferResult> {
+    return ipcRenderer.invoke("desktop:export-file", ref, suggestedName);
+  },
+  revealInFinder(ref: FileRef): Promise<void> {
+    return ipcRenderer.invoke("desktop:reveal-in-finder", ref);
   },
 };
 

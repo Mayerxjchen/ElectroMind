@@ -45,6 +45,12 @@
     });
   </script>
   <script src="./renderer.js"></script>
+  <script src="./react-shell.js"></script>
+  <script>
+    // Initialize React shell after vanilla renderer mounts, passing the
+    // live SessionManager so thread operations are not no-ops.
+    window.__initReactShell__?.(window.__electromindSM);
+  </script>
 </body>
 
 </html>

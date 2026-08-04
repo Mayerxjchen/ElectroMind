@@ -103,6 +103,9 @@ class SandboxSpec:
     container_ttl_seconds: int | None = None
     command_policy: str = "open"
     tools: tuple[str, ...] = ()
+    ssh_context_files: tuple[str, ...] = ()
+    session_mode: str = "agent"  # ask | plan | agent | review
+    autonomy: str = "prompt"  # prompt | auto-safe | full-access
 
 
 @dataclass(frozen=True, slots=True)

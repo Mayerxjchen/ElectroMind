@@ -1,4 +1,4 @@
-# pagent app 默认 agent 镜像 —— Alpine + uv(Python) + Node。
+# electromind app 默认 agent 镜像 —— Alpine + uv(Python) + Node。
 #
 # 不用 python:* 基础镜像，避免系统 Python 与 uv 重复；Python 由 uv 安装。
 # Alpine 比 Debian slim 小很多；Node 走 apk（比 nvm 更瘦，无版本切换）。
@@ -7,11 +7,12 @@
 # 注意：musl 环境，少数带 glibc 二进制的 wheel 可能不兼容。
 #
 # 用法：
-#     docker build -t pagent:latest -f src/app/Dockerfile src/app
+#     docker build -t electromind:latest -f src/app/Dockerfile src/app
 #     # 或
-#     cd src/app && docker build -t pagent:latest .
+#     cd src/app && docker build -t electromind:latest .
 #
-# bundled pagent.toml 默认 backend=podman, image=pagent:latest
+# 内置默认配置（src/electromind/resources/default-config.toml）默认 backend=local,
+# image=electromind:latest；容器后端时改用此镜像。
 
 FROM alpine:3.21
 

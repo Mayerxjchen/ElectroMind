@@ -1,4 +1,4 @@
-/* pagent 聊天视图样式。
+/* electromind 聊天视图样式。
  *
  * 全部颜色走 VS Code 注入的 --vscode-* 主题变量，因此亮/暗主题自动跟随，
  * 无需额外 JS（第 9 课再补主题切换时的动态刷新）。
@@ -73,7 +73,7 @@ body {
   width: auto;
 }
 
-/* 角色小标签：you / pagent，弱化配色，仅供多轮扫读。 */
+/* 角色小标签：you / electromind，弱化配色，仅供多轮扫读。 */
 .role-label {
   font-size: 0.78em;
   color: var(--vscode-descriptionForeground);

@@ -1,11 +1,11 @@
-# pagent browser 镜像 —— 在默认 agent 镜像基础上加 headless Chromium。
+# electromind browser 镜像 —— 在默认 agent 镜像基础上加 headless Chromium。
 #
 # 预装：curl、jq、git、uv、node/npm、Chromium、Noto CJK 字体。
 # 渲染 HTML、导出 PDF 时用；日常开发继续用 Dockerfile。
 #
 # 用法：
-#     docker build -t pagent:browser -f src/app/Dockerfile.browser src/app
-#     # pagent.toml: image = "pagent:browser"
+#     docker build -t electromind:browser -f src/app/Dockerfile.browser src/app
+#     # config.toml: image = "electromind:browser"
 #
 # 容器内 headless 示例：
 #     chromium-browser --headless --disable-gpu --no-sandbox --disable-dev-shm-usage \

@@ -1,0 +1,21 @@
+# Knowledge reference sync mapping (A+ self-contained skills).
+#
+# The canonical authoring sources live in this directory
+# (skills/knowledge/).  Each skill carries its own committed runtime copies
+# under <skill>/references/knowledge/ — this mapping declares which source is
+# copied where.  Copies are byte-identical to their source; the generated
+# sync-manifest.json records target -> {source, sha256}.
+#
+# All paths are repo-root relative.  Reconcile with:
+#     uv run scripts/sync-skill-references.py
+# Verify (read-only) with:
+#     uv run scripts/sync-skill-references.py --check
+#
+# [[references]]
+# source = "skills/knowledge/electronic-structure.md"
+# targets = [
+#   "skills/tools/cp2k/references/knowledge/electronic-structure.md",
+#   "skills/tools/vasp/references/knowledge/electronic-structure.md",
+# ]
+
+# (empty — derived in the knowledge content migration phase)

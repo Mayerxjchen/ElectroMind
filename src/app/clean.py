@@ -10,7 +10,11 @@ from electromind.conversation import (
     default_conversations_root,
 )
 from electromind.core.message import Messages
-from electromind.ithread import MESSAGES_CONVERSATION_ID, SPEC_FILENAME, WORKSPACES_DIRNAME
+from electromind.ithread import (
+    MESSAGES_CONVERSATION_ID,
+    SPEC_FILENAME,
+    WORKSPACES_DIRNAME,
+)
 from electromind.runtime.thread import default_threads_root
 
 

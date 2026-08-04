@@ -16,8 +16,10 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -44,7 +46,7 @@ class Skill:
     resources: tuple[str, ...] = field(default_factory=tuple)
     source_id: str = ""
     skill_root: Path | None = None
-    bundle_root: Path | None = None
+    skills_root: Path | None = None
     sha256: str = ""
 
     def __post_init__(self) -> None:
@@ -52,9 +54,12 @@ class Skill:
         if self.skill_root is None:
             object.__setattr__(self, "skill_root", self.root)
         if not self.sha256:
-            h = __import__("hashlib").sha256()
+            h = hashlib.sha256()
             h.update(self.instructions.encode("utf-8"))
             h.update(self.description.encode("utf-8"))
+            # Include resource paths so sha256 changes when resources change.
+            for res in sorted(self.resources):
+                h.update(res.encode("utf-8"))
             object.__setattr__(self, "sha256", h.hexdigest())
 
 
@@ -66,7 +71,15 @@ class SkillDiscoveryError(Exception):
 
 
 class SkillRegistry:
-    """内存中的 skill 索引 —— 名字 → Skill。"""
+    """内存中的 skill 索引 —— 名字 → Skill。
+
+    .. deprecated::
+        Phase-2 migration: the runtime now consumes the candidate/catalog
+        chain (``SkillCatalogService`` → ``MultiCandidateCatalog`` →
+        ``SkillActivationService``).  This class is kept as a compat facade
+        (see ``MultiCandidateCatalog.registry``) for legacy callers; new
+        code should consume candidates.
+    """
 
     def __init__(self, skills: list[Skill] | None = None) -> None:
         self.skills: dict[str, Skill] = {}
@@ -200,13 +213,35 @@ def parse_skill_md(text: str) -> tuple[dict[str, Any], str]:
     return frontmatter, body
 
 
+# Files and directories always excluded from skill resource collection.
+_EXCLUDED_NAMES = frozenset(
+    {
+        ".git",
+        ".pytest_cache",
+        "__pycache__",
+        ".DS_Store",
+        "Thumbs.db",
+    }
+)
+_EXCLUDED_SUFFIXES = (".pyc", ".pyo", "~", ".swp", ".swo")
+
+
+def _is_excluded_path(name: str) -> bool:
+    """Return True if the file/directory name should be excluded from resources."""
+    if name.startswith("."):
+        return True
+    if name in _EXCLUDED_NAMES:
+        return True
+    return any(name.endswith(suffix) for suffix in _EXCLUDED_SUFFIXES)
+
+
 def collect_resources(skill_root: Path) -> list[str]:
     """列出 skill 目录里 SKILL.md 以外的相对路径（供说明书里引用）。"""
     resources: list[str] = []
     for dirpath, dirnames, filenames in os.walk(skill_root):
-        dirnames[:] = [d for d in dirnames if not d.startswith(".")]
+        dirnames[:] = [d for d in dirnames if not _is_excluded_path(d)]
         for filename in sorted(filenames):
-            if filename.startswith("."):
+            if _is_excluded_path(filename):
                 continue
             full = Path(dirpath) / filename
             rel = full.relative_to(skill_root).as_posix()
@@ -216,11 +251,52 @@ def collect_resources(skill_root: Path) -> list[str]:
     return sorted(resources)
 
 
+_VALID_SKILL_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]*[a-z0-9]$|^[a-z0-9]$")
+
+
+def validate_skill_name(name: str) -> str | None:
+    """Return an error message if *name* is invalid, or ``None`` if it is valid.
+
+    Valid names: lowercase letters, digits, and hyphens; must start and end
+    with a letter or digit.
+    """
+    if not name:
+        return "skill name must not be empty"
+    if not _VALID_SKILL_NAME_RE.match(name):
+        return (
+            f"invalid skill name {name!r}: "
+            "must contain only lowercase letters, digits, and hyphens, "
+            "and start/end with a letter or digit"
+        )
+    return None
+
+
+def has_symlinks(skill_dir: Path) -> list[Path]:
+    """Return a list of symlink paths found anywhere under *skill_dir*.
+
+    An empty list means no symlinks were detected.
+    """
+    found: list[Path] = []
+    for dirpath, dirnames, filenames in os.walk(skill_dir):
+        dirnames[:] = [d for d in dirnames if not _is_excluded_path(d)]
+        for name in sorted(dirnames + filenames):
+            full = Path(dirpath) / name
+            if full.is_symlink():
+                found.append(full)
+    # Also check SKILL.md itself
+    skill_md = skill_dir / "SKILL.md"
+    if skill_md.is_symlink():
+        found.append(skill_md)
+    return found
+
+
 def make_use_skill_tool(
     registry_or_snapshot: SkillRegistry | "SkillCatalogSnapshot",
     mount: dict[str, str] | dict[str, "SkillMount"] | None = None,
     *,
     on_activate: "Callable[[Skill], None] | None" = None,
+    generation: int = 0,
+    skill_set_digest: str = "",
 ) -> FunctionTool:
     """构造 `use_skill` 工具。
 
@@ -230,6 +306,10 @@ def make_use_skill_tool(
     successful skill load (only after the payload has been constructed).
 
     ``mount`` is ``name -> agent 视角路径`` (legacy) or ``name -> SkillMount``.
+
+    ``generation`` and ``skill_set_digest`` are included in the returned
+    payload when non-zero/non-empty, so the agent can confirm which version
+    of the skill set it is working with.
     """
 
     # ── resolve the registry ──────────────────────────────────────────
@@ -261,11 +341,11 @@ def make_use_skill_tool(
 
         if isinstance(sm, _SkillMount):
             skill_root = sm.skill_root
-            bundle_root = sm.bundle_root
+            skills_root = sm.skills_root
         else:
             # Legacy: mount is dict[str, str]
             skill_root = (mount or {}).get(skill.name) or str(skill.root)
-            bundle_root = None
+            skills_root = None
 
         payload = {
             "ok": True,
@@ -273,12 +353,17 @@ def make_use_skill_tool(
             "description": skill.description,
             "instructions": skill.instructions,
             "skill_root": skill_root,
-            "bundle_root": bundle_root,
+            "skills_root": skills_root,
             "resources": list(skill.resources),
             "sha256": skill.sha256,
         }
         # Legacy compat: include "root" field for old callers
         payload["root"] = skill_root
+        # Include generation and set digest when available
+        if generation:
+            payload["generation"] = generation
+        if skill_set_digest:
+            payload["skill_set_digest"] = skill_set_digest
 
         if on_activate is not None:
             on_activate(skill)
@@ -297,7 +382,7 @@ def make_use_skill_tool(
             "加载一个 skill 的完整说明书和资源清单。"
             "每个 skill 都是一份现成的操作手册，里面告诉你怎么完成一类任务、可以用哪些脚本。"
             f"当前可用：{names_hint}。"
-            "返回 JSON：{ok, name, description, instructions, skill_root, bundle_root, resources[], sha256}。"
+            "返回 JSON：{ok, name, description, instructions, skill_root, skills_root, resources[], sha256}。"
             f"{mount_hint}"
         ),
         parameters={
@@ -322,7 +407,7 @@ def build_skills_system_prompt(
     """Build the system-prompt block for Skills.
 
     When given a ``SkillCatalogSnapshot``:
-    - Global instructions (AICC AGENTS.md) appear first.
+    - Global instructions (AGENTS.md from structured skill roots) appear first.
     - Only skill name, description, source, and mounted root are rendered;
       the SKILL.md instruction body is NOT included.
     - Output is wrapped in ``<!-- electromind:skills:start -->`` /
@@ -361,17 +446,17 @@ def _build_snapshot_prompt(
             sm = mount.get(skill.name) if mount else None
             if isinstance(sm, SkillMount):
                 location = sm.skill_root
-                bundle = sm.bundle_root
+                skills_root = sm.skills_root
             elif isinstance(sm, str):
                 location = sm
-                bundle = None
+                skills_root = None
             else:
                 location = ""
-                bundle = None
+                skills_root = None
 
             extra = ""
-            if bundle:
-                extra = f"，bundle: {bundle}"
+            if skills_root:
+                extra = f"，root: {skills_root}"
             # Show a short source label without full filesystem paths
             source_label = _short_source_label(skill.source_id)
             lines.append(

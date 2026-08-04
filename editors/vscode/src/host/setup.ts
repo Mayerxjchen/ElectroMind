@@ -1,4 +1,4 @@
-// 首次使用：检测 API Key，引导写入当前 pagent home 的 pagent.toml。
+// 首次使用：检测 API Key，引导写入当前 electromind home 的 config.toml。
 // Setup 三项：api_key（必填）、model（可默认）、base_url（可留空）。
 
 import { mkdir, readFile, writeFile, chmod } from "node:fs/promises";
@@ -21,7 +21,7 @@ export function userConfigPath(): string {
   return homeConfigPath();
 }
 
-/** 环境变量 / 当前 home 的 pagent.toml 是否已有可用 Key。 */
+/** 环境变量 / 当前 home 的 config.toml 是否已有可用 Key。 */
 export async function hasConfiguredApiKey(): Promise<boolean> {
   const fromEnv = process.env.DEEPSEEK_API_KEY?.trim();
   if (fromEnv) {
@@ -90,7 +90,7 @@ export function upsertProviderApiKey(text: string, apiKey: string): string {
   return upsertProviderField(text, "api_key", apiKey);
 }
 
-/** 写入当前 pagent home 的 pagent.toml provider 段。 */
+/** 写入当前 electromind home 的 config.toml provider 段。 */
 export async function writeUserProvider(setup: ProviderSetup): Promise<string> {
   const apiKey = setup.apiKey.trim();
   if (!apiKey) {
@@ -106,8 +106,8 @@ export async function writeUserProvider(setup: ProviderSetup): Promise<string> {
     text = await readFile(path, "utf8");
   } catch {
     text =
-      "# pagent home 配置（与 threads/skills 同目录）\n" +
-      "# home = ./.pagent（项目）或 ~/.pagent（用户）\n\n" +
+      "# electromind home 配置（与 threads/skills 同目录）\n" +
+      "# home = ./.electromind（项目）或 ~/.electromind（用户）\n\n" +
       "[provider]\n";
   }
   text = upsertProviderField(text, "api_key", apiKey);
@@ -135,7 +135,7 @@ export async function promptAndSaveProvider(
 ): Promise<boolean> {
   const target = homeConfigPath();
   const apiKey = await vscode.window.showInputBox({
-    title: "pagent setup (1/3)",
+    title: "electromind setup (1/3)",
     prompt: `API Key（必填），将保存到 ${target}`,
     password: true,
     ignoreFocusOut: true,
@@ -145,31 +145,31 @@ export async function promptAndSaveProvider(
   });
   if (apiKey === undefined) {
     void vscode.window.showWarningMessage(
-      "pagent：已取消 setup。可在命令面板运行 “pagent: Setup API Key” 重试。",
+      "electromind：已取消 setup。可在命令面板运行 “electromind: Setup API Key” 重试。",
     );
     return false;
   }
 
   const model = await vscode.window.showInputBox({
-    title: "pagent setup (2/3)",
+    title: "electromind setup (2/3)",
     prompt: "模型 ID（回车用默认）",
     ignoreFocusOut: true,
     value: DEFAULT_MODEL,
     placeHolder: DEFAULT_MODEL,
   });
   if (model === undefined) {
-    void vscode.window.showWarningMessage("pagent：已取消 setup。");
+    void vscode.window.showWarningMessage("electromind：已取消 setup。");
     return false;
   }
 
   const baseUrl = await vscode.window.showInputBox({
-    title: "pagent setup (3/3)",
+    title: "electromind setup (3/3)",
     prompt: "Base URL（可选；官方 DeepSeek 请留空）",
     ignoreFocusOut: true,
     placeHolder: "https://api.deepseek.com（留空=默认）",
   });
   if (baseUrl === undefined) {
-    void vscode.window.showWarningMessage("pagent：已取消 setup。");
+    void vscode.window.showWarningMessage("electromind：已取消 setup。");
     return false;
   }
 
@@ -179,7 +179,7 @@ export async function promptAndSaveProvider(
     baseUrl: baseUrl.trim() || undefined,
   });
   output?.appendLine(`[setup] 已写入 ${path}`);
-  void vscode.window.showInformationMessage(`pagent：配置已保存到 ${path}`);
+  void vscode.window.showInformationMessage(`electromind：配置已保存到 ${path}`);
   return true;
 }
 

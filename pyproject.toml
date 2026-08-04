@@ -36,11 +36,12 @@ dependencies = [
     "prompt-toolkit>=3.0.52",
     "pyyaml>=6.0.3",
     "tiktoken>=0.7.0",
+    "tomli-w>=1.0.0",
 ]
 
 [project.urls]
-Homepage = "https://github.com/SyncLionPaw/pagent"
-Documentation = "https://synclionpaw.github.io/pagent/"
+Homepage = "https://github.com/Mayerxjchen/ElectroMind"
+Documentation = "https://mayerxjchen.github.io/electromind/"
 
 [project.optional-dependencies]
 tokens = ["transformers>=4.40"]
@@ -48,16 +49,27 @@ ssh = ["asyncssh>=2.14"]
 server = ["fastapi>=0.115", "uvicorn>=0.30"]
 
 [project.scripts]
-electromind = "app.repl:main"
+electromind = "app.cli:main"
 electromind-openai = "electromind.trace.openai_export:main"
 electromind-trace = "electromind.trace.view:main"
 
 [build-system]
-requires = ["uv_build>=0.8.20,<0.9.0"]
+requires = ["uv_build>=0.9.0,<0.13.0"]
 build-backend = "uv_build"
 
 [tool.uv.build-backend]
 module-name = ["electromind", "app"]
+# 显式声明 sdist 收集范围，与 module-name 的动态模块发现解耦，双保险：
+# 即使后端再次出现 find_roots 静默失效（0.8.x 已证实），src/** 也会被显式
+# glob 收集，两种 archive 内容都确定。
+source-include = ["src/**", "pyproject.toml", "README.md"]
+
+# SKILL-8: bundle the built-in scientific skill bundle (skills/ with
+# procedures/ + tools/ + knowledge/) into installed artifacts.  uv_build's
+# `data` type installs the directory contents over the virtualenv root, so
+# `electromind.skills.builtin.builtin_roots()` probes <sys.prefix>/skills.
+[tool.uv.build-backend.data]
+data = "skills"
 
 [dependency-groups]
 dev = [
@@ -73,6 +85,7 @@ dev = [
 ]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
+asyncio_mode = "auto"
 markers = [
     "asyncio: mark test as an async test",
 ]
@@ -110,7 +123,10 @@ exclude_lines = [
 [tool.ruff]
 target-version = "py311"
 src = ["src"]
-extend-exclude = ["src/electromind/core/hacked_agent.py"]  # intentional invalid syntax demo
+extend-exclude = [
+    "src/electromind/core/hacked_agent.py",  # intentional invalid syntax demo
+    ".claude/worktrees",  # temporary agent worktrees — not product code
+]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I"]

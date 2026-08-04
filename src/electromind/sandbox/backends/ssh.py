@@ -45,6 +45,7 @@ class SshBackend:
         self.spec: SandboxSpec | None = None
         self.conn: asyncssh.SSHClientConnection | None = None
         self.sftp: asyncssh.SFTPClient | None = None
+        self.execution_documents: tuple = ()
 
     async def start(self, spec: SandboxSpec, workdir: str) -> None:
         connection = spec.connection or {}
@@ -77,6 +78,24 @@ class SshBackend:
 
         self.conn = await asyncssh.connect(**connect_kwargs)
         self.sftp = await self.conn.start_sftp_client()
+
+        # Fetch explicitly configured SSH context files (no scanning)
+        self._context_diagnostics: tuple[dict, ...] = ()
+        context_files = getattr(spec, "ssh_context_files", ()) or ()
+        if context_files and self.sftp is not None:
+            try:
+                from electromind.execution.context import fetch_execution_context
+
+                result = await fetch_execution_context(
+                    self.sftp,
+                    context_files,
+                    profile_id=f"{user}@{host}",
+                )
+                self.execution_documents = result.documents
+                self._context_diagnostics = result.diagnostics
+            except Exception:
+                self.execution_documents = ()
+                self._context_diagnostics = ()
 
         remote = connection.get("workdir") or DEFAULT_REMOTE_WORKDIR
         expanded = await self.expand_remote_path(remote)

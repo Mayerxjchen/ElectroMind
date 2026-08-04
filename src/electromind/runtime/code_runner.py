@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import asyncio
 import tomllib
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Sequence
 from datetime import datetime
 from pathlib import Path
 
@@ -43,7 +43,8 @@ from ..core.agent import Agent
 from ..core.message import Messages
 from ..core.tool import FunctionTool
 from ..ithread import ThreadSpec
-from .base_runner import BaseRunner, assemble_run_resources
+from ..skills.runtime import SkillRuntime
+from .base_runner import BaseRunner, _run_capabilities, assemble_run_resources
 from .helper import ArunReturnType, EventHandler
 from .thread import Thread
 
@@ -97,6 +98,7 @@ class CodeRunner(BaseRunner):
         tools: list[FunctionTool] = (),
         extra_system: str = "",
         spec: ThreadSpec | None = None,
+        builtin_roots: Sequence[str | Path] | None = None,
     ):
         """创建 CodeRunner；sandbox 在第一次 run 前自动初始化。"""
         resolved_thread_id = (
@@ -127,6 +129,9 @@ class CodeRunner(BaseRunner):
         self.pending_skill_roots = list(skill_roots)
         self.pending_tools = list(tools)
         self.pending_extra_system = extra_system
+        self.pending_builtin_roots = (
+            tuple(builtin_roots) if builtin_roots is not None else None
+        )
 
     async def ensure_initialized(self) -> None:
         """确保 sandbox、skills 和 sandbox tools 已经绑定到 Agent。
@@ -150,6 +155,7 @@ class CodeRunner(BaseRunner):
                 extra_system=self.pending_extra_system,
                 agent_system=self.base_agent.system,
                 run_state=self.run_state,
+                builtin_roots=self.pending_builtin_roots,
             )
             self.agent = build_code_agent(
                 self.base_agent,
@@ -158,6 +164,17 @@ class CodeRunner(BaseRunner):
             )
             self.sandbox = resources.sandbox
             self.skills = resources.skills
+            # Phase-2: establish the shared SkillRuntime so subsequent turns
+            # refresh generations via before_user_turn (was previously None).
+            self.skill_runtime = SkillRuntime(
+                self.thread.spec.project_path,
+                configured_roots=self.pending_skill_roots,
+                mounter=_runtime_mounter(resources),
+                builtin_roots=self.pending_builtin_roots,
+                service=resources.catalog_service,
+                capabilities=_run_capabilities(self.thread.spec),
+            )
+            self.skill_runtime.prepare_turn()
             self.code_initialized = True
 
     async def run(
@@ -223,6 +240,7 @@ class CodeRunner(BaseRunner):
         skill_roots: list[str | Path] = (),
         tools: list[FunctionTool] = (),
         extra_system: str = "",
+        builtin_roots: Sequence[str | Path] | None = None,
     ) -> CodeRunner:
         """从 TOML 配置文件创建并打开 CodeRunner（立即初始化路径）。
 
@@ -255,4 +273,25 @@ class CodeRunner(BaseRunner):
             tools=tools,
             extra_system=extra_system,
             spec=spec,
+            builtin_roots=builtin_roots,
         )
+
+
+def _runtime_mounter(resources) -> "object | None":
+    """The lazy mounter for the runtime's activation service.
+
+    SSH backends use ``SshLazySkillMounter`` (full snapshot digest
+    verification); local/container use ``LazySkillMounter``.
+    """
+    from ..skills.mounting import LazySkillMounter, SshLazySkillMounter
+    from ..skills.snapstore import PrivateSnapshotStore
+
+    sandbox = resources.sandbox
+    if sandbox is None:
+        return None
+    store = PrivateSnapshotStore()
+    backend = getattr(sandbox, "backend", None)
+    backend_name = getattr(getattr(backend, "__class__", None), "__name__", "")
+    if backend_name == "SshBackend":
+        return SshLazySkillMounter(sandbox, store=store)
+    return LazySkillMounter(sandbox, store=store)

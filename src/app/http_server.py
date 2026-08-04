@@ -29,18 +29,29 @@ AUTH_ENV = "ELECTROMIND_SERVER_TOKEN"
 
 
 class WireHttpSession:
-    """承载单会话的 runner / state，串行化命令分派（对齐 wire 主循环的顺序处理）。"""
+    """HTTP 会话视图：串行化命令分派（对齐 wire 主循环的顺序处理）。
+
+    状态模型与 CLI 的 EmbeddedAgentClient 对齐在同一 Harness 层：
+    - 多 Thread 的 Runner / 后台 Run 生命周期在 wire 的 ``state["_runners"]``
+      与模块级 ``_harness_manager``（ThreadSessionManager）里，逐 Thread 独立
+    - ``self.runner`` 只是“当前选中 Thread”的视图指针（resume 切换），
+      与 Desktop 的 wire 客户端同一语义；切换/取消不触碰其他 Thread
+    """
 
     def __init__(self, config: ReplConfig, sink: FanoutSink) -> None:
         self.config = config
         self.sink = sink
-        self.runner = None
+        self.runner = None  # 当前选中 Thread 的 Runner 视图指针
         self.state: dict = {"turn": None, "client_features": {}}
         self.had_user_turn = False
         self._lock = asyncio.Lock()
 
     async def dispatch(self, command: dict) -> None:
-        """处理一条命令；同一时刻只处理一条（user 起后台 turn 后立即返回）。"""
+        """处理一条命令；同一时刻只处理一条（user 起后台 turn 后立即返回）。
+
+        runner 生命周期委托 wire 命令核：多 Thread 并行、切换不关闭 Runner、
+        取消只作用于选中 Thread——与 CLI 客户端同一 Harness 状态模型。
+        """
         async with self._lock:
             prev_count = (
                 len(self.runner.messages.data) if self.runner is not None else 0

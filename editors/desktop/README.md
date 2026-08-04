@@ -29,7 +29,7 @@ uv sync
 ```
 
 桌面端拉起后端的方式见 [src/shared/agent.ts](src/shared/agent.ts)：
-优先 `uv run --project <repo-root> electromind --wire --backend local`，找不到 `uv` 时回退到 PATH 里的 `pagent`。
+优先 `uv run --project <repo-root> electromind --wire --backend local`，找不到 `uv` 时回退到 PATH 里的 `electromind`。
 
 ### 3. API Key
 
@@ -37,7 +37,7 @@ uv sync
 
 ```bash
 export DEEPSEEK_API_KEY=sk-xxx
-# 或写入生效的 home 配置：./.pagent/electromind.toml 或 ~/.electromind/electromind.toml
+# 或写入生效的 home 配置：./.electromind/config.toml 或 ~/.electromind/config.toml
 # [provider]
 # api_key = "sk-xxx"
 ```
@@ -92,7 +92,7 @@ docker build -t electromind:browser -f src/app/Dockerfile.browser src/app
 
 ### 切到容器 backend
 
-在生效的 `electromind.toml`（`./.pagent/electromind.toml` 或 `~/.electromind/electromind.toml`）里配置：
+在生效的 `config.toml`（`./.electromind/config.toml` 或 `~/.electromind/config.toml`）里配置：
 
 ```toml
 [sandbox]

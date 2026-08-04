@@ -28,16 +28,7 @@ from ..core.provider import ProviderProtocol
 from ..core.tool import FunctionTool
 from ..ithread import IThread, ThreadSpec
 from ..sandbox import Sandbox
-from ..skills import (
-    SkillRegistry,
-    build_skills_system_prompt,
-    make_use_skill_tool,
-)
-from ..skills.discovery import (
-    SkillMount,
-    discover_skill_sources,
-    load_skill_catalog,
-)
+from ..skills import SkillRegistry
 from ..skills.runtime import SkillRuntime
 from .loop_adapter import LoopAdapter
 from .run_state import RunState
@@ -45,12 +36,20 @@ from .thread import Thread
 
 
 class RunResources(NamedTuple):
-    """assemble_run_resources 的产物：一次运行所需的资源与提示词。"""
+    """assemble_run_resources 的产物：一次运行所需的资源与提示词。
+
+    ``catalog_service`` / ``catalog`` are the SHARED discovery state: every
+    runner construction path (from_spec / Runner.create / CodeRunner) reuses
+    the same service and frozen catalog so generations stay consistent and
+    activations consume exactly this catalog's content.
+    """
 
     sandbox: Sandbox | None
     skills: SkillRegistry
     system_prompt: str
     tools: list[FunctionTool]
+    catalog_service: "object | None" = None
+    catalog: "object | None" = None
 
 
 def assemble_harness_tools(spec: ThreadSpec) -> list[FunctionTool]:
@@ -98,6 +97,7 @@ async def assemble_run_resources(
     extra_system: str = "",
     agent_system: str | None = None,
     run_state: RunState | None = None,
+    builtin_roots: Sequence[str | Path] | None = None,
 ) -> RunResources:
     """打开 thread 声明的 sandbox 与 skills，装配运行所需的工具集与 system prompt。
 
@@ -141,38 +141,61 @@ async def assemble_run_resources(
     combined_tools.extend(tools)
     combined_tools.extend(assemble_harness_tools(thread.spec))
 
-    # Discover skill sources: project, configured (spec.skills + skill_roots), user.
-    configured = tuple(thread.spec.skills) + tuple(skill_roots)
-    sources = discover_skill_sources(
-        thread.spec.project_path,
-        configured_roots=configured,
-    )
-    catalog = load_skill_catalog(sources)
-    skills = catalog.registry
+    # Phase-2: discovery runs through the shared catalog service (candidates).
+    # No full install at open — skills mount lazily at activation time
+    # (RFC section 九: 安装全部 Skill → Activated Skill Lazy Mount).
+    from ..skills.catalog import build_model_catalog
+    from ..skills.catalog_service import SkillCatalogService
 
-    mounts: dict[str, SkillMount] = {}
-    if skills.names():
-        if sandbox is not None:
-            mounts = await sandbox.install_skill_catalog(catalog)
-        else:
-            # Build simple mounts from skill roots for non-sandbox mode
-            for skill in skills.list():
-                mounts[skill.name] = SkillMount(
-                    source_root=skill.source_id,
-                    skill_root=str(skill.skill_root or skill.root),
-                    bundle_root=str(skill.bundle_root) if skill.bundle_root else None,
-                )
-        combined_tools.append(make_use_skill_tool(catalog, mounts))
+    configured = tuple(thread.spec.skills) + tuple(skill_roots)
+    service = SkillCatalogService(
+        project_path=thread.spec.project_path,
+        cwd=thread.spec.project_path or Path.cwd(),
+        configured_roots=configured,
+        user_home=None,
+        builtin_roots=builtin_roots,
+    )
+    catalog = service.reload()
+    skills = catalog.registry  # legacy facade; new code consumes candidates
+
+    capabilities = _run_capabilities(thread.spec)
+    if catalog.candidates:
+        combined_tools.append(
+            _activation_use_skill_tool(catalog, sandbox, capabilities=capabilities)
+        )
 
     system_tail = thread.spec.system or extra_system or agent_system
-    skills_prompt = build_skills_system_prompt(catalog, mounts)
+    budget = build_model_catalog(catalog)
+    skills_prompt = _render_skills_prompt(budget, catalog)
+
+    # SSH execution context (informational, between computer desc and skills)
+    ssh_context = ""
+    ssh_context_files = (
+        getattr(getattr(sandbox, "spec", None), "ssh_context_files", ()) or ()
+    )
+    if sandbox is not None and ssh_context_files:
+        docs = getattr(sandbox.backend, "execution_documents", ()) or ()
+        if docs:
+            from electromind.execution.context import build_ssh_context_prompt
+
+            ssh_context = build_ssh_context_prompt(docs)
+
     system_prompt = "\n".join(
-        part for part in (computer_desc, skills_prompt, system_tail) if part
+        part
+        for part in (computer_desc, ssh_context, skills_prompt, system_tail)
+        if part
     )
 
     if run_state is not None:
         run_state.phase = "idle"
-    return RunResources(sandbox, skills, system_prompt, combined_tools)
+    return RunResources(
+        sandbox,
+        skills,
+        system_prompt,
+        combined_tools,
+        catalog_service=service,
+        catalog=catalog,
+    )
 
 
 class BaseRunner(LoopAdapter):
@@ -218,18 +241,19 @@ class BaseRunner(LoopAdapter):
         self.messages = messages if messages is not None else thread.load_messages()
 
     async def before_user_turn(self, user_input: str) -> None:
-        """Refresh the Skill catalog before every user turn."""
+        """Refresh the Skill catalog before every user turn.
+
+        Phase-2: NO full install at generation change — skills mount lazily
+        at activation time only (RFC section 九).  The view keeps its frozen
+        catalog so ``apply_to_agent`` rebuilds the activation-backed tool
+        (never a degraded empty legacy tool).
+        """
         await super().before_user_turn(user_input)
         if self.skill_runtime is None:
             return
-        changed = await self.skill_runtime.refresh_if_changed()
-        if changed and self.sandbox is not None:
-            # Install the new catalog into the sandbox
-            if self.skill_runtime.snapshot is not None:
-                self.skill_runtime.mounts = await self.sandbox.install_skill_catalog(
-                    self.skill_runtime.snapshot
-                )
-        if changed:
+
+        view = self.skill_runtime.prepare_turn()
+        if view is not None:
             self.skill_runtime.apply_to_agent(self.agent)
 
     async def after_continuing(self, *, turn: int) -> None:
@@ -265,6 +289,7 @@ class BaseRunner(LoopAdapter):
         max_turns: int = 24,
         skill_roots: Sequence[str | Path] = (),
         tools: Sequence[FunctionTool] = (),
+        builtin_roots: Sequence[str | Path] | None = None,
     ) -> BaseRunner:
         """从 ThreadSpec 创建 BaseRunner：根据 spec 配置动态开资源。
 
@@ -280,18 +305,35 @@ class BaseRunner(LoopAdapter):
             tools=tools,
             extra_system=extra_system,
             run_state=run_state,
+            builtin_roots=builtin_roots,
         )
 
+        # Phase-2: the runtime SHARES the catalog service used at assembly
+        # time (same generation) and lazily mounts activated skills into the
+        # sandbox — one discovery source, no double scanning.
+        from ..skills.mounting import LazySkillMounter, SshLazySkillMounter
+        from ..skills.snapstore import PrivateSnapshotStore
+
+        _store = PrivateSnapshotStore()
+        _mounter = None
+        if resources.sandbox is not None:
+            _backend = getattr(resources.sandbox, "backend", None)
+            backend_name = getattr(getattr(_backend, "__class__", None), "__name__", "")
+            if backend_name == "SshBackend":
+                _mounter = SshLazySkillMounter(resources.sandbox, store=_store)
+            else:
+                _mounter = LazySkillMounter(resources.sandbox, store=_store)
         skill_runtime = SkillRuntime(
             thread.spec.project_path,
             configured_roots=tuple(thread.spec.skills) + tuple(skill_roots),
+            mounter=_mounter,
+            builtin_roots=builtin_roots,
+            service=resources.catalog_service,
+            capabilities=_run_capabilities(thread.spec),
         )
-        # Sync the initial state from assemble_run_resources
-        configured = tuple(thread.spec.skills) + tuple(skill_roots)
-        sources = discover_skill_sources(
-            thread.spec.project_path, configured_roots=configured
-        )
-        skill_runtime.snapshot = load_skill_catalog(sources)
+        # Pin generation 1 from the already-discovered catalog (same service
+        # → same generation; reload() is a no-op on unchanged content).
+        skill_runtime.prepare_turn()
 
         runner = cls(
             Agent(
@@ -307,3 +349,98 @@ class BaseRunner(LoopAdapter):
         )
         runner.run_state = run_state
         return runner
+
+
+def _activation_use_skill_tool(
+    catalog, sandbox, *, capabilities: Sequence[str] = ()
+) -> FunctionTool:
+    """Phase-2 ``use_skill`` tool backed by the activation service.
+
+    Skills mount lazily at activation time (RFC 九): when a sandbox exists a
+    mounter mounts the frozen snapshot into it; without one the tool still
+    returns the frozen content from the private store.
+
+    The mounter is selected by backend type — SSH environments use
+    ``SshLazySkillMounter`` (full snapshot digest verification), local /
+    container use ``LazySkillMounter``.  The Run capabilities are threaded
+    into name resolution and the activation request so capability-restricted
+    skills are enforced in production (not just in tests).
+    """
+    from ..skills.activation import (
+        SkillActivationService,
+        make_activation_use_skill_tool,
+    )
+    from ..skills.mounting import LazySkillMounter, SshLazySkillMounter
+    from ..skills.snapstore import PrivateSnapshotStore
+
+    store = PrivateSnapshotStore()
+    mounter = None
+    if sandbox is not None:
+        _backend = getattr(sandbox, "backend", None)
+        backend_name = getattr(getattr(_backend, "__class__", None), "__name__", "")
+        if backend_name == "SshBackend":
+            mounter = SshLazySkillMounter(sandbox, store=store)
+        else:
+            mounter = LazySkillMounter(sandbox, store=store)
+    service = SkillActivationService(
+        catalog,
+        store=store,
+        mounter=mounter,
+        items_dir=store.root.parent / "activations",
+        resolution=catalog.resolution,
+    )
+    return make_activation_use_skill_tool(
+        service, thread_id="", run_id="", capabilities=capabilities
+    )
+
+
+def _run_capabilities(spec: ThreadSpec) -> tuple[str, ...]:
+    """The Run capabilities derived from the execution target.
+
+    The execution backend determines which skills may run: ``ssh`` grants the
+    ``ssh`` capability, everything else grants ``local``.
+    """
+    backend = getattr(spec, "backend", None)
+    if backend == "ssh":
+        return ("ssh",)
+    return ("local",)
+
+
+def _render_skills_prompt(budget, catalog) -> str:
+    """Render the skills section of the system prompt (candidate chain).
+
+    Keeps the legacy marker contract (``<!-- electromind:skills:start -->``)
+    and the ``use_skill`` hint; entries come from the model-visible budget.
+    """
+    from ..skills.runtime import SKILLS_END, SKILLS_START
+
+    lines: list[str] = []
+    # AGENTS.md global instructions first (structured sources)
+    seen: set = set()
+    for c in catalog.candidates:
+        src_root = c.source.root
+        if src_root in seen:
+            continue
+        seen.add(src_root)
+        agents_md = src_root / "AGENTS.md"
+        if agents_md.is_file():
+            try:
+                text = agents_md.read_text(encoding="utf-8").strip()
+                if text:
+                    lines.append(text)
+            except OSError:
+                continue
+    lines.append(SKILLS_START)
+    if budget.entries:
+        lines.append("你可以按需加载这些 skill：")
+        for entry in budget.entries:
+            source = f" [{entry.source_label}]" if entry.source_label else ""
+            if entry.description:
+                lines.append(f"- `{entry.name}`{source}：{entry.description}")
+            else:
+                lines.append(f"- `{entry.name}`{source}")
+        lines.append("调 `use_skill(name)` 会把对应 skill 的完整说明书加载进来。")
+    else:
+        lines.append("(暂无可用 skill)")
+    lines.append(SKILLS_END)
+    return "\n".join(lines) + "\n"

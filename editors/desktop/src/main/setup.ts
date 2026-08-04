@@ -19,7 +19,7 @@ function desktopSettingsPath(): string {
 }
 
 function electromindConfigPath(): string {
-  return path.join(homedir(), ".electromind", "electromind.toml");
+  return path.join(homedir(), ".electromind", "config.toml");
 }
 
 function electromindDataHomePath(): string {

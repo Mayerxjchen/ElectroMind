@@ -21,7 +21,7 @@ from .description import (
     node_environment_extra,
     uv_environment_extra,
 )
-from .guard import BackendGuard, SandboxDeadError
+from .guard import BackendGuard, SandboxDeadError, backend_type_name
 from .sandbox import (
     Commands,
     Files,
@@ -42,6 +42,7 @@ __all__ = [
     "Backend",
     "BackendGuard",
     "BackendIdentity",
+    "backend_type_name",
     "CommandResult",
     "Commands",
     "DirEntry",

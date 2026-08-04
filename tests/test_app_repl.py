@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 
 from app import render
@@ -43,9 +41,14 @@ class FakeSandboxCommands:
         )()
 
 
+class FakeBackend:
+    pass
+
+
 class FakeSandbox:
     def __init__(self):
         self.commands = FakeSandboxCommands()
+        self.backend = FakeBackend()
 
 
 class FakeCommandRunner:
@@ -79,8 +82,9 @@ def test_say_goodbye(capsys):
 
 
 def test_split_prefixed_command():
-    assert split_prefixed_command("!! pwd") == ("sandbox", "pwd")
-    assert split_prefixed_command("!pwd") == ("host", "pwd")
+    # 隐式语义已删除：! 与 !! 都在当前 Execution Target 执行
+    assert split_prefixed_command("!pwd") == ("target", "pwd")
+    assert split_prefixed_command("!! pwd") == ("target", "pwd")
     assert split_prefixed_command("hello") is None
 
 
@@ -166,9 +170,9 @@ async def test_render_turn_separates_tool_block_from_text(capsys):
     await render_turn(runner, "test", color=False)
 
     out = capsys.readouterr().out
-    assert "pagent> 先试一下。\ntool → run_command(" in out
+    assert "electromind> 先试一下。\ntool → run_command(" in out
     assert "curl -s -o /dev/null https://www.baidu.com" in out
-    assert '\n  ok: {"ok": true, "exit_code": 0}\n\npagent> 上到网。\n' in out
+    assert '\n  ok: {"ok": true, "exit_code": 0}\n\nelectromind> 上到网。\n' in out
 
 
 @pytest.mark.asyncio
@@ -200,7 +204,7 @@ async def test_render_turn_merges_text_deltas(capsys):
 
     await render_turn(runner, "test", color=False)
 
-    assert capsys.readouterr().out == "pagent> ABC\n"
+    assert capsys.readouterr().out == "electromind> ABC\n"
 
 
 @pytest.mark.asyncio
@@ -211,7 +215,7 @@ async def test_render_turn_merges_reasoning_deltas(capsys):
 
     await render_turn(runner, "test", color=False)
 
-    assert capsys.readouterr().out == "reasoning: 想一下\npagent> 答复\n"
+    assert capsys.readouterr().out == "reasoning: 想一下\nelectromind> 答复\n"
 
 
 def test_emit_user_line(capsys):
@@ -227,48 +231,49 @@ async def test_render_event_cancelled(capsys):
 
 
 @pytest.mark.asyncio
-async def test_dispatch_user_line_steer_during_run():
-    from app.concurrent_repl import dispatch_user_line
+async def test_cli_app_send_turn_during_run():
+    """运行中输入经客户端 immediate 投递（不再直接调 runner.steer）。"""
+    import asyncio
 
-    class SteerRunner:
-        def steer(self, text):
-            self.steered = getattr(self, "steered", [])
-            self.steered.append(text)
+    from app.tui.application import CliApp
 
-    runner = SteerRunner()
-    run_task = asyncio.get_running_loop().create_future()
+    class FakeClient:
+        def __init__(self):
+            self.sent: list[tuple[str, str, str]] = []
 
-    action, task = await dispatch_user_line(
-        "follow up",
-        runner=runner,  # type: ignore[arg-type]
-        run_task=run_task,
-        color=False,
-    )
-    assert action == "continue"
-    assert task is run_task
-    assert runner.steered == ["follow up"]
+        async def send_input(
+            self, thread_id, text, *, delivery="auto", request_id=None, mode=None
+        ):
+            self.sent.append((thread_id, text, delivery))
+
+    client = FakeClient()
+    app = CliApp(color=False, thread_id="thread-t1")
+    app.client = client  # type: ignore[assignment]
+
+    app.send_turn("follow up", delivery="immediate")
+    await asyncio.sleep(0.01)
+
+    assert client.sent == [("thread-t1", "follow up", "immediate")]
 
 
 @pytest.mark.asyncio
-async def test_handle_prefixed_command_runs_sandbox(capsys):
+async def test_handle_prefixed_command_runs_on_current_target(capsys):
+    """! 命令经 runner.sandbox.commands.run（权限生命周期），不再直接开子进程。"""
     runner = FakeCommandRunner()
 
-    handled = await handle_prefixed_command("!! pwd", runner, color=False)
-
+    handled = await handle_prefixed_command("!pwd", runner, color=False)
     out = capsys.readouterr().out
+
     assert handled is True
     assert runner.sandbox.commands.calls == ["pwd"]
-    assert "sandbox$ pwd" in out
     assert "sandbox output" in out
 
 
 @pytest.mark.asyncio
-async def test_handle_prefixed_command_runs_host(capsys):
+async def test_handle_prefixed_command_double_bang_is_alias(capsys):
     runner = FakeCommandRunner()
 
-    handled = await handle_prefixed_command("!printf 'host ok\\n'", runner, color=False)
+    handled = await handle_prefixed_command("!!pwd", runner, color=False)
 
-    out = capsys.readouterr().out
     assert handled is True
-    assert "host$ printf 'host ok\\n'" in out
-    assert "host ok" in out
+    assert runner.sandbox.commands.calls == ["pwd"]

@@ -1,4 +1,4 @@
-"""pagentv4 —— 顶层门面。
+"""electromind —— 顶层门面。
 
 模块分层：
 - core/       AgentCore + Message + Provider + Tool + Event

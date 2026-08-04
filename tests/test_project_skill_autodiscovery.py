@@ -47,13 +47,17 @@ def test_every_skill_has_non_empty_description(repo_catalog):
         )
 
 
-def test_aicc_knowledge_is_not_registered_as_skill(repo_catalog):
-    """AICC ``knowledge/`` entries are reference material, not callable Skills."""
+def test_knowledge_is_not_registered_as_skill(repo_catalog):
+    """``knowledge/`` entries are reference material, not callable Skills."""
     names = repo_catalog.registry.names()
     assert "knowledge" not in names
     knowledge_like = {
-        "bonding-analysis", "electrochemistry", "electronic-structure",
-        "force-fields", "reaction-kinetics", "molecular-dynamics",
+        "bonding-analysis",
+        "electrochemistry",
+        "electronic-structure",
+        "force-fields",
+        "reaction-kinetics",
+        "molecular-dynamics",
     }
     for kn in knowledge_like:
         assert kn not in names, f"knowledge entry '{kn}' must not be a Skill"
@@ -72,9 +76,7 @@ def test_global_instructions_precede_skill_catalog(repo_catalog):
     pos_routing = prompt.find("Routing")
     pos_start = prompt.find("<!-- electromind:skills:start -->")
     assert pos_routing >= 0, "AGENTS.md 'Routing' section must be present"
-    assert pos_routing < pos_start, (
-        "Global instructions must precede the skill catalog"
-    )
+    assert pos_routing < pos_start, "Global instructions must precede the skill catalog"
 
 
 def test_skill_has_source_id_and_sha256(repo_catalog):
@@ -82,7 +84,9 @@ def test_skill_has_source_id_and_sha256(repo_catalog):
     for skill in repo_catalog.registry.list():
         assert skill.source_id, f"Skill '{skill.name}' missing source_id"
         assert skill.sha256, f"Skill '{skill.name}' missing sha256"
-        assert len(skill.sha256) == 64, f"Skill '{skill.name}' sha256 must be 64 hex chars"
+        assert len(skill.sha256) == 64, (
+            f"Skill '{skill.name}' sha256 must be 64 hex chars"
+        )
 
 
 def test_catalog_fingerprint_is_stable(repo_catalog):
@@ -186,7 +190,7 @@ def test_use_skill_is_present_as_tool_when_catalog_non_empty(repo_catalog):
 # ---------------------------------------------------------------------------
 
 
-def test_aicc_agents_md_is_included_in_global_instructions(repo_catalog):
+def test_agents_md_is_included_in_global_instructions(repo_catalog):
     """The full ``skills/AGENTS.md`` text must be present in global instructions
     so the agent can see routing guidance and execution-mode notes."""
     instructions = "\n".join(repo_catalog.global_instructions)
@@ -196,6 +200,4 @@ def test_aicc_agents_md_is_included_in_global_instructions(repo_catalog):
     assert "hpc-submit" in instructions, (
         "hpc-submit must be mentioned in global instructions"
     )
-    assert "rsess" in instructions, (
-        "rsess must be mentioned in global instructions"
-    )
+    assert "rsess" in instructions, "rsess must be mentioned in global instructions"

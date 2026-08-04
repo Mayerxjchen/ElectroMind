@@ -57,6 +57,18 @@ export type ArtifactSummary = {
     mtimeMs: number;
 };
 
+export type FilePreview = {
+    name: string;
+    path: string;
+    size: number;
+    kind: "text" | "markdown" | "html" | "pdf" | "image" | "binary";
+    language?: string;
+    text?: string;
+    dataUrl?: string;
+    truncated?: boolean;
+    reason?: string;
+};
+
 export type ArtifactPreview = {
     name: string;
     path: string;
@@ -93,8 +105,38 @@ export type SkillDiagnosticPayload = {
 export type SkillsStatePayload = {
     thread_id: string;
     fingerprint: string;
+    generation: number;
+    digest: string;
     skills: SkillStateItem[];
     loaded: string[];
+    loaded_this_run: string[];
+    diagnostics: SkillDiagnosticPayload[];
+};
+
+export type SkillStateEvent = {
+    type: "SkillState";
+    generation: number;
+    digest: string;
+    thread_id: string;
+    available: Array<{ name: string; description: string; source: string; sha256: string }>;
+    loaded_this_run: string[];
+    diagnostics: SkillDiagnosticPayload[];
+    which: "init" | "prepare_turn" | "use_skill" | "reset" | "reconnect";
+};
+
+export type ExecutionContextDocument = {
+    remote_path: string;
+    sha256: string;
+    size: number;
+    fetched_at: number;
+};
+
+export type ExecutionContextStatePayload = {
+    type: "ExecutionContextState";
+    thread_id: string;
+    target: string;
+    profile_id: string;
+    documents: ExecutionContextDocument[];
     diagnostics: SkillDiagnosticPayload[];
 };
 
@@ -199,6 +241,13 @@ export type DesktopEvent =
     | { type: "wireEvent"; event: WireEvent }
     | { type: "log"; text: string };
 
+/**
+ * Wire commands the Renderer may send directly.  Keep this list as the
+ * ONLY surface available through sendWireCommand — anything else must
+ * get its own typed API instead of a generic passthrough.
+ */
+export type WireCommand = { cmd: "skills" | "cancel" };
+
 export type DesktopApi = {
     getAppInfo(): Promise<AppInfo>;
     getRuntimeState(): Promise<RuntimeState>;
@@ -224,15 +273,83 @@ export type DesktopApi = {
     completeOnboarding(options?: { preferredBackend?: "local" | "container" | "ssh"; skipped?: boolean }): Promise<void>;
     resumeThread(threadId: string): Promise<void>;
     deleteThread(threadId: string): Promise<boolean>;
-    sendUserInput(text: string): Promise<void>;
+    sendUserInput(text: string, requestId?: string, delivery?: string, mode?: string): Promise<void>;
     clearLastError(): Promise<void>;
     resetSession(options?: ResetSessionOptions): Promise<void>;
     requestHistoryReplay(): Promise<void>;
-    sendWireCommand(command: Record<string, unknown>): Promise<void>;
-    permitToolCall(toolCallId: string): Promise<void>;
-    denyToolCall(toolCallId: string, reason?: string): Promise<void>;
+    sendWireCommand(command: WireCommand): Promise<void>;
+    permitToolCall(toolCallId: string, approvalId?: string, threadId?: string, runId?: string): Promise<void>;
+    denyToolCall(toolCallId: string, reason?: string, approvalId?: string, threadId?: string, runId?: string): Promise<void>;
     onAgentEvent(listener: (event: DesktopEvent) => void): () => void;
     onRuntimeState(listener: (state: RuntimeState) => void): () => void;
+
+    // ── File operations ────────────────────────────────────────────
+    getFileMetadata(ref: FileRef): Promise<FileMetadata>;
+    copyFilePath(ref: FileRef, format: PathFormat): Promise<void>;
+    exportFile(ref: FileRef, suggestedName?: string): Promise<FileTransferResult>;
+    revealInFinder(ref: FileRef): Promise<void>;
+
+    // ── File operations not yet implemented in main ────────────────
+    // These are optional so the typed DesktopApi contract is honest
+    // about what preload actually exposes.  FileApi feature-detects
+    // them at runtime and returns a clear unsupported result rather
+    // than invoking an absent IPC channel.
+    previewFile?(ref: FileRef): Promise<FilePreview>;
+    importFiles?(target: FileRef, localPaths: string[]): Promise<FileTransferResult[]>;
+    copyFileBetween?(
+      source: FileRef,
+      target: FileRef,
+    ): Promise<FileTransferResult>;
+    renameFile?(ref: FileRef, newName: string): Promise<FileRef>;
+    deleteFile?(ref: FileRef): Promise<void>;
+    showFileContextMenu?(ref: FileRef, anchor: { x: number; y: number }): Promise<void>;
+};
+
+// ── FileRef types ────────────────────────────────────────────────────
+
+export type FileSource = "project" | "execution" | "artifact";
+
+export type PathFormat = "name" | "relative" | "absolute" | "uri";
+
+export type FileRef = {
+  id: string;
+  source: FileSource;
+  executionKind?: "local" | "sandbox" | "ssh";
+  threadId?: string;
+  path: string;
+  name: string;
+  kind: "file" | "directory";
+  size?: number;
+  mtimeMs?: number;
+  mimeType?: string;
+  capabilities: FileCapabilities;
+};
+
+export type FileCapabilities = {
+  preview: boolean;
+  attach: boolean;
+  copyPath: boolean;
+  exportToLocal: boolean;
+  copyToProject: boolean;
+  copyToExecution: boolean;
+  reveal: boolean;
+  rename: boolean;
+  delete: boolean;
+};
+
+export type FileMetadata = {
+  ref: FileRef;
+  exists: boolean;
+  sha256?: string;
+};
+
+export type FileTransferResult = {
+  ok: boolean;
+  source: FileRef;
+  target: FileRef;
+  size: number;
+  sha256?: string;
+  error?: string;
 };
 
 declare global {

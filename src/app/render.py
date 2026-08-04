@@ -33,7 +33,7 @@ BLUE = "\033[34m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
 
-INNER = 54  # display columns between │ borders
+INNER = 55  # display columns between │ borders（≥ logo 宽度 57 − 边框 2）
 LABEL_WIDTH = 8
 VALUE_WIDTH = INNER - 1 - LABEL_WIDTH  # leading space after │
 TOOL_LINE = 100
@@ -279,6 +279,20 @@ def sync_run_state_ui(runner: Runner, run_state: dict) -> None:
         run_state["status"] = label
 
 
+def _execution_row(runner: Runner, *, color: bool) -> str:
+    """渲染执行模式行。"""
+    execution = getattr(runner, "_execution", None)
+    if execution is None:
+        return row("execution", "sandbox (default)", color=color)
+    label = execution.mode
+    if execution.mode == "sandbox":
+        label = f"sandbox ({execution.resolved_backend})"
+    warning = ""
+    if execution.warning:
+        warning = f"  {c(execution.warning.split(chr(10))[0], RED, on=color)}"
+    return row("execution", label, color=color) + warning
+
+
 def format_banner(runner: Runner, *, color: bool) -> str:
     thread = runner.thread
     status = "新建" if thread.created else "续聊"
@@ -301,6 +315,7 @@ def format_banner(runner: Runner, *, color: bool) -> str:
         row("state", runner.run_state.label, color=color),
         row("model", model, color=color),
         row("sandbox", sandbox, color=color),
+        _execution_row(runner, color=color),
         row("workdir", workdir, color=color),
         row("project", project, color=color),
         row("turns", f"{turns} prior · max {runner.agent.max_turns}", color=color),
@@ -319,7 +334,9 @@ def format_banner(runner: Runner, *, color: bool) -> str:
         note = shorten(f"spec 已冻结，忽略：{ignored}", INNER)
         lines.append(c(f"  {note}", DIM, on=color))
 
-    lines.append(c("  /exit  /resume  /sessions  /pwd  /ls  /skills  /history", BLUE, on=color))
+    lines.append(
+        c("  /exit  /resume  /sessions  /pwd  /ls  /skills  /history", BLUE, on=color)
+    )
     lines.append(c("  !!cmd sandbox  ·  !cmd host", BLUE, on=color))
     lines.append("")
     return "\n".join(lines)
@@ -368,6 +385,8 @@ class RenderState:
     text_parts: list[str] = field(default_factory=list)
     previous_kind: str = ""
     tool_blocks: list[ToolBlock] = field(default_factory=list)
+    # --no-session-persistence：跳过 turn 结束时的 metainfo 更新
+    persist_meta: bool = True
 
     def flush_reasoning(self) -> None:
         if not self.reasoning_parts:
@@ -509,19 +528,21 @@ async def consume_run(
     state.finish()
 
     # Update session metainfo after each successful run
-    try:
-        from datetime import datetime as _dt
+    # (--no-session-persistence 时跳过)
+    if state.persist_meta:
+        try:
+            from datetime import datetime as _dt
 
-        meta = runner.thread.load_metainfo()
-        now = _dt.now().isoformat(timespec="seconds")
-        meta.setdefault("created_at", now)
-        if not meta.get("title"):
-            meta["title"] = user_input[:40] + ("…" if len(user_input) > 40 else "")
-        meta["updated_at"] = now
-        meta["message_count"] = len(runner.messages.data)
-        runner.thread.save_metainfo(meta)
-    except Exception:
-        pass  # metainfo is best-effort
+            meta = runner.thread.load_metainfo()
+            now = _dt.now().isoformat(timespec="seconds")
+            meta.setdefault("created_at", now)
+            if not meta.get("title"):
+                meta["title"] = user_input[:40] + ("…" if len(user_input) > 40 else "")
+            meta["updated_at"] = now
+            meta["message_count"] = len(runner.messages.data)
+            runner.thread.save_metainfo(meta)
+        except Exception:
+            pass  # metainfo is best-effort
 
 
 async def render_turn(
@@ -533,12 +554,14 @@ async def render_turn(
     user_label: str = "you",
     assistant_label: str = "electromind",
     permit_auto: bool = False,
+    persist_meta: bool = True,
 ) -> RenderState:
     if state is None:
         state = RenderState(
             color=color,
             user_label=user_label,
             assistant_label=assistant_label,
+            persist_meta=persist_meta,
         )
     await consume_run(runner, user_input, state, permit_auto=permit_auto)
     return state

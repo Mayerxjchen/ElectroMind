@@ -91,6 +91,20 @@ const rendererOptions = {
   plugins: [ignoreVendorSourceMaps],
 };
 
+const reactOptions = {
+  entryPoints: ["src/renderer/react/entry.tsx"],
+  bundle: true,
+  outfile: "dist/react-shell.js",
+  platform: "browser",
+  format: "iife",
+  target: "chrome128",
+  nodePaths: [path.join(root, "node_modules")],
+  sourcemap: true,
+  logLevel: "info",
+  plugins: [ignoreVendorSourceMaps],
+  loader: { ".tsx": "tsx" },
+};
+
 async function build() {
   copyRendererAssets();
   copyCodicons();
@@ -98,6 +112,7 @@ async function build() {
     esbuild.build(mainOptions),
     esbuild.build(preloadOptions),
     esbuild.build(rendererOptions),
+    esbuild.build(reactOptions),
   ]);
 }
 

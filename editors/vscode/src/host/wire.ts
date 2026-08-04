@@ -1,9 +1,9 @@
 // 宿主层 —— Wire 事件解析（第 5 课）。
 //
-// pagent 子进程 stdout 每行是一个 JSON-RPC 2.0 notification：
+// electromind 子进程 stdout 每行是一个 JSON-RPC 2.0 notification：
 //   {"jsonrpc":"2.0","method":"<事件类名>","params":{...}}
 // method 即事件类名（RunBegin / TextDelta / ToolCallBegin ...），见
-// src/pagentv4/core/events.py；序列化见 src/pagentv4/adapters/acp.py。
+// src/electromind/core/events.py；序列化见 src/electromind/adapters/acp.py。
 //
 // 本模块把一行文本解析成 { method, params } 结构，并做最小 JSON-RPC 校验：
 // 必须是 2.0、必须是 notification（没有 id）、method 必须是字符串。

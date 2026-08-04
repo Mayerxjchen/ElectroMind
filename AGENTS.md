@@ -1,81 +1,93 @@
 # electromind — instructions for coding agents
 
-You are working with **electromind**, a small async Python library (Agent + Session + tools over OpenAI-compatible Chat Completions). Use the resources below before guessing APIs.
+You are working with **electromind**（ElectroMind）：面向科学计算与机器学习势函数（MLIP）工作流的
+AI Agent —— async Python 库（Agent + Runner + Sandbox + Skills）+ 终端 REPL + Desktop / VS Code / Web 编辑器。
+用下面的布局与约定定位代码，别猜 API。
 
-## Read first
-
-1. **[docs/agent-reference.md](docs/agent-reference.md)** — dense cheat sheet (types, `run` / `arun_events` / `arun_wire`, events, Wire shape).
-2. **[llms.txt](llms.txt)** — index of doc pages with `raw.githubusercontent.com` URLs (fetch as markdown).
-3. **[llms-full.txt](llms-full.txt)** — single-file English bundle (all main guides concatenated).
-
-Human-readable site: <https://synclionpaw.github.io/pagent/>
-
-## How to look up docs
-
-| Goal | Where |
-|------|--------|
-| API surface, event names, Wire JSON shape | `docs/agent-reference.md` |
-| Streaming / UI integration | `docs/events.md`, `docs/wire.md` |
-| Minimal working code | `docs/guide/quick-start.md`, `examples/` |
-| Reasoning models (DeepSeek) | `docs/reasoning.md` |
-| Browser demo | `examples/wire_demo/`, `docs/wire-demo.md` |
-
-Prefer **English** paths under `docs/` for machine consumption. Locales: `docs/zh/`, `docs/ja/`, `docs/sc/`.
-
-## Source layout
+## 仓库布局
 
 ```text
-src/electromind/              v1 API — Agent.run / arun_events / Session + LLM
-src/electromindv4/core/       Agent, Message, Provider, Tool, Event
-src/electromindv4/ithread/    IThread Protocol + ThreadSpec
-src/electromindv4/conversation/ ConversationStore, JSONL/SQLite backends
-src/electromindv4/runtime/    Runner, VanillaRunner, loop_core, inbound, hooks
-src/electromindv4/sandbox/    Backend, Sandbox, file/command tools
-src/electromindv4/skills/     SKILL.md discovery and loading
-src/electromindv4/adapters/   ACP and other protocol adapters
-src/electromindv4/tools/      reusable tool functions
-src/app/                 application layer (REPL, CLI) on top of electromindv4
+src/electromind/            核心库
+  core/                     AgentCore / Message / Provider / Tool / Event（事件模型）
+  ithread/                  IThread Protocol + ThreadSpec（thread.toml 结构）
+  conversation/             ConversationStore：JSONL / SQLite 对话持久化
+  runtime/                  Runner（base / chat / code / vanilla）、loop_core、inbound
+                            （Steer/Cancel/Permit/Deny）、thread、hooks、run_state
+  sandbox/                  Backend + Sandbox 门面；backends/（local / container / ssh）、
+                            tools（run_command / read_file / write_file / str_replace / …）
+  skills/                   SKILL.md 发现、catalog、激活、挂载、运行时、watcher
+  execution/                执行模式上下文 / plan / probe / resolver
+  harness/                  执行生命周期与持久化：SessionManager、checkpoints、
+                            mutations、inbound 审批、protocol_v2（wire/http/CLI 共用）、
+                            workspace 状态
+  adapters/                 ACP 等外部协议编解码（Wire 序列化）
+  tools/                    harness 工具实现：web_search / fetch_url / delegate_to_subagent
+  trace/                    messages.jsonl 轨迹可视化 / OpenAI 导出
+  paths.py                  数据根与配置路径常量
+  resources/default-config.toml   包内唯一内置默认配置
+src/app/                    CLI / REPL 应用层（`uv run electromind` 入口）
+  cli.py cli_parser.py      CLI 入口与参数
+  config.py                 ReplConfig / Settings 多 scope 加载与合并
+  repl.py                   TUI REPL；concurrent_repl.py 并发模型
+  wire.py                   --wire stdio NDJSON 后端（供 VS Code / Desktop）
+  http_server.py            --http SSE 后端（供 Web UI）
+  sessions.py setup.py     会话管理 / 首次 API Key 引导
+  commands/ output/ tui/   子命令、输出渲染、TUI 组件
+editors/                    desktop（Electron）/ vscode / web（React）
+skills/                     内建科学计算技能包（CP2K / VASP / LAMMPS / DeepMD / MCMC），
+                            经 uv_build data 打进安装产物
+tests/                      pytest（应用 / 库 / sandbox / 协议）
+scripts/                    ci-check.sh（提交前本地闸门）、release.sh、build-standalone.sh
+docs/superpowers/           设计文档（plans / specs）
 ```
 
-Prefer **electromindv4** for new work (`Runner`, sandbox, persistence). See
-`docs/electromindv4/` and `examples/electromindv4/`.
+## 配置事实源（四层，优先级低 → 高）
 
-**Terminal agent:** `uv run electromind` — same REPL as `examples/app/repl.py`.
+1. `src/electromind/resources/default-config.toml` —— 包内**唯一**内置默认
+2. `~/.electromind/config.toml` —— 用户设置（生产模式 home）
+3. `<project>/.electromind/config.toml` —— 项目设置（仅受信任项目；dev 模式 home 就是项目目录）
+4. `<project>/.electromind/config.local.toml` —— 本机私有设置
+外加 `--config <file>` 显式叠加（最高）。
+
+home 二选一由入口 `activate_home()` 定一次：prod → `~/.electromind`，dev（`--dev`）→ `<root>/.electromind`；
+配置 / threads / skills 同根。旧文件名 `electromind.toml` 只在 `config.toml` 缺失时一次性改名继承
+（`app.config._adopt_legacy`），之后全链路只认新名，不再产生第二事实源。
+
+## 关键约定
+
+- **Wire（--wire）**：stdout 每行一个 JSON-RPC 2.0 notification（`method` = 事件类名，无 `id`）；
+  stdin 每行一个 `{"cmd": ...}` 命令。序列化见 `src/electromind/adapters/acp.py`。
+- **入站控制面**（cancel / steer / permit / deny）不属于 Wire 事件流：Wire 里经 stdin 命令驱动，
+  HTTP 层由宿主实现（`src/app/http_server.py` + `src/electromind/runtime/inbound.py`）。
+- **thread.toml 冻结**：新建会话时把 sandbox / agent / skills / `[sub.*]` 从合并配置冻结进
+  thread.toml，之后以磁盘为准（resume 不漂移）。
+- **Skills SSOT**：运行时只读 thread.toml 里冻结的 `[agent] skills`；项目 skills 自动发现由
+  `thread.spec.project_path` 驱动。
+- **Workspace Trust**：未受信任项目不加载 Project / Local 配置（fail-closed）；
+  `electromind config trust` 管理。
+- 库层新增功能进 `src/electromind/`，CLI 专属逻辑进 `src/app/`，不要互相倒灌。
+
+## 常用命令
+
+```bash
+uv run electromind              # REPL（prod 模式）
+uv run electromind --dev        # dev 模式：数据落在 ./.electromind
+uv run electromind --wire       # stdio NDJSON 后端
+uv run electromind --http       # SSE 后端
+uv run pytest tests/            # 测试
+```
 
 ## CI before commit / push
 
-**Always run** `./scripts/ci-check.sh` before `git commit` or `git push` to `main`.
-It mirrors the GitHub Actions that run on every push:
-
-| Local step | Workflow |
-|------------|----------|
-| `uv sync --group dev --frozen` | ruff.yml, coverage.yml |
-| `uv run ruff check .` | ruff.yml |
-| `uv run ruff format --check .` | ruff.yml |
-| `uv run pytest tests/ --cov=src …` | ruff.yml + coverage.yml |
-| `cd docs && npm ci && npm run build` | docs.yml |
-
-Do not push until this script exits 0. If docs build regenerates `llms-full.txt`,
-include those changes when English docs changed.
-
-Optional git hook (one-time per clone):
+**总是先跑** `./scripts/ci-check.sh`（= `uv sync --group dev --frozen` + ruff check + ruff format
+--check + pytest --cov），本地不绿别提交。可选 git hook（一次性）：
 
 ```bash
 git config core.hooksPath .githooks
 chmod +x scripts/ci-check.sh .githooks/pre-push
 ```
 
-## Conventions
+## 发布
 
-- `agent.run()` returns **`RunEnd`**; use `.content` for the answer (not `str(run_end)`).
-- Wire lines are **NDJSON** JSON-RPC **notifications** (`method` = event class name, no `id`).
-- Inbound cancel/steer/tool-approval is **not** part of Wire; implement in your HTTP layer.
-- Do not add file/shell/MCP to the core library unless the user explicitly asks for product scope changes.
-
-## Regenerate `llms-full.txt`
-
-```bash
-cd docs && npm run build:llms
-```
-
-Commit `llms-full.txt` at repo root when English docs change materially.
+见 `RELEASING.md`：`uv build` 出 wheel/sdist，`scripts/build-standalone.sh` 出单文件，
+`scripts/release.sh --publish` 出 GitHub Release。仓库：`github.com/Mayerxjchen/ElectroMind`。

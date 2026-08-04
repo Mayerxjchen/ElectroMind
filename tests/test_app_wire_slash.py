@@ -27,6 +27,7 @@ def captured(monkeypatch):
 
 def _send_user(text: str):
     """发送一条 user 命令。runner 打开可能失败（测试环境），忽略异常。"""
+
     async def _do():
         try:
             await wire.handle_command(
@@ -70,9 +71,7 @@ def test_known_slash_help_still_works(captured, monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
     _send_user("/help")
     assert captured["called"], "已知命令 /help 应正常触发 run_slash_command"
-    assert captured["name"] == "help", (
-        f"期望 name='help'，实际: {captured['name']}"
-    )
+    assert captured["name"] == "help", f"期望 name='help'，实际: {captured['name']}"
 
 
 def test_known_slash_ls_still_works(captured, monkeypatch):
@@ -80,6 +79,4 @@ def test_known_slash_ls_still_works(captured, monkeypatch):
     monkeypatch.setenv("DEEPSEEK_API_KEY", "sk-test")
     _send_user("/ls")
     assert captured["called"], "已知命令 /ls 应正常触发 run_slash_command"
-    assert captured["name"] == "ls", (
-        f"期望 name='ls'，实际: {captured['name']}"
-    )
+    assert captured["name"] == "ls", f"期望 name='ls'，实际: {captured['name']}"

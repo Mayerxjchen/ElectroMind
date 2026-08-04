@@ -1,15 +1,15 @@
 {
-  "name": "pagent-vscode",
-  "displayName": "pagent",
-  "description": "pagent Agent for VS Code，支持多轮对话、工具调用、会话恢复与多种运行模式。",
+  "name": "electromind-vscode",
+  "displayName": "electromind",
+  "description": "electromind Agent for VS Code，支持多轮对话、工具调用、会话恢复与多种运行模式。",
   "icon": "media/logo-icon.png",
   "version": "0.7.20",
-  "publisher": "synclionpaw",
+  "publisher": "mayerxjchen",
   "private": true,
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/SyncLionPaw/pagent.git"
+    "url": "https://github.com/Mayerxjchen/ElectroMind.git"
   },
   "engines": {
     "vscode": "^1.90.0"
@@ -26,84 +26,84 @@
     "//commands": "命令面板里可见的命令；command 是唯一 id，与 extension.ts 里 registerCommand 对应。icon 用 $(codicon) 语法，让命令能作为图标按钮出现在视图标题栏。",
     "commands": [
       {
-        "command": "pagent.hello",
-        "title": "pagent: Hello"
+        "command": "electromind.hello",
+        "title": "electromind: Hello"
       },
       {
-        "command": "pagent.chat.reset",
-        "title": "pagent: 新会话",
+        "command": "electromind.chat.reset",
+        "title": "electromind: 新会话",
         "icon": "$(add)"
       },
       {
-        "command": "pagent.chat.resume",
-        "title": "pagent: 恢复会话",
+        "command": "electromind.chat.resume",
+        "title": "electromind: 恢复会话",
         "icon": "$(history)"
       },
       {
-        "command": "pagent.chat.openInEditor",
-        "title": "pagent: 在编辑器区打开",
+        "command": "electromind.chat.openInEditor",
+        "title": "electromind: 在编辑器区打开",
         "icon": "$(link-external)"
       },
       {
-        "command": "pagent.chat.open",
-        "title": "pagent: 打开聊天",
+        "command": "electromind.chat.open",
+        "title": "electromind: 打开聊天",
         "icon": "$(comment-discussion)"
       },
       {
-        "command": "pagent.setup",
-        "title": "pagent: Setup API Key"
+        "command": "electromind.setup",
+        "title": "electromind: Setup API Key"
       }
     ],
-    "//menus": "view/title 把命令按钮放进视图的原生标题栏（与 PAGENT: CHAT 同一行）。when 限定只在本视图显示；group navigation 让按钮显示为标题栏右侧图标。",
+    "//menus": "view/title 把命令按钮放进视图的原生标题栏（与 ELECTROMIND: CHAT 同一行）。when 限定只在本视图显示；group navigation 让按钮显示为标题栏右侧图标。",
     "menus": {
       "view/title": [
         {
-          "command": "pagent.chat.openInEditor",
-          "when": "view == pagent.chat",
+          "command": "electromind.chat.openInEditor",
+          "when": "view == electromind.chat",
           "group": "navigation@0"
         },
         {
-          "command": "pagent.chat.resume",
-          "when": "view == pagent.chat",
+          "command": "electromind.chat.resume",
+          "when": "view == electromind.chat",
           "group": "navigation@1"
         },
         {
-          "command": "pagent.chat.reset",
-          "when": "view == pagent.chat",
+          "command": "electromind.chat.reset",
+          "when": "view == electromind.chat",
           "group": "navigation@2"
         }
       ]
     },
-    "//viewsContainers": "把 pagent 挂到右侧辅助侧边栏，位置更接近 Copilot / Claude Code。",
+    "//viewsContainers": "把 electromind 挂到右侧辅助侧边栏，位置更接近 Copilot / Claude Code。",
     "viewsContainers": {
       "secondarySidebar": [
         {
-          "id": "pagent",
-          "title": "pagent",
+          "id": "electromind",
+          "title": "electromind",
           "icon": "media/logo-icon.png"
         }
       ]
     },
     "//views": "把一个 webview 类型的视图挂到上面的容器里；id 与 WebviewViewProvider 注册时一致。",
     "views": {
-      "pagent": [
+      "electromind": [
         {
-          "id": "pagent.chat",
+          "id": "electromind.chat",
           "name": "Chat",
           "type": "webview"
         }
       ]
     },
-    "//configuration": "用户可在设置里改子进程启动方式；默认全局 pagent --wire（uv tool install）。",
+    "//configuration": "用户可在设置里改子进程启动方式；默认全局 electromind --wire（uv tool install）。",
     "configuration": {
-      "title": "pagent",
+      "title": "electromind",
       "properties": {
-        "pagent.command": {
+        "electromind.command": {
           "type": "string",
-          "default": "pagent",
-          "description": "启动后端的可执行文件。默认全局 pagent（uv tool install pagent）。"
+          "default": "electromind",
+          "description": "启动后端的可执行文件。默认全局 electromind（uv tool install electromind）。"
         },
-        "pagent.args": {
+        "electromind.args": {
           "type": "array",
           "items": {
             "type": "string"
@@ -113,7 +113,7 @@
           ],
           "description": "传给可执行文件的参数，需含 --wire 进入 stdio 后端模式。"
         },
-        "pagent.sandboxMode": {
+        "electromind.sandboxMode": {
           "type": "string",
           "enum": [
             "local",
@@ -125,19 +125,19 @@
           "scope": "resource",
           "description": "Agent 工具运行位置：local=本机、docker/podman=容器、ssh=远端。"
         },
-        "pagent.sshHost": {
+        "electromind.sshHost": {
           "type": "string",
           "default": "",
           "scope": "resource",
           "description": "SSH 模式当前选中的 Host 别名。"
         },
-        "pagent.sshConfigPath": {
+        "electromind.sshConfigPath": {
           "type": "string",
           "default": "~/.ssh/config",
           "scope": "resource",
           "description": "用于远端菜单与 SSH sandbox 的 config 文件路径。"
         },
-        "pagent.yoloMode": {
+        "electromind.yoloMode": {
           "type": "boolean",
           "default": false,
           "scope": "resource",
@@ -154,7 +154,7 @@
     "//check": "只做类型检查，不产出文件。",
     "check": "tsc --noEmit",
     "//package": "打 .vsix；通过 npx 调 vsce，避免要求本机预装。monorepo 子目录需 baseContentUrl，否则 README 相对链接会指到仓库根。",
-    "package": "npx @vscode/vsce package --no-dependencies --baseContentUrl https://github.com/SyncLionPaw/pagent/blob/main/editors/vscode --baseImagesUrl https://github.com/SyncLionPaw/pagent/raw/main/editors/vscode"
+    "package": "npx @vscode/vsce package --no-dependencies --baseContentUrl https://github.com/Mayerxjchen/ElectroMind/blob/main/editors/vscode --baseImagesUrl https://github.com/Mayerxjchen/ElectroMind/raw/main/editors/vscode"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

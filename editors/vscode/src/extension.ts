@@ -9,7 +9,7 @@ import { ChatViewProvider } from "./host/panel";
 
 async function openChatView(): Promise<void> {
   await vscode.commands.executeCommand("workbench.action.focusAuxiliaryBar");
-  await vscode.commands.executeCommand("pagent.chat.focus");
+  await vscode.commands.executeCommand("electromind.chat.focus");
 }
 
 /**
@@ -22,14 +22,14 @@ async function openChatView(): Promise<void> {
  *   context.subscriptions，VS Code 会在插件停用时统一 dispose，避免泄漏。
  */
 export function activate(context: vscode.ExtensionContext): void {
-  // createOutputChannel 在“输出”面板建一个名为 pagent 的通道，宿主日志打到这里。
-  const output = vscode.window.createOutputChannel("pagent");
+  // createOutputChannel 在“输出”面板建一个名为 electromind 的通道，宿主日志打到这里。
+  const output = vscode.window.createOutputChannel("electromind");
 
   // registerCommand 把命令 id（对应 package.json 的 contributes.commands）
   // 绑定到一个回调。返回的 Disposable 交给 subscriptions 托管。
-  const hello = vscode.commands.registerCommand("pagent.hello", () => {
+  const hello = vscode.commands.registerCommand("electromind.hello", () => {
     // showInformationMessage 在右下角弹一条通知，用来确认插件确实激活并跑通。
-    void vscode.window.showInformationMessage("pagent 插件已激活 —— 第 3 课");
+    void vscode.window.showInformationMessage("electromind 插件已激活 —— 第 3 课");
   });
 
   // registerWebviewViewProvider 把视图 id 绑定到我们的 provider；VS Code 在用户
@@ -41,25 +41,25 @@ export function activate(context: vscode.ExtensionContext): void {
   );
 
   // 视图标题栏按钮（package.json 的 menus.view/title 贡献）：新会话 / 恢复会话。
-  // 按钮显示在原生「PAGENT: CHAT」标题栏右侧，回调转交给 provider 处理。
-  const reset = vscode.commands.registerCommand("pagent.chat.reset", () => {
+  // 按钮显示在原生「ELECTROMIND: CHAT」标题栏右侧，回调转交给 provider 处理。
+  const reset = vscode.commands.registerCommand("electromind.chat.reset", () => {
     chatProvider.resetSession();
   });
-  const resume = vscode.commands.registerCommand("pagent.chat.resume", () => {
+  const resume = vscode.commands.registerCommand("electromind.chat.resume", () => {
     void chatProvider.resumeSession();
   });
   // 「在编辑器区打开」：侧栏无法设默认宽度或强制放右侧，用编辑器区 WebviewPanel
   // 开一个更宽、可由用户拖到右侧的聊天面板，与侧栏共用同一子进程。
   const openInEditor = vscode.commands.registerCommand(
-    "pagent.chat.openInEditor",
+    "electromind.chat.openInEditor",
     () => {
       chatProvider.openInEditor();
     },
   );
-  const open = vscode.commands.registerCommand("pagent.chat.open", () => {
+  const open = vscode.commands.registerCommand("electromind.chat.open", () => {
     void openChatView();
   });
-  const setup = vscode.commands.registerCommand("pagent.setup", () => {
+  const setup = vscode.commands.registerCommand("electromind.setup", () => {
     void chatProvider.runSetup();
   });
 

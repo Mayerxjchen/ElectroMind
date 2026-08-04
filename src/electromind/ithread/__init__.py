@@ -113,6 +113,10 @@ class ThreadSpec:
     到 TOML 的分组由每个字段的 `toml_field(section, key)` metadata 决定。
     """
 
+    # ── session mode & autonomy (replaces implicit command_policy guessing) ──
+    session_mode: str = toml_field("agent", "session_mode", "agent")
+    autonomy: str = toml_field("agent", "autonomy", "prompt")
+
     conversation_backend: str = toml_field("conversation", "backend", "jsonl")
     conversation_root: str = toml_field("conversation", "root", MESSAGES_DIRNAME)
     conversation_db_path: str = toml_field(
@@ -136,6 +140,9 @@ class ThreadSpec:
     ssh_host: str | None = toml_field("ssh", "host", None)
     ssh_config: str = toml_field("ssh", "config", "~/.ssh/config")
     ssh_workdir: str = toml_field("ssh", "workdir", "~/.electromind")
+    # Explicit remote context files ([[ssh.context_files]] array of tables).
+    # Only these exact paths are fetched; no remote scanning occurs.
+    ssh_context_files: tuple[str, ...] = ()
 
     model: str = toml_field("agent", "model", "deepseek-v4-flash")
     system: str = toml_field("agent", "system", "")
@@ -187,6 +194,10 @@ class ThreadSpec:
                 name: sub.to_dict() for name, sub in self.subs.items()
             }
         sections["extra"] = dict(self.extra)
+        # Serialize [[ssh.context_files]] array of tables
+        if self.ssh_context_files:
+            ssh_block = sections.setdefault("ssh", {})
+            ssh_block["context_files"] = [{"path": p} for p in self.ssh_context_files]
         return sections
 
     @classmethod
@@ -225,6 +236,16 @@ class ThreadSpec:
                     extra[f"{section}.{name}"] = value
         if extra:
             known["extra"] = extra
+        # Parse [[ssh.context_files]] array of tables
+        ssh_block = payload.get("ssh", {})
+        if isinstance(ssh_block, dict):
+            context_files_raw = ssh_block.get("context_files", ())
+            if isinstance(context_files_raw, list):
+                known["ssh_context_files"] = tuple(
+                    cf["path"]
+                    for cf in context_files_raw
+                    if isinstance(cf, dict) and cf.get("path")
+                )
         return cls(**known)
 
     @classmethod

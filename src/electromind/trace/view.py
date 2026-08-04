@@ -1,4 +1,4 @@
-"""Visualize pagent trajectories as HTML or terminal text."""
+"""Visualize electromind trajectories as HTML or terminal text."""
 
 from __future__ import annotations
 
@@ -719,7 +719,7 @@ def render_html(messages: Messages, *, title: str) -> str:
 
 def trace_title(source: str) -> str:
     if source == "-":
-        return "pagent trace (stdin)"
+        return "electromind trace (stdin)"
     try:
         return f"electromind trace · {resolve_messages_path(source)}"
     except SystemExit:
@@ -756,7 +756,7 @@ def write_trace(
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
         prog="electromind-trace",
-        description="Visualize pagent messages.jsonl trajectories.",
+        description="Visualize electromind messages.jsonl trajectories.",
     )
     parser.add_argument(
         "source",

@@ -53,6 +53,11 @@ from electromind.adapters.acp import encode_event_line, json_value
 from electromind.core.context_limit import DEFAULT_CONTEXT_LIMIT, resolve_context_limit
 from electromind.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
 from electromind.core.turn_result import TurnResult
+from electromind.harness import (
+    InputDelivery,  # used in handle_command input/send handler
+    InputMessage,  # used in handle_command input/send handler
+    ThreadSessionManager,
+)
 from electromind.ithread import SPEC_FILENAME, ThreadSpec
 from electromind.paths import resolve_electromind_home
 from electromind.runtime.thread import Thread, default_threads_root
@@ -65,6 +70,30 @@ from .repl import format_fatal_error, open_runner
 from .setup import ProviderSetup, write_user_provider
 from .tool_permit import needs_tool_permit, summarize_tool_args
 from .transport import active_sink
+
+# Per-process harness session manager (shared across wire/HTTP transports)
+_harness_manager: ThreadSessionManager = ThreadSessionManager()
+_harness_broker = None  # Lazy-init: protocol_v2.EventBroker()
+_harness_idempotency = None  # Lazy-init: protocol_v2.IdempotencyStore()
+
+
+def _get_broker():
+    global _harness_broker
+    if _harness_broker is None:
+        from electromind.harness.protocol_v2 import EventBroker
+
+        _harness_broker = EventBroker()
+    return _harness_broker
+
+
+def _get_idempotency():
+    global _harness_idempotency
+    if _harness_idempotency is None:
+        from electromind.harness.protocol_v2 import IdempotencyStore
+
+        _harness_idempotency = IdempotencyStore()
+    return _harness_idempotency
+
 
 # metainfo.json 里 title 的最大字符数：超出截断加省略号，供前端会话列表展示。
 TITLE_MAX_CHARS = 40
@@ -145,20 +174,408 @@ def parse_command(line: str) -> dict | None:
     return command
 
 
-def emit_permit_request(event: ToolCallBegin) -> None:
-    """需审批的工具：在 ToolCallBegin 之后补发一条审批请求，让前端弹批准/拒绝。
+async def emit_permit_request(
+    event: ToolCallBegin,
+    *,
+    thread_id: str = "",
+    run_id: str = "",
+    approval_id: str = "",
+) -> bool:
+    """需审批的工具：在 ToolCallBegin 之后补发一条带 Thread/Run Scope 的审批请求。
 
-    这不是 core Event，而是 wire 层的控制事件，仍套用 JSON-RPC notification 形状，
-    前端按 tool_call_id 把它挂到对应的工具卡片上。
+    这不是 core Event，而是 wire 层的控制事件，仍套用 JSON-RPC notification 形状。
+    包含 ``approval_id``、``thread_id`` 和 ``run_id``，使前端可以执行跨 Run
+    和跨 Thread 的过期判断与作用域隔离。
+
+    Harness Spine: 审批在发出前注册到 ``ThreadSessionManager.pending_approvals``，
+    ``resolve_approval`` 在 permit/deny 时校验四元组绑定。注册失败时不发送
+    PermitRequest（不向客户端发布不可操作的审批）。
+
+    Returns True if the PermitRequest was emitted.
     """
+    from electromind.harness.identity import new_approval_id
+    from electromind.harness.workspace import ApprovalRequest
+
+    aid = approval_id or new_approval_id()
+    # Empty thread_id/run_id cannot be registered — do not publish an
+    # approval that could never be resolved (fail-closed).
+    if not thread_id or not run_id:
+        log("[wire] permit request skipped: missing thread/run scope")
+        return False
+    # Execution context for the approval card (target, workdir, risk)
+    workdir = ""
+    target = ""
+    sandbox = getattr(event, "_sandbox", None)
+    if sandbox is None:
+        # Look up the runner's sandbox via the harness session
+        session = _harness_manager.get_session(thread_id)
+        if session is not None:
+            sandbox = getattr(getattr(session, "runner", None), "sandbox", None)
+    if sandbox is not None:
+        workdir = getattr(sandbox, "workdir", "") or ""
+        backend = getattr(sandbox, "backend", None)
+        target = getattr(backend, "name", "") or ""
+        if not target:
+            from electromind.sandbox import backend_type_name
+
+            target = backend_type_name(backend) or ""
+    risk = "high" if event.name in {"run_command", "delete_file"} else "medium"
+    # action_id identifies the concrete action within the tool call.
+    # Stable per tool_call_id, distinct from the approval identity.
+    action_id = f"action:{event.tool_call_id}"
+    approval = ApprovalRequest(
+        approval_id=aid,
+        thread_id=thread_id,
+        run_id=run_id,
+        tool_call_id=event.tool_call_id,
+        action_id=action_id,
+        target=target,
+        workdir=workdir,
+        risk=risk,
+        summary=summarize_tool_args(event.name, event.arguments),
+    )
+    registered = await _harness_manager.add_approval(thread_id, approval)
+    if not registered:
+        log(f"[wire] permit request not registered for {thread_id}")
+        return False
+    # Gate 2: persist pending approvals so they survive a restart
+    _persist_thread_state(thread_id)
     payload = {
         "jsonrpc": "2.0",
         "method": "PermitRequest",
         "params": {
             "tool_call_id": event.tool_call_id,
+            "action_id": action_id,
+            "approval_id": aid,
             "name": event.name,
             "summary": summarize_tool_args(event.name, event.arguments),
+            "thread_id": thread_id,
+            "run_id": run_id,
+            "target": target,
+            "workdir": workdir,
+            "risk": risk,
         },
+    }
+    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+    return True
+
+
+# ── Harness Spine wire helpers ─────────────────────────────────────────
+
+
+async def _approval_scope_valid(
+    runner,
+    tool_call_id: str,
+    approval_id: str,
+    thread_id: str,
+    run_id: str,
+    *,
+    approved: bool,
+) -> bool:
+    """Validate that an approval resolution belongs to the current thread/run.
+
+    Fail-closed: the approval must be registered in the harness session's
+    ``pending_approvals``, must still be resolvable, and its bound
+    tool_call_id must match.  Resolving consumes the approval so stale
+    approvals cannot be replayed.
+    """
+    if not (isinstance(approval_id, str) and approval_id):
+        return False  # Fail-closed: scope is mandatory
+    if not isinstance(thread_id, str) or not thread_id:
+        return False
+    if not isinstance(run_id, str) or not run_id:
+        return False
+    # Current thread must match
+    runner_thread = getattr(getattr(runner, "thread", None), "id", "")
+    if runner_thread and runner_thread != thread_id:
+        return False
+    # Resolve through the harness — verifies approval exists, is pending,
+    # belongs to the active run, and binds the same tool_call_id, then
+    # atomically consumes it (validate-then-consume inside the lock).
+    resolved = await _harness_manager.resolve_approval(
+        thread_id,
+        run_id,
+        approval_id,
+        approved,
+        tool_call_id=tool_call_id,
+    )
+    if resolved is not None:
+        _persist_thread_state(thread_id)  # Gate 2: consumed approval
+    return resolved is not None
+
+
+class MutationSnapshotError(Exception):
+    """A snapshot could not be captured for a reason OTHER than absence
+    (SSH down, permission error, path is a directory...).  The mutation
+    must NOT be presented as an exact diff."""
+
+
+def _mutation_target(name: str, arguments: str, runner) -> tuple[str, str] | None:
+    """Resolve the ACTUAL mutation target: (source, path).
+
+    ``source`` is ``"sandbox"`` (execution backend, read via the sandbox
+    files API) or ``"host"`` (host filesystem, e.g. copy_to_host
+    artifacts).  The two namespaces are never mixed.
+
+    - write_file / str_replace: sandbox path.
+    - copy_from_host: sandbox ``dest``/basename(host_path) — the real
+      target is dest + file name, not dest itself.
+    - copy_to_host: HOST ``artifacts/<source basename>``.
+    """
+    if not isinstance(arguments, str):
+        return None
+    try:
+        payload = json.loads(arguments)
+    except json.JSONDecodeError:
+        return None
+    if not isinstance(payload, dict):
+        return None
+
+    if name in ("write_file", "str_replace"):
+        value = payload.get("path")
+        if isinstance(value, str) and value.strip():
+            return ("sandbox", value.strip())
+        return None
+
+    if name == "copy_from_host":
+        host_path = payload.get("host_path")
+        host_name = (
+            host_path.strip().split("/")[-1]
+            if isinstance(host_path, str) and host_path.strip()
+            else ""
+        )
+        dest = payload.get("dest")
+        if isinstance(dest, str) and dest.strip() and dest.strip() != ".":
+            # Real target is dest/basename(host_path), not dest itself
+            if host_name:
+                return ("sandbox", f"{dest.strip().rstrip('/')}/{host_name}")
+            return ("sandbox", dest.strip())
+        if host_name:
+            return ("sandbox", host_name)
+        return None
+
+    if name == "copy_to_host":
+        source = payload.get("source")
+        if isinstance(source, str) and source.strip():
+            sandbox = getattr(runner, "sandbox", None)
+            artifacts = getattr(sandbox, "ARTIFACTS_DIRNAME", "artifacts")
+            return ("host", f"{artifacts}/{source.strip().split('/')[-1]}")
+        return None
+
+    return None
+
+
+async def _capture_snapshot(source: str, path: str, sandbox, blob_store=None):
+    """Source-aware FileSnapshot capture.
+
+    - ``sandbox`` source: read via the sandbox files API (SFTP for SSH,
+      local for local) — the snapshot reflects the REAL backend.
+    - ``host`` source: read from the host filesystem under host_root.
+
+    Only a DEFINITE absence (file not found) yields ``exists=False``;
+    any other failure (SSH down, permission error, directory read)
+    raises ``MutationSnapshotError`` so the caller marks the delta
+    inexact instead of fabricating a "create" diff.
+    """
+    from electromind.harness.mutations import FileSnapshot
+
+    if source == "sandbox":
+        files = getattr(sandbox, "files", None)
+        read = getattr(files, "read", None)
+        if read is None:
+            raise MutationSnapshotError("sandbox has no files API")
+        try:
+            data = await read(path)
+            return FileSnapshot.from_bytes(data, path, blob_store=blob_store)
+        except FileNotFoundError:
+            return FileSnapshot(exists=False, size=0, sha256="", content=None)
+        except Exception as exc:
+            raise MutationSnapshotError(f"snapshot read failed: {exc}") from exc
+
+    # host source
+    from pathlib import Path
+
+    host_root = getattr(sandbox, "host_root", None)
+    if not host_root:
+        raise MutationSnapshotError("sandbox has no host_root")
+    local = Path(host_root) / path
+    try:
+        return FileSnapshot.capture(local, blob_store=blob_store)
+    except FileNotFoundError:
+        return FileSnapshot(exists=False, size=0, sha256="", content=None)
+    except OSError as exc:
+        raise MutationSnapshotError(f"host snapshot read failed: {exc}") from exc
+
+
+def _tool_write_path(name: str, arguments: str) -> str:
+    """Extract the target path from a write-tool call's arguments."""
+    if not isinstance(arguments, str):
+        return ""
+    try:
+        payload = json.loads(arguments)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, dict):
+        return ""
+    for key in ("path", "host_path", "source"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _tool_change_counts(name: str, arguments: str) -> tuple[int, int]:
+    """Estimate additions/deletions from a write-tool call's arguments.
+
+    - write_file: content lines replace the file (additions = lines).
+    - str_replace: old_string removed, new_string added.
+    - copy_to_host / copy_from_host: unknown — 0/0.
+    """
+    if not isinstance(arguments, str):
+        return (0, 0)
+    try:
+        payload = json.loads(arguments)
+    except json.JSONDecodeError:
+        return (0, 0)
+    if not isinstance(payload, dict):
+        return (0, 0)
+
+    def count(value: object) -> int:
+        if not isinstance(value, str):
+            return 0
+        return max(1, value.count("\n") + 1)
+
+    if name == "write_file":
+        return (count(payload.get("content", "")), 0)
+    if name == "str_replace":
+        return (
+            count(payload.get("new_string", "")),
+            count(payload.get("old_string", "")),
+        )
+    return (0, 0)
+
+
+def _tool_change_hunks(name: str, arguments: str) -> list[dict]:
+    """Build REAL diff hunks (with source text) from a write-tool call.
+
+    The tool arguments carry the actual old/new text, so the hunks are
+    evidence of the change, not line-count placeholders:
+    - write_file: additions = content lines (deletions unknown — old file
+      content is not available post-write).
+    - str_replace: deletions = old_string lines, additions = new_string lines.
+    """
+    if not isinstance(arguments, str):
+        return []
+    try:
+        payload = json.loads(arguments)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(payload, dict):
+        return []
+
+    def lines(value: object) -> list[str]:
+        if not isinstance(value, str):
+            return []
+        return value.split("\n")
+
+    additions: list[str] = []
+    deletions: list[str] = []
+    if name == "write_file":
+        additions = lines(payload.get("content", ""))
+    elif name == "str_replace":
+        deletions = lines(payload.get("old_string", ""))
+        additions = lines(payload.get("new_string", ""))
+    else:
+        return []
+
+    if not additions and not deletions:
+        return []
+    hunk_lines: list[dict] = [
+        {"kind": "deletion", "content": line} for line in deletions
+    ] + [{"kind": "addition", "content": line} for line in additions]
+    # Correct unified-diff coordinates: -old_start,old_count +new_start,new_count
+    old_count = len(deletions) or 1
+    new_count = len(additions) or 1
+    return [
+        {
+            "header": f"@@ -1,{old_count} +1,{new_count} @@",
+            "lines": hunk_lines,
+        }
+    ]
+
+
+def _record_idempotent(request_id: str, cmd: str, result: dict | None = None) -> None:
+    """Record a successfully completed command for idempotent replay."""
+    if not (isinstance(request_id, str) and request_id):
+        return
+    store = _get_idempotency()
+    if not store.is_duplicate(request_id):
+        store.record(request_id, result or {"replay": True, "cmd": cmd})
+
+
+def _emit_input_state_ack(
+    message_id: str,
+    thread_id: str,
+    state: str,
+    *,
+    detail: str = "",
+    target_run_id: str | None = None,
+    request_id: str = "",
+) -> None:
+    """Emit an ``input/state`` ACK event to the client.
+
+    This is the Harness Spine counterpart to the old silent-input behavior.
+    Every input now produces an observable state transition.
+    ``request_id``（客户端幂等标识）原样回显，供 ServiceAgentClient 关联请求。
+    """
+    params: dict = {
+        "message_id": message_id,
+        "thread_id": thread_id,
+        "state": state,
+    }
+    if request_id:
+        params["request_id"] = request_id
+    if detail:
+        params["detail"] = detail
+    if target_run_id:
+        params["target_run_id"] = target_run_id
+    _emit_jsonrpc("input/state", params)
+
+
+def _emit_jsonrpc(method: str, params: dict) -> None:
+    """Emit a JSON-RPC 2.0 notification with the given method and params.
+
+    Protocol v2: every event goes through the EventBroker for per-thread
+    seq, event_id, and snapshot buffering, and carries ``protocol_version``
+    and ``timestamp`` (part of the event envelope contract).
+    """
+    from datetime import datetime, timezone
+
+    thread_id = str(params.get("thread_id", ""))
+    if thread_id:
+        from electromind.harness.protocol_v2 import EventEnvelope
+
+        run_id = str(params.get("run_id", "") or "")
+        item_id = str(params.get("item_id", "") or "")
+        envelope = EventEnvelope.create(
+            thread_id,
+            method,
+            params,
+            run_id=run_id if run_id else None,
+            item_id=item_id if item_id else None,
+        )
+        tracked = _get_broker().emit(envelope)
+        params["seq"] = tracked.seq
+        params["event_id"] = tracked.event_id
+        params["protocol_version"] = tracked.protocol_version
+        params["timestamp"] = tracked.timestamp
+    else:
+        params.setdefault("protocol_version", 2)
+        params.setdefault("timestamp", datetime.now(timezone.utc).isoformat())
+    payload = {
+        "jsonrpc": "2.0",
+        "method": method,
+        "params": params,
     }
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
@@ -300,14 +717,20 @@ def emit_execution_state(runner) -> None:
     execution = getattr(runner, "_execution", None)
     if execution is None:
         return
-    params = execution.to_dict()
+    try:
+        params = execution.to_dict()
+    except (TypeError, AttributeError):
+        return
     params["thread_id"] = runner.thread.id
     payload = {
         "jsonrpc": "2.0",
         "method": "ExecutionState",
         "params": params,
     }
-    emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+    try:
+        emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
+    except TypeError:
+        pass
 
 
 def emit_execution_state_cleared() -> None:
@@ -317,7 +740,14 @@ def emit_execution_state_cleared() -> None:
             {
                 "jsonrpc": "2.0",
                 "method": "ExecutionState",
-                "params": {"mode": None, "resolved_backend": None, "isolated": False, "warning": None, "diagnostics": [], "thread_id": None},
+                "params": {
+                    "mode": None,
+                    "resolved_backend": None,
+                    "isolated": False,
+                    "warning": None,
+                    "diagnostics": [],
+                    "thread_id": None,
+                },
             }
         )
         + "\n"
@@ -421,6 +851,98 @@ def emit_sandbox_status_payload(
     emit_line(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
+def _skills_service():
+    """Shared catalog service — CLI/Desktop/Service use one catalog (SKILL-6)."""
+    from electromind.skills.catalog_service import get_shared_catalog_service
+
+    return get_shared_catalog_service()
+
+
+def _skills_catalog_payload(catalog, *, thread_id: str = "") -> dict:
+    """Serialize a ``MultiCandidateCatalog`` for the wire (metadata only)."""
+    return {
+        "thread_id": thread_id,
+        "generation": catalog.generation,
+        "catalog_digest": catalog.catalog_digest,
+        "cwd": catalog.cwd,
+        "repo_root": catalog.repo_root,
+        "source_fingerprints": dict(catalog.source_fingerprints),
+        "skills": [
+            {
+                "skill_id": c.skill_id,
+                "name": c.descriptor.name,
+                "description": c.descriptor.description,
+                "scope": c.source.scope,
+                "dialect": c.source.dialect,
+                "enabled_state": c.enabled_state,
+                "trust_state": c.trust_state,
+                "content_digest": c.descriptor.content_digest,
+            }
+            for c in catalog.candidates
+        ],
+    }
+
+
+def _emit_skills_catalog(command: dict) -> None:
+    """``skills/list`` — the full candidate catalog (picker view)."""
+    service = _skills_service()
+    catalog = service.list()
+    thread_id = str(command.get("thread_id", ""))
+    _emit_jsonrpc(
+        "skills/list",
+        _skills_catalog_payload(catalog, thread_id=thread_id),
+    )
+
+
+def _emit_skills_get(command: dict) -> None:
+    """``skills/get`` — one candidate by qualified id."""
+    skill_id = str(command.get("skill_id", "")).strip()
+    service = _skills_service()
+    candidate = service.get(skill_id) if skill_id else None
+    _emit_jsonrpc(
+        "skills/get",
+        {
+            "skill_id": skill_id,
+            "found": candidate is not None,
+            "candidate": (
+                {
+                    "skill_id": candidate.skill_id,
+                    "name": candidate.descriptor.name,
+                    "description": candidate.descriptor.description,
+                    "scope": candidate.source.scope,
+                    "dialect": candidate.source.dialect,
+                    "enabled_state": candidate.enabled_state,
+                    "trust_state": candidate.trust_state,
+                }
+                if candidate is not None
+                else None
+            ),
+        },
+    )
+
+
+def _emit_skills_reload(command: dict) -> None:
+    """``skills/reload`` — re-discover; bump generation on content change."""
+    service = _skills_service()
+    catalog = service.reload()
+    thread_id = str(command.get("thread_id", ""))
+    _emit_jsonrpc(
+        "skills/reload",
+        _skills_catalog_payload(catalog, thread_id=thread_id),
+    )
+
+
+def _emit_skills_changed(command: dict) -> None:
+    """``skills/changed`` — fingerprint-based change detection (no bump)."""
+    service = _skills_service()
+    changed = service.changed()
+    thread_id = str(command.get("thread_id", ""))
+    _emit_jsonrpc(
+        "skills/changed",
+        {"thread_id": thread_id, "changed": changed},
+    )
+
+
 def emit_skills(runner) -> None:
     """下发当前会话的 skill 目录快照，供前端渲染技能面板。
 
@@ -429,7 +951,9 @@ def emit_skills(runner) -> None:
     """
     skill_runtime = getattr(runner, "skill_runtime", None)
     if skill_runtime is not None:
-        payload = skill_runtime.state_payload(thread_id=getattr(runner.thread, "id", ""))
+        payload = skill_runtime.state_payload(
+            thread_id=getattr(runner.thread, "id", "")
+        )
     else:
         skills = runner.skills.list() if runner else []
         payload = {
@@ -461,6 +985,127 @@ def emit_skills(runner) -> None:
     )
 
 
+def emit_execution_context(runner) -> None:
+    """Emit SSH execution context state for desktop UI rendering.
+
+    Reads execution documents and diagnostics from the sandbox
+    backend.  When no context is present, emits a clear event so
+    the renderer can hide stale data from a previous session.
+    """
+    sandbox = getattr(runner, "sandbox", None)
+    if sandbox is None:
+        _emit_execution_context_clear(runner)
+        return
+    backend = getattr(sandbox, "backend", None)
+    if backend is None:
+        _emit_execution_context_clear(runner)
+        return
+
+    try:
+        btype = _backend_type_name(backend)
+    except Exception:
+        _emit_execution_context_clear(runner)
+        return
+    if btype not in ("ssh", "docker", "podman", "local"):
+        _emit_execution_context_clear(runner)
+        return
+
+    docs = getattr(backend, "execution_documents", ()) or ()
+    diags = getattr(backend, "context_diagnostics", ()) or ()
+    if not docs and not diags:
+        _emit_execution_context_clear(runner)
+        return
+
+    # Build profile_id from docs or fall back to backend type
+    profile_id = ""
+    for doc in docs:
+        pid = getattr(doc, "profile_id", "")
+        if pid:
+            profile_id = pid
+            break
+
+    # Build document summaries with size field for frontend
+    doc_summaries = []
+    for doc in docs:
+        try:
+            content = getattr(doc, "content", "")
+            doc_summaries.append(
+                {
+                    "remote_path": getattr(doc, "remote_path", ""),
+                    "sha256": getattr(doc, "sha256", ""),
+                    "size": len(content),
+                    "fetched_at": getattr(doc, "fetched_at", 0.0),
+                }
+            )
+        except Exception:
+            continue
+
+    try:
+        emit_line(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "ExecutionContextState",
+                    "params": {
+                        "type": "ExecutionContextState",
+                        "thread_id": getattr(runner.thread, "id", ""),
+                        "target": btype,
+                        "profile_id": profile_id or btype,
+                        "documents": doc_summaries,
+                        "diagnostics": list(diags),
+                    },
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+    except TypeError:
+        pass
+
+
+def _emit_execution_context_clear(runner) -> None:
+    """Emit a cleared ExecutionContextState so the renderer hides stale data."""
+    thread_id = ""
+    if runner is not None:
+        thread_id = getattr(runner.thread, "id", "")
+    try:
+        emit_line(
+            json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "method": "ExecutionContextState",
+                    "params": {
+                        "type": "ExecutionContextState",
+                        "thread_id": thread_id,
+                        "target": "",
+                        "profile_id": "",
+                        "documents": [],
+                        "diagnostics": [],
+                    },
+                },
+                ensure_ascii=False,
+            )
+            + "\n"
+        )
+    except TypeError:
+        pass
+
+
+def _backend_type_name(backend) -> str:
+    """Return the backend type name without importing from electromind."""
+    inner = getattr(backend, "inner", backend)
+    class_name = inner.__class__.__name__
+    if class_name == "LocalBackend":
+        return "local"
+    if class_name == "DockerBackend":
+        return "docker"
+    if class_name == "PodmanBackend":
+        return "podman"
+    if class_name == "SshBackend":
+        return "ssh"
+    return class_name.lower()
+
+
 async def emit_sandbox_status(runner) -> None:
     """下发当前 sandbox 的类型与存活状态，供宿主顶部状态栏展示。"""
     if runner is None:
@@ -487,12 +1132,24 @@ async def emit_sandbox_status(runner) -> None:
     )
 
 
-async def build_sandbox_tree(runner, virtual_path: str, prefix: str = "") -> list[dict]:
-    """递归列出当前 sandbox workdir 的目录树。
+async def build_sandbox_tree(
+    runner,
+    virtual_path: str,
+    prefix: str = "",
+    visited: "set[str] | None" = None,
+) -> list[dict]:
+    """Recursively list the sandbox workdir tree.
 
-    统一走运行中的 sandbox 接口，而不是猜本地磁盘路径，这样 local/container/ssh
-    都能返回同一语义的树。
+    Uses a ``visited`` set of normalized paths to prevent infinite
+    recursion from symlink cycles created by the agent.
     """
+    if visited is None:
+        visited = set()
+    norm = posixpath.normpath(virtual_path)
+    if norm in visited:
+        return []
+    visited.add(norm)
+
     try:
         entries = await runner.sandbox.files.list(virtual_path)
     except Exception as exc:
@@ -503,7 +1160,7 @@ async def build_sandbox_tree(runner, virtual_path: str, prefix: str = "") -> lis
         node_id = f"{prefix}/{entry.name}" if prefix else entry.name
         if entry.is_dir:
             child_path = posixpath.join(virtual_path, entry.name)
-            children = await build_sandbox_tree(runner, child_path, node_id)
+            children = await build_sandbox_tree(runner, child_path, node_id, visited)
             nodes.append(
                 {
                     "id": node_id,
@@ -726,6 +1383,13 @@ async def run_slash_command(name: str, runner) -> None:
         emit_slash_result("help", format_slash_help())
         return
 
+    # Runner-dependent commands: require an open runner.  When none is
+    # available (slash intercepted before runner creation), report the
+    # gap instead of crashing.
+    if runner is None:
+        emit_slash_result(name, f"/{name} 需要先打开会话", ok=False)
+        return
+
     if name == "skills":
         skills = runner.skills.list()
         if not skills:
@@ -837,14 +1501,198 @@ def format_exc(exc: BaseException, *, phase: str = "start") -> str:
     return format_fatal_error(exc, phase=phase)
 
 
-async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> None:
-    """跑一轮 Agent，事件逐行透传 stdout；需审批工具补发 PermitRequest。"""
+async def run_user_turn(
+    runner,
+    text: str,
+    config: ReplConfig,
+    state: dict,
+    *,
+    requested_mode: object | None = None,
+) -> None:
+    """跑一轮 Agent，事件逐行透传 stdout；需审批工具补发 PermitRequest。
+
+    After the turn ends, queued inputs for the same thread are automatically
+    started (chain: complete → dequeue → start next turn).
+    """
     ask_permit = not config.permission_auto()
     last_usage: dict | None = None
+    thread_id = getattr(runner.thread, "id", "")
+    run_id: str | None = None  # Set per-event inside the loop
+    success = False
+    stop_reason: str | None = None  # Terminal stop reason from the runner
+    cancelled = False  # Explicit user/task cancellation
     restore_subagent_observer = install_subagent_observer(runner, state)
+    # The UI's requested mode (ask/plan) must change the ACTUAL execution
+    # capability, not just the snapshot — restore at Run end.
+    restore_sandbox_mode = _apply_requested_sandbox_mode(runner, requested_mode)
+    # FileMutationInterceptor: capture before/after state at the tool
+    # dispatch boundary (not external hooks).  Trackers are PER-THREAD
+    # (parallel threads never share baseline state).
+    from electromind.harness.mutations import (
+        WRITE_TOOLS,
+        MutationBlobStore,
+        MutationTracker,
+    )
+
+    trackers: dict = state.setdefault("_mutation_trackers", {})
+    blobs: dict = state.setdefault("_mutation_blobs", {})
+    blob_store = blobs.setdefault(thread_id, MutationBlobStore())
+    tracker = trackers.setdefault(thread_id, MutationTracker(blob_store=blob_store))
+    tracker.clear()
+    blob_store.clear()  # per-Run scope: stale blobs must not accumulate
+    orig_execute_tool = getattr(runner, "execute_tool", None)
+    if orig_execute_tool is not None:
+        from electromind.harness.mutations import FileMutationDelta, FileSnapshot
+
+        async def tracked_execute_tool(tool_call):
+            name = getattr(tool_call, "name", "")
+            arguments = getattr(tool_call, "arguments", "")
+            sandbox = getattr(runner, "sandbox", None)
+            target = _mutation_target(name, arguments, runner)
+            source, snapshot_path = target if target else ("", None)
+            capture_failed = False
+
+            async def safe_capture():
+                nonlocal capture_failed
+                if not snapshot_path:
+                    return None
+                try:
+                    return await _capture_snapshot(
+                        source, snapshot_path, sandbox, blob_store
+                    )
+                except MutationSnapshotError:
+                    # Read error (SSH down, permission...) — we cannot
+                    # produce a trustworthy diff, BUT the mutation must
+                    # not vanish: the call is recorded as INEXACT below.
+                    capture_failed = True
+                    return None
+
+            absent = FileSnapshot(exists=False, size=0, sha256="", content=None)
+            before = await safe_capture()
+            try:
+                output = await orig_execute_tool(tool_call)
+            except BaseException:
+                # The tool FAILED but may have partially modified the disk
+                # (truncate-then-write etc.).  Capture the after state and
+                # record an INEXACT delta — the mutation must never be
+                # silently unrecorded (fail-closed, not fail-blind).
+                if name in WRITE_TOOLS and snapshot_path:
+                    after = await safe_capture()
+                    tracker.track(
+                        FileMutationDelta(
+                            source=source,
+                            tool_call_id=str(getattr(tool_call, "id", "")),
+                            path=snapshot_path,
+                            kind="update",
+                            before=before or absent,
+                            after=after or absent,
+                            exact=False,
+                        )
+                    )
+                raise
+            after = await safe_capture()
+            if name in WRITE_TOOLS and snapshot_path:
+                kind = (
+                    "delete"
+                    if before is not None
+                    and after is not None
+                    and before.exists
+                    and not after.exists
+                    else "create"
+                    if before is not None
+                    and after is not None
+                    and not before.exists
+                    and after.exists
+                    else "update"
+                )
+                tracker.track(
+                    FileMutationDelta(
+                        source=source,
+                        tool_call_id=str(getattr(tool_call, "id", "")),
+                        path=snapshot_path,
+                        kind=kind,
+                        before=before or absent,
+                        after=after or absent,
+                        exact=output.ok and not capture_failed,
+                    )
+                )
+            return output
+
+        runner.execute_tool = tracked_execute_tool
     try:
         async for event in runner.run(text, return_type="event"):
-            emit_line(encode_event_line(event))
+            from electromind.core.events import RunEnd
+
+            if isinstance(event, RunEnd):
+                stop_reason = getattr(event, "stop_reason", None)
+            # Protocol v2: route every ACP event through EventBroker for
+            # per-thread seq, event_id, and snapshot buffering.
+            if thread_id:
+                from electromind.harness.protocol_v2 import EventEnvelope
+
+                session = _harness_manager.get_session(thread_id)
+                if session is not None:
+                    run_id = session.active_run_id
+                line = encode_event_line(event)
+                try:
+                    parsed = json.loads(line)
+                    params = (
+                        parsed.get("params", {}) if isinstance(parsed, dict) else {}
+                    )
+                    method = (
+                        parsed.get("method", "event")
+                        if isinstance(parsed, dict)
+                        else "event"
+                    )
+                except (json.JSONDecodeError, TypeError):
+                    params = {}
+                    method = "event"
+                # Item events carry a stable item_id (Gate 1, 六-3):
+                # - tool events key on tool_call_id
+                # - text/reasoning deltas group into one item per run
+                item_id = None
+                if method in ("ToolCallBegin", "ToolResult"):
+                    tc = str(
+                        params.get("tool_call_id", "")
+                        if isinstance(params, dict)
+                        else ""
+                    )
+                    if tc:
+                        item_id = f"item-{tc}"
+                elif method in ("TextDelta", "ReasoningDelta"):
+                    item_ids: dict = state.setdefault("_item_ids", {})
+                    cur = item_ids.get(thread_id)
+                    if cur is None:
+                        item_ids[thread_id] = cur = (
+                            f"item-{thread_id}-{len(item_ids) + 1}-{run_id or 'run'}"
+                        )
+                    item_id = cur
+                elif method == "RunEnd":
+                    state.get("_item_ids", {}).pop(thread_id, None)
+                envelope = EventEnvelope.create(
+                    thread_id,
+                    str(method),
+                    params if isinstance(params, dict) else {},
+                    run_id=run_id,
+                    item_id=item_id,
+                )
+                tracked = _get_broker().emit(envelope)
+                if isinstance(params, dict):
+                    params["thread_id"] = tracked.thread_id
+                    params["seq"] = tracked.seq
+                    params["event_id"] = tracked.event_id
+                    params["protocol_version"] = tracked.protocol_version
+                    params["timestamp"] = tracked.timestamp
+                    if tracked.run_id:
+                        params["run_id"] = tracked.run_id
+                    if tracked.item_id:
+                        params["item_id"] = tracked.item_id
+                if isinstance(parsed, dict):
+                    parsed["params"] = params
+                    line = json.dumps(parsed, ensure_ascii=False) + "\n"
+                emit_line(line)
+            else:
+                emit_line(encode_event_line(event))
             if isinstance(event, TurnResult) and event.usage:
                 last_usage = event.usage
             if (
@@ -852,21 +1700,174 @@ async def run_user_turn(runner, text: str, config: ReplConfig, state: dict) -> N
                 and isinstance(event, ToolCallBegin)
                 and needs_tool_permit(event.name)
             ):
-                emit_permit_request(event)
+                # Unified decision: the SAME policy the runner enforces.
+                # auto-safe must not produce ghost approvals for commands
+                # the backend auto-approves.
+                from .tool_permit import requires_permit_prompt
+
+                if not requires_permit_prompt(config.resolved_permission_mode(), event):
+                    continue
+                await emit_permit_request(
+                    event,
+                    thread_id=thread_id,
+                    run_id=run_id or "",
+                )
+            # ── FileChange events for write tools (Changes panel) ─────
+            # NOTE: FileChange events are NOT emitted per ToolResult —
+            # the tracker accumulates the NET change and is flushed once
+            # when the Run ends (N writes → ONE timeline item).
+        success = True
     except asyncio.CancelledError:
+        # Explicit cancellation (task.cancel()) → CANCELLED, not FAILED
+        cancelled = True
         raise
     except Exception as exc:
         log(f"[wire] turn failed: {exc}")
         emit_error(format_exc(exc), where="turn")
     finally:
         restore_subagent_observer()
+        restore_sandbox_mode()
+        # Settle pending immediates: steers never read from the mailbox
+        # are re-queued at the queue head with their ORIGINAL identity
+        # (never a re-created message); consumed ones get the applied ACK.
+        # Both sides reach a terminal receipt state (Gate 1, 二-5).
+        inbound = getattr(runner, "inbound", None)
+        unread: list[tuple[str, str]] = []
+        if inbound is not None and hasattr(inbound, "drain"):
+            try:
+                leftover = inbound.drain()
+            except Exception:
+                leftover = None
+            if leftover is not None and leftover.steers:
+                ids = getattr(leftover, "steer_ids", ())
+                unread = [
+                    (ids[i] if i < len(ids) else "", t)
+                    for i, t in enumerate(leftover.steers)
+                ]
+        deferred, applied = await _harness_manager.settle_pending_immediate(
+            thread_id, unread
+        )
+        if deferred:
+            _harness_manager.restore_queued_at_head(thread_id, deferred)
+            for msg in deferred:
+                _emit_input_state_ack(
+                    msg.message_id,
+                    thread_id,
+                    "deferred",
+                    detail="Run ended before the message could be applied",
+                )
+            log(
+                f"[wire] {thread_id} {len(deferred)} unread steer(s) "
+                f"→ deferred to next run"
+            )
+        for msg in applied:
+            _emit_input_state_ack(
+                msg.message_id,
+                thread_id,
+                "applied",
+                detail="Applied at checkpoint",
+            )
+        # Restore the original tool dispatch (remove the mutation wrapper)
+        if orig_execute_tool is not None:
+            runner.execute_tool = orig_execute_tool
+        # FLUSH the per-thread net mutations ONCE (N writes → one
+        # FileChange per path).  Inexact deltas and no-op changes are
+        # filtered — a failed/uncertain write is never shown as a
+        # normal "modified" event.
+        if thread_id:
+            for key in list(tracker._baseline.keys()):
+                src, path = key
+                net = tracker.net_change(src, path, "")
+                if net is None:
+                    continue
+                before_sha = net.get("before", {}).get("sha256", "")
+                after_sha = net.get("after", {}).get("sha256", "")
+                if net.get("exact", True) and before_sha == after_sha:
+                    continue  # exact no-op — nothing actually changed
+                # Inexact (failed/partial) mutations ARE reported — a
+                # change may have hit the disk and must be visible — and
+                # changes recorded before a failed Run still flush.
+                _emit_jsonrpc(
+                    "FileChange",
+                    {
+                        "thread_id": thread_id,
+                        "run_id": run_id or "",
+                        **net,
+                    },
+                )
         if last_usage is not None:
             touch_thread_usage(
                 runner.thread,
                 last_usage,
                 context_limit=thread_context_limit(runner.thread),
             )
-        state["turn"] = None
+        # Wire harness lifecycle into ThreadSessionManager.
+        # Explicit cancel (task.cancel or runner stop_reason=cancelled) →
+        # CANCELLED; normal completion → COMPLETED; errors → FAILED.
+        session = _harness_manager.get_session(thread_id)
+        if session is not None and session.active_run_id:
+            if cancelled or stop_reason == "cancelled":
+                await _harness_manager.cancel_run(thread_id, session.active_run_id)
+            elif success:
+                await _harness_manager.complete_run(thread_id, session.active_run_id)
+            else:
+                await _harness_manager.fail_run(thread_id, session.active_run_id)
+            # Workspace write lease is released on ANY terminal end
+            # (Gate 1, 八: 不得静默抢占；终态必须释放).
+            await _harness_manager.release_workspace(thread_id, session.active_run_id)
+            # Wake threads waiting on the same workspace: a released lease
+            # must never leave a queued waiter waiting forever (Gate 1, 八).
+            ws_key = _workspace_key_for(runner)
+            if ws_key is not None:
+                for wtid in _harness_manager.take_workspace_waiters(ws_key):
+                    if wtid == thread_id:
+                        continue
+                    # First-run waiters register their runner in the wire
+                    # registry (state["_runners"]) BEFORE waiting — the
+                    # session runner only exists after start_run.  Peek
+                    # (non-destructive): a conflict re-registers the
+                    # waiter and the NEXT release must still find it.
+                    wsession = _harness_manager.get_session(wtid)
+                    wrunner = _peek_runner(state, wtid) or getattr(
+                        wsession, "runner", None
+                    )
+                    if wrunner is None:
+                        # Not startable yet — re-register so a LATER
+                        # release can wake it (never take-and-drop).
+                        _harness_manager.register_workspace_waiter(wtid, ws_key)
+                        continue
+                    if _turn_active_for_thread(state, wtid):
+                        continue
+                    await _auto_start_next(wtid, wrunner, config, state)
+            _persist_thread_state(thread_id)
+        # Expired approvals: emit approval/resolved(expired) for each one
+        expired = await _harness_manager.take_expired_approvals(thread_id)
+        for approval in expired:
+            _emit_jsonrpc(
+                "approval/resolved",
+                {
+                    "thread_id": thread_id,
+                    "run_id": getattr(approval, "run_id", "") or "",
+                    "approval_id": getattr(approval, "approval_id", "") or "",
+                    "tool_call_id": getattr(approval, "tool_call_id", "") or "",
+                    "status": "expired",
+                },
+            )
+        _set_turn(state, thread_id, None)  # Clear per-thread and legacy turn
+        # Auto-start next queued input.  Frozen policy: cancel only cancels
+        # the CURRENT Run — explicitly queued inputs continue FIFO after ANY
+        # terminal end (completed or cancelled).  Failures do NOT auto-start
+        # (avoids failure loops).
+        #
+        # Single atomic entry: start_run consumes the queued input, creates
+        # the run_id, and transitions to RUNNING in one lock-held operation.
+        # There is no separate start_next_queued preparation stage.
+        run_ended = success or cancelled or stop_reason == "cancelled"
+        if run_ended and not _turn_active_for_thread(state, thread_id):
+            # Same full creation flow as the first Run (Gate 1, 八 / 一-7;
+            # Gate 2, 九): workspace lease → start_run → freeze RunSnapshot
+            # → persist the active-run marker BEFORE the turn starts.
+            await _auto_start_next(thread_id, runner, config, state)
 
 
 def turn_active(state: dict) -> bool:
@@ -875,11 +1876,595 @@ def turn_active(state: dict) -> bool:
     return task is not None and not task.done()
 
 
+def _active_thread_id(state: dict) -> str:
+    """Return the currently active thread id from wire state."""
+    tid = state.get("thread_id", "")
+    return tid if isinstance(tid, str) else ""
+
+
+async def _auto_start_next(
+    thread_id: str, runner, config: ReplConfig, state: dict
+) -> bool:
+    """Start the next queued input as a new Run — the FULL creation flow
+    (Gate 1, 八 / 一-7; Gate 2, 九): workspace lease → start_run → freeze
+    RunSnapshot → persist the active-run marker BEFORE the turn starts.
+
+    On a lease conflict the thread is registered as a workspace waiter
+    (woken when the holder releases) and False is returned.  Returns True
+    when a new turn was spawned.
+    """
+    import asyncio
+
+    from electromind.harness.identity import new_run_id
+
+    ws_key = _workspace_key_for(runner)
+    # The next queued input's requested mode (from the UI) drives the
+    # lease decision exactly like the first-Run path.
+    peeked = _harness_manager.peek_queued_input(thread_id)
+    if peeked is None:
+        return False
+    session_mode = _resolved_session_mode(
+        config, getattr(peeked, "requested_mode", None)
+    )
+    pre_run_id = new_run_id()
+    if ws_key is not None:
+        acquired = await _harness_manager.try_acquire_workspace(
+            thread_id, ws_key, pre_run_id, session_mode
+        )
+        if not acquired:
+            # Holder still active — leave the input queued and wake us up
+            # when the lease is released (never wait forever).
+            _harness_manager.register_workspace_waiter(thread_id, ws_key)
+            log(f"[wire] {thread_id} waiting for workspace {ws_key}")
+            return False
+    start_res = await _harness_manager.start_run(thread_id, runner, run_id=pre_run_id)
+    if start_res is None:
+        await _harness_manager.release_workspace(thread_id, pre_run_id)
+        log(f"[wire] auto-start failed for {thread_id}")
+        return False
+    run_id, queued_msg = start_res
+    await _harness_manager.set_run_snapshot(
+        thread_id,
+        _build_run_snapshot(
+            runner,
+            config,
+            run_id,
+            thread_id,
+            queued_msg.message_id,
+            requested_mode=getattr(queued_msg, "requested_mode", None),
+        ),
+    )
+    _persist_thread_state(thread_id)
+    log(f"[wire] auto-starting next queued run on {thread_id}")
+    task = asyncio.create_task(
+        run_user_turn(
+            runner,
+            queued_msg.text,
+            config,
+            state,
+            requested_mode=getattr(queued_msg, "requested_mode", None),
+        )
+    )
+    _set_turn(state, thread_id, task)
+    _emit_input_state_ack(
+        queued_msg.message_id,
+        thread_id,
+        "applied",
+        detail="Auto-started from queue",
+    )
+    return True
+
+
+# ── RunSnapshot construction (Gate 1, 一-7) ───────────────────────────
+
+
+def _build_run_snapshot(
+    runner,
+    config: ReplConfig,
+    run_id: str,
+    thread_id: str,
+    input_message_id: str,
+    *,
+    requested_mode=None,
+) -> object:
+    """Freeze the immutable RunSnapshot at Run creation.
+
+    Captures mode, model, execution target, permission policy, project
+    path, skills/tools digests and max iterations.  None of these fields
+    change for the lifetime of the Run.
+    """
+    import hashlib
+
+    from electromind.harness.identity import RunSnapshot
+    from electromind.harness.state import (
+        ExecutionTargetSnapshot,
+        PermissionPolicySnapshot,
+        SessionMode,
+    )
+
+    mode = requested_mode or _session_mode_for(config)
+    model = config.resolved_model()
+    max_iterations = config.resolved_max_turns()
+    workdir = ""
+    kind = "local"
+    profile_id = ""
+    execution = getattr(runner, "_execution", None)
+    if execution is not None:
+        resolved_backend = getattr(execution, "resolved_backend", "")
+        kind = str(getattr(execution, "mode", "local") or "local")
+        if resolved_backend:
+            profile_id = str(resolved_backend)
+    sandbox = getattr(runner, "sandbox", None)
+    if sandbox is not None:
+        workdir = getattr(sandbox, "workdir", "") or ""
+        if not profile_id:
+            profile_id = kind
+    if not workdir:
+        workdir = runner_project_path(runner) or ""
+
+    def _digest(text: str) -> str:
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()[:16] if text else ""
+
+    # Real digests, not placeholders (Gate 1, 一-7): the BaseRunner keeps
+    # the assembled system prompt and tool list on its Agent; the skills
+    # digest comes from the SkillRuntime's frozen SkillSetSnapshot.
+    system_prompt = ""
+    tool_set_digest = ""
+    agent = getattr(runner, "agent", None)
+    if agent is not None:
+        system_prompt = str(getattr(agent, "system", "") or "")
+        tools = getattr(agent, "tools", None)
+    else:
+        tools = None
+    if not tools:  # Legacy runners expose tools on the runner itself
+        tools = getattr(runner, "tools", None) or getattr(runner, "tool_set", None)
+    if tools is not None:
+        names = sorted(
+            str(getattr(t, "name", "")) for t in tools if getattr(t, "name", "")
+        )
+        if names:
+            tool_set_digest = _digest("\n".join(names))
+        else:
+            tool_set_digest = _digest(str(tools))
+    skill_set_digest = ""
+    skill_runtime = getattr(runner, "skill_runtime", None)
+    if skill_runtime is not None:
+        set_snapshot = getattr(skill_runtime, "_set_snapshot", None)
+        digest = getattr(set_snapshot, "digest", "") if set_snapshot is not None else ""
+        if digest:
+            skill_set_digest = str(digest)
+        else:  # Legacy fallback: hash the generation counter
+            skill_set_digest = _digest(str(getattr(skill_runtime, "_generation", "")))
+
+    return RunSnapshot(
+        run_id=run_id,
+        thread_id=thread_id,
+        input_message_id=input_message_id,
+        session_mode=mode,
+        model=model,
+        max_iterations=max_iterations,
+        execution_target=ExecutionTargetSnapshot(
+            target_id=profile_id or kind,
+            kind=kind,
+            workdir=workdir,
+            profile_id=profile_id,
+        ),
+        permission_policy=PermissionPolicySnapshot(
+            auto_approve=config.permission_auto(),
+            # Ask/Plan are read-only: no file writes, no command execution.
+            # Run mode reflects the resolved permission mode (write-capable
+            # either way — prompting is captured by auto_approve).
+            allow_file_write=mode == SessionMode.RUN,
+            allow_execute=mode == SessionMode.RUN,
+        ),
+        project_path=runner_project_path(runner),
+        system_prompt_digest=_digest(system_prompt),
+        skill_set_digest=skill_set_digest,
+        tool_set_digest=tool_set_digest,
+        created_at=datetime.now().isoformat(),
+    )
+
+
+# ── Workspace lease helpers (Gate 1, 八) ──────────────────────────────
+
+
+def _canonical_workdir(workdir: str, *, local: bool) -> str:
+    """Canonicalize a workdir for lease-keying.
+
+    Local paths are fully resolved (symlinks, ``.``/``..``, tilde) so two
+    spellings of the SAME directory map to ONE lease.  Remote/container
+    paths cannot be resolved on the host — normalized lexically only.
+    """
+    import os
+
+    if not workdir:
+        return workdir
+    if local:
+        try:
+            return os.path.realpath(os.path.expanduser(workdir))
+        except (OSError, ValueError):
+            return os.path.normpath(workdir)
+    return os.path.normpath(workdir)
+
+
+def _workspace_key_for(runner):
+    """Derive the WorkspaceKey for a Runner's execution target + workdir.
+
+    ``execution target + canonical workdir`` together form the key.  Local
+    mode keys on the project path; sandbox/ssh keys on backend + workdir.
+    Workdirs are canonicalized so path aliases (``/a`` vs ``/a/.``,
+    symlinks, ``~``) cannot bypass the exclusive lease.  Returns None when
+    no workdir is known (lease skipped).
+    """
+    from electromind.harness.identity import WorkspaceKey
+
+    workdir = ""
+    target_id = "local"
+    sandbox = getattr(runner, "sandbox", None)
+    if sandbox is not None:
+        workdir = getattr(sandbox, "workdir", "") or ""
+        backend = getattr(sandbox, "backend", None)
+        if backend is not None:
+            try:
+                from electromind.sandbox import backend_type_name
+
+                target_id = backend_type_name(backend) or "sandbox"
+            except Exception:
+                target_id = "sandbox"
+    if not workdir:
+        workdir = runner_project_path(runner) or ""
+    if not workdir:
+        return None
+    canonical = _canonical_workdir(workdir, local=target_id == "local")
+    return WorkspaceKey(
+        execution_target_id=target_id,
+        canonical_workdir=canonical,
+    )
+
+
+def _session_mode_for(config: ReplConfig):
+    """Map ReplConfig to a harness SessionMode.
+
+    ``config.session_mode`` (ask|plan|run) is the primary source; the
+    legacy ``command_policy == "ask"`` maps to ASK.  Ask/Plan are
+    read-only (never acquire the write lease); Run mode is write-capable
+    and must acquire it.
+    """
+    from electromind.harness.state import SessionMode
+
+    mode = getattr(config, "session_mode", None)
+    if isinstance(mode, str) and mode in {"ask", "plan", "run"}:
+        return SessionMode(mode)
+    if getattr(config, "command_policy", "") == "ask":
+        return SessionMode.ASK
+    return SessionMode.RUN
+
+
+def _resolved_session_mode(
+    config: ReplConfig, requested_mode: object | None
+) -> "object":
+    """Resolve the SessionMode for a Run: the UI's per-input requested
+    mode wins (it is frozen into the RunSnapshot), else the config's."""
+    from electromind.harness.state import SessionMode
+
+    if isinstance(requested_mode, SessionMode):
+        return requested_mode
+    return _session_mode_for(config)
+
+
+def _apply_requested_sandbox_mode(runner, requested_mode: object | None):
+    """Apply the UI's requested session mode to the RUNNER's sandbox so
+    the ACTUAL execution capability (tool guard) matches the RunSnapshot.
+
+    The sandbox re-reads ``spec.session_mode`` on every command/file
+    operation, so switching it before the Run starts enforces ask/plan
+    read-only semantics even though the runner was opened with the base
+    config.  Returns a callable that restores the original mode.
+    """
+    if requested_mode is None:
+        return lambda: None
+    sandbox = getattr(runner, "sandbox", None)
+    spec = getattr(sandbox, "spec", None)
+    if spec is None or not hasattr(spec, "session_mode"):
+        return lambda: None
+    from electromind.harness.state import SessionMode
+
+    mode = (
+        requested_mode
+        if isinstance(requested_mode, SessionMode)
+        else SessionMode(str(requested_mode))
+    )
+    # harness ask/plan/run → sandbox ask/plan/agent (sandbox's write mode)
+    sandbox_mode = (
+        "ask"
+        if mode == SessionMode.ASK
+        else "plan"
+        if mode == SessionMode.PLAN
+        else "agent"
+    )
+    original = spec.session_mode
+    if original == sandbox_mode:
+        return lambda: None
+    spec.session_mode = sandbox_mode
+    log(f"[wire] sandbox mode → {sandbox_mode} (requested {mode})")
+
+    def restore() -> None:
+        spec.session_mode = original
+
+    return restore
+
+
+# ── State persistence (Gate 2, 九) ────────────────────────────────────
+
+
+def _thread_state_path_for(thread_id: str):
+    """Return the harness_state.json path for a thread (or None)."""
+    from pathlib import Path
+
+    from electromind.harness.persistence import thread_state_path
+
+    try:
+        thread = open_thread_history(thread_id)
+        root = getattr(thread, "root", None)
+        if root is None:
+            return None
+        return thread_state_path(Path(root))
+    except Exception:
+        return None
+
+
+def _persist_thread_state(thread_id: str) -> None:
+    """Atomically persist a thread's harness state (queue, immediate,
+    approvals, active-run marker, external tasks)."""
+    from electromind.harness.persistence import (
+        approval_to_dict,
+        input_message_to_dict,
+        receipt_to_dict,
+        save_thread_state,
+    )
+
+    path = _thread_state_path_for(thread_id)
+    if path is None:
+        return
+    session = _harness_manager.get_session(thread_id)
+    if session is None:
+        return
+    # Only a LIVE run is persisted as the active-run marker.  A terminal
+    # phase (completed/cancelled/failed/interrupted) must NOT be restored
+    # as "process died mid-Run" on the next restart — the run finished.
+    from electromind.harness.state import is_terminal_run_phase
+
+    marker_run_id = (
+        None
+        if is_terminal_run_phase(session.active_run_phase)
+        else session.active_run_id
+    )
+    state = {
+        "version": 1,
+        "active_run_id": marker_run_id,
+        "queued_inputs": [
+            input_message_to_dict(m) for m in session.queued_inputs.all()
+        ],
+        "pending_immediate": [
+            input_message_to_dict(m) for m in session.pending_immediate
+        ],
+        "receipt_history": [
+            receipt_to_dict(r) for r in session.receipt_history.values()
+        ],
+        "pending_approvals": [
+            approval_to_dict(a) for a in session.pending_approvals.values()
+        ],
+        # Thread-scoped: never write another thread's task refs (remote
+        # ids / resume tokens) into this thread's state file.
+        "external_tasks": [
+            t.to_dict() for t in _harness_manager.external_tasks.for_thread(thread_id)
+        ],
+    }
+    try:
+        save_thread_state(path, state)
+    except Exception as exc:
+        log(f"[wire] persist {thread_id} failed: {exc}")
+
+
+async def _recover_thread_states() -> None:
+    """Recovery scan at startup (Gate 2, 九).
+
+    For every thread with a persisted harness state:
+    - ``active_run_id`` present → the process died mid-Run → mark the Run
+      INTERRUPTED (never COMPLETED).
+    - ``pending_immediate`` → restored to the HEAD of the queue.
+    - ``pending_approvals`` → restored then expired (cannot re-verify the
+      tool state after a restart — fail-closed).
+    - in-flight external tasks → marked UNKNOWN (no domain adapter to
+      re-attach).
+    Restoring is idempotent: loading the same file twice yields the same
+    result.
+    """
+    from pathlib import Path
+
+    from electromind.harness.external import ExternalTaskRef
+    from electromind.harness.persistence import (
+        approval_from_dict,
+        input_message_from_dict,
+        input_message_to_dict,
+        load_thread_state,
+        receipt_from_dict,
+        receipt_to_dict,
+        save_thread_state,
+        thread_state_path,
+    )
+
+    root = Path(default_threads_root())
+    if not root.exists():
+        return
+    recovered = 0
+    for thread_dir in root.iterdir():
+        if not thread_dir.is_dir():
+            continue
+        path = thread_state_path(thread_dir)
+        data = load_thread_state(path)
+        if data is None:
+            continue
+        thread_id = thread_dir.name
+        active_run_id = data.get("active_run_id") or None
+        if active_run_id:
+            _harness_manager.restore_session_marker(thread_id, active_run_id)
+            await _harness_manager.mark_interrupted(thread_id, active_run_id)
+            log(f"[wire] recovery: {thread_id} run {active_run_id} → interrupted")
+            recovered += 1
+        # Plain queued inputs first (FIFO tail), then deferred immediates
+        # at the HEAD — original order is preserved.
+        queued_inputs = [
+            input_message_from_dict(d)
+            for d in data.get("queued_inputs", [])
+            if isinstance(d, dict) and d.get("message_id")
+        ]
+        if queued_inputs:
+            _harness_manager.restore_queued_inputs(thread_id, queued_inputs)
+            log(f"[wire] recovery: {thread_id} {len(queued_inputs)} queued → tail")
+        pending_immediate = [
+            input_message_from_dict(d)
+            for d in data.get("pending_immediate", [])
+            if isinstance(d, dict) and d.get("message_id")
+        ]
+        if pending_immediate:
+            _harness_manager.restore_queued_at_head(thread_id, pending_immediate)
+            log(
+                f"[wire] recovery: {thread_id} {len(pending_immediate)} immediate → head"
+            )
+        receipts = [
+            receipt_from_dict(d)
+            for d in data.get("receipt_history", [])
+            if isinstance(d, dict) and d.get("message_id")
+        ]
+        if receipts:
+            _harness_manager.restore_receipt_history(thread_id, receipts)
+            log(f"[wire] recovery: {thread_id} {len(receipts)} receipts → history")
+        approvals = [
+            approval_from_dict(d)
+            for d in data.get("pending_approvals", [])
+            if isinstance(d, dict) and d.get("approval_id")
+        ]
+        if approvals:
+            _harness_manager.restore_approvals(thread_id, approvals)
+            log(f"[wire] recovery: {thread_id} {len(approvals)} approvals → expired")
+        tasks = [
+            ExternalTaskRef.from_dict(d)
+            for d in data.get("external_tasks", [])
+            if isinstance(d, dict) and d.get("external_task_id")
+        ]
+        if tasks:
+            _harness_manager.external_tasks.restore(tasks)
+            _harness_manager.external_tasks.mark_unverifiable_unknown()
+            log(f"[wire] recovery: {thread_id} {len(tasks)} external tasks → unknown")
+        # Crash-safe handoff: the restored queues/receipts are now owned
+        # by the LIVE manager — persist them back IMMEDIATELY so a second
+        # crash (right after this recovery) cannot lose the recovered
+        # messages.  The active-run marker stays None (interrupted is
+        # terminal); approvals were expired; only the thread's OWN
+        # external task refs remain.
+        session = _harness_manager.get_session(thread_id)
+        if session is not None:
+            handoff = {
+                "version": 1,
+                "active_run_id": None,
+                "queued_inputs": [
+                    input_message_to_dict(m) for m in session.queued_inputs.all()
+                ],
+                "pending_immediate": [
+                    input_message_to_dict(m) for m in session.pending_immediate
+                ],
+                "receipt_history": [
+                    receipt_to_dict(r) for r in session.receipt_history.values()
+                ],
+                "pending_approvals": [],
+                "external_tasks": [
+                    t.to_dict()
+                    for t in _harness_manager.external_tasks.for_thread(thread_id)
+                ],
+            }
+            save_thread_state(path, handoff)
+    if recovered:
+        log(f"[wire] recovery complete: {recovered} interrupted run(s)")
+
+
+def _turn_active_for_thread(state: dict, thread_id: str) -> bool:
+    """Check if a specific thread has an active (running) turn.
+
+    Checks the per-thread ``_turns`` dict first.  Only falls back to the
+    legacy ``state["turn"]`` when ``_turns`` is completely empty (backward
+    compatibility with old clients that haven't adopted per-thread protocol).
+    """
+    turns: dict = state.setdefault("_turns", {})
+    task = turns.get(thread_id)
+    if task is not None:
+        return not task.done()
+    # Only fall back to legacy when no per-thread turns exist at all.
+    # Once any thread is tracked in _turns, the legacy slot is unreliable
+    # (it may point to a background thread's task, not the active thread's).
+    if not turns:
+        legacy = state.get("turn")
+        if legacy is not None and not legacy.done():
+            return thread_id == _active_thread_id(state)
+    return False
+
+
+def _save_runner(state: dict, thread_id: str, runner) -> None:
+    """Store a runner in the per-thread runner registry."""
+    if runner is not None and thread_id:
+        runners: dict = state.setdefault("_runners", {})
+        runners[thread_id] = runner
+
+
+def _load_runner(state: dict, thread_id: str):
+    """Load a runner from the per-thread registry, removing it."""
+    runners: dict = state.get("_runners", {})
+    return runners.pop(thread_id, None) if runners else None
+
+
+def _peek_runner(state: dict, thread_id: str):
+    """Read a runner from the registry WITHOUT removing it.
+
+    Used by the workspace-waiter wake-up: a conflict re-registers the
+    waiter, and the NEXT release must find the runner again (a pop would
+    lose it forever after the first conflict).
+    """
+    runners: dict = state.get("_runners", {})
+    return runners.get(thread_id) if runners else None
+
+
+def _set_turn(state: dict, thread_id: str, task: asyncio.Task | None) -> None:
+    """Set the turn task for a thread."""
+    turns: dict = state.setdefault("_turns", {})
+    if task is None:
+        turns.pop(thread_id, None)
+    else:
+        turns[thread_id] = task
+    # Backward compat: also set the legacy "turn" key for the active thread
+    if thread_id == _active_thread_id(state):
+        state["turn"] = task
+
+
+def _cancel_thread_turn(state: dict, thread_id: str) -> bool:
+    """Cancel the turn for a specific thread. Returns True if a turn was cancelled."""
+    turns: dict = state.setdefault("_turns", {})
+    task = turns.pop(thread_id, None)
+    if task is not None and not task.done():
+        task.cancel()
+        # Also clear legacy turn if this is the active thread
+        if thread_id == _active_thread_id(state):
+            state["turn"] = None
+        return True
+    return False
+
+
 async def open_fresh_runner(config: ReplConfig, project_path: str | None = None):
     """开一个干净会话：thread_id 置空，让 open_runner 生成新的 thread-<时间戳>。"""
     if project_path is not None:
         config = replace(config, project_path=project_path)
-    return await open_runner(replace(config, thread_id=None))
+    runner = await open_runner(replace(config, thread_id=None))
+    _wire_skill_state_callback(runner)
+    return runner
 
 
 def clean_empty_threads(*, keep_thread_ids: set[str] | frozenset[str] = frozenset()):
@@ -897,7 +2482,16 @@ async def open_thread_runner(
     """切到指定 thread：沿用其磁盘上的 spec 与历史消息（Runner.create 会载入）。"""
     if project_path is not None:
         config = replace(config, project_path=project_path)
-    return await open_runner(replace(config, thread_id=thread_id))
+    runner = await open_runner(replace(config, thread_id=thread_id))
+    _wire_skill_state_callback(runner)
+    return runner
+
+
+def _wire_skill_state_callback(runner) -> None:
+    """Set the skill state change callback so use_skill emits updated state."""
+    skill_runtime = getattr(runner, "skill_runtime", None)
+    if skill_runtime is not None:
+        skill_runtime._on_skill_state_change = lambda: emit_skills(runner)
 
 
 def open_thread_history(thread_id: str, project_path: str | None = None):
@@ -940,11 +2534,41 @@ def emit_empty_history_replay() -> None:
 
 
 async def handle_command(command: dict, runner, config: ReplConfig, state: dict):
-    """按命令类型分派；返回当前 runner（reset/resume 时可能换成新 runner）。
+    """按命令类型分派；返回当前 runner（reset/resume 时可能换成新 runner）。"""
+    request_id = command.get("request_id", "")
+    cmd = command.get("cmd", "")
 
-    ``runner`` 可为 None：进程启动时尚未 open，避免切换 backend 后先卡在空会话的
-    沙箱唤醒上，导致 stdin 里的 resume 迟迟得不到处理。
-    """
+    # ── Harness Spine: idempotency ─────────────────────────────────────
+    if isinstance(request_id, str) and request_id:
+        store = _get_idempotency()
+        if store.is_duplicate(request_id):
+            stored = store.get_result(request_id)
+            log(f"[wire] idempotent replay: {request_id}")
+            # Replay the stored ACK payload verbatim
+            if isinstance(stored, dict) and stored.get("_ack_method"):
+                _emit_jsonrpc(
+                    str(stored["_ack_method"]),
+                    {k: v for k, v in stored.items() if not k.startswith("_")},
+                )
+            return runner
+
+    result = await _dispatch_command(command, runner, config, state)
+
+    # Record successful completion for idempotent replay.
+    # The _ack_payload is set by command handlers (e.g. input/send) that
+    # want their response replayed on retry.
+    if isinstance(request_id, str) and request_id:
+        ack_payload = command.get("_ack_payload")
+        if isinstance(ack_payload, dict):
+            _get_idempotency().record(request_id, ack_payload)
+        else:
+            _get_idempotency().record(request_id, {"replay": True, "cmd": cmd})
+
+    return result
+
+
+async def _dispatch_command(command: dict, runner, config: ReplConfig, state: dict):
+    """命令分派实现。由 handle_command 包装幂等和记录。"""
     cmd = command.get("cmd")
 
     if cmd == "commands":
@@ -964,6 +2588,23 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
 
     if cmd == "get_config":
         emit_config_snapshot(load_config())
+        return runner
+
+    # ── Skills: unified catalog (SKILL-6) ────────────────────────────────
+    if cmd == "skills/list":
+        _emit_skills_catalog(command)
+        return runner
+
+    if cmd == "skills/get":
+        _emit_skills_get(command)
+        return runner
+
+    if cmd == "skills/reload":
+        _emit_skills_reload(command)
+        return runner
+
+    if cmd == "skills/changed":
+        _emit_skills_changed(command)
         return runner
 
     if cmd == "set_provider":
@@ -1084,6 +2725,7 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             )
             return runner
         await emit_sandbox_status(runner)
+        emit_execution_context(runner)
         return runner
 
     if cmd == "skills":
@@ -1095,13 +2737,9 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         if not (isinstance(thread_id, str) and thread_id):
             log("[wire] resume missing thread_id")
             return runner
-        if turn_active(state):
-            log("[wire] resume rejected: turn active")
-            emit_error(
-                "助手正在运行，无法切换会话。请等待完成或先停止当前任务。",
-                where="resume",
-            )
-            return runner
+        # Harness Spine: switching threads is ALWAYS allowed — the user
+        # may want to view progress or cancel a background thread.
+        # The target thread's turn (if any) keeps running independently.
         project_path = command_project_path(command)
         try:
             thread = open_thread_history(thread_id, project_path)
@@ -1109,20 +2747,27 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
                 raise ValueError(f"会话已删除：{thread_id}")
         except (Exception, SystemExit) as exc:
             log(f"[wire] resume failed: {exc}")
-            if runner is None:
-                emit_empty_history_replay()
-            else:
-                emit_history_replay(runner)
+            emit_empty_history_replay()
             emit_error(format_exc(exc, phase="start"), where="resume")
             return runner
-        if runner is not None:
-            await runner.close()
-            runner = None
+        # Harness Spine: save current runner so background tasks keep running.
+        # Switching threads must NOT close the previous runner (principle #1).
+        old_thread_id = _active_thread_id(state)
+        if runner is not None and old_thread_id and old_thread_id != thread_id:
+            _save_runner(state, old_thread_id, runner)
+            _harness_manager.get_session(old_thread_id)  # ensure session exists
+            log(f"[wire] backgrounding runner for {old_thread_id}")
+        # Try to load an already-open runner for the target thread
+        cached = _load_runner(state, thread_id)
         state["thread_id"] = thread.id
         state["project_path"] = project_path
         emit_execution_state_cleared()
         emit_thread_history_replay(thread)
-        return None
+        if cached is not None:
+            # Target thread already has a live runner — switch to it directly
+            log(f"[wire] resumed cached runner for {thread_id}")
+            return cached
+        return None  # Caller must open a new runner for the target thread
 
     if cmd == "reset":
         if turn_active(state):
@@ -1161,6 +2806,7 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         state.pop("pending_config", None)
         emit_history_replay(runner)
         emit_execution_state(runner)
+        emit_execution_context(runner)
         log(
             "[wire] reset：已开新会话"
             + (f" backend={reset_config.backend}" if reset_config.backend else "")
@@ -1168,12 +2814,173 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         return runner
 
     if cmd == "cancel":
-        if runner is not None and turn_active(state):
+        # Harness Spine: cancel is scoped to the active thread only.
+        # Background threads are unaffected.
+        # 验收 P0-4：携带 run_id 时必须匹配当前活动 Run——旧 Run 的迟到
+        # Cancel 不得取消新 Run（不匹配 → 拒绝，不触碰 Runner）。
+        active_tid = _active_thread_id(state)
+        bound_run_id = command.get("run_id", "")
+        if isinstance(bound_run_id, str) and bound_run_id:
+            session = _harness_manager.get_session(active_tid)
+            if session is None or session.active_run_id != bound_run_id:
+                log(
+                    f"[wire] cancel rejected: run_id {bound_run_id} != "
+                    f"active {getattr(session, 'active_run_id', None)} for {active_tid}"
+                )
+                return runner
+        if runner is not None and _turn_active_for_thread(state, active_tid):
             runner.cancel_run()
-            log("[wire] cancel：已请求停止当前任务")
+            _cancel_thread_turn(state, active_tid)
+            log(f"[wire] cancel：已请求停止 {active_tid}")
         else:
             log("[wire] cancel：当前没有运行中的任务")
         return runner
+
+    # ── Harness Spine: input/send (single message_id, harness routing) ─
+    if cmd == "input/send":
+        text = command.get("text", "")
+        thread_id = state.get("thread_id", "")
+        if not isinstance(text, str) or not text.strip():
+            reject_msg = InputMessage.create(thread_id or "default", text or "")
+            _emit_input_state_ack(
+                reject_msg.message_id,
+                thread_id,
+                "rejected",
+                detail="Empty input",
+            )
+            return runner
+        # Create ONE InputMessage and route through the harness manager.
+        # The same message_id is carried through the entire lifecycle:
+        #   accepted → queued/immediate_pending → applied/deferred/rejected
+        delivery_str = command.get("delivery", "auto")
+        try:
+            delivery = (
+                InputDelivery(delivery_str)
+                if delivery_str in {"auto", "immediate", "enqueue"}
+                else InputDelivery.AUTO
+            )
+        except ValueError:
+            delivery = InputDelivery.AUTO
+        # Session mode from the UI is carried into the Run's requested options
+        mode_str = command.get("mode", "")
+        requested_mode = None
+        if isinstance(mode_str, str) and mode_str in {"ask", "plan", "run"}:
+            from electromind.harness.state import SessionMode
+
+            requested_mode = SessionMode(mode_str)
+        msg = InputMessage.create(
+            thread_id or "default",
+            text,
+            delivery=delivery,
+            requested_mode=requested_mode,
+        )
+        receipt = await _harness_manager.send_input(msg)
+        # Gate 1, 二-5: IMMEDIATE/AUTO inputs during an active Run are
+        # delivered to the Runner's inbound mailbox — the loop applies
+        # them at its next SAFE CHECKPOINT (never mid-tool-batch).  The
+        # message STAYS in pending_immediate (persisted) until the Run
+        # settles it, so a crash between steer and checkpoint cannot lose
+        # it; the Run end re-queues unread steers with their ORIGINAL
+        # identity.
+        if str(receipt.state) == "immediate_pending":
+            inbound = getattr(runner, "inbound", None)
+            if inbound is not None and hasattr(inbound, "steer"):
+                # The message_id rides along so the Run-end settle can
+                # classify THIS message exactly (never by text).
+                inbound.steer(text, message_id=receipt.message_id)
+                log(f"[wire] {receipt.thread_id} steer → checkpoint: {text[:40]}")
+        _emit_input_state_ack(
+            receipt.message_id,
+            receipt.thread_id,
+            str(receipt.state),
+            detail=receipt.detail,
+            target_run_id=receipt.target_run_id,
+            request_id=command.get("request_id", ""),
+        )
+        # Gate 2: persist queue/immediate changes immediately
+        _persist_thread_state(receipt.thread_id)
+        # Capture ACK payload for idempotent replay
+        command["_ack_payload"] = {
+            "_ack_method": "input/state",
+            "message_id": receipt.message_id,
+            "thread_id": receipt.thread_id,
+            "state": str(receipt.state),
+            "detail": receipt.detail,
+        }
+        # Store for the "user" handler below so it reuses the same identity
+        command["_input_msg"] = msg
+        command["_input_receipt"] = receipt
+        # Rewrite to "user" so existing runner logic applies below
+        cmd = "user"
+
+    # ── Harness Spine: thread/snapshot (runnerless) ────────────────────
+    if cmd == "thread/snapshot":
+        thread_id = command.get("thread_id") or state.get("thread_id", "")
+        snap = await _harness_manager.get_snapshot(thread_id)
+        # Protocol v2: durable timeline — completed messages, tool calls,
+        # tool results and errors so the client can rebuild the full
+        # thread even when the event buffer was evicted.
+        if isinstance(thread_id, str) and thread_id:
+            try:
+                project_path = state.get("project_path")
+                thread = open_thread_history(
+                    thread_id,
+                    project_path if isinstance(project_path, str) else None,
+                )
+                snap["items"] = history_message_items(thread.messages)
+            except Exception as exc:
+                log(f"[wire] snapshot items failed: {exc}")
+                snap["items"] = []
+        # Protocol v2: include buffered events for incremental recovery
+        after_seq_raw = command.get("after_seq")
+        if isinstance(after_seq_raw, (int, float)) and int(after_seq_raw) >= 0:
+            after_seq = int(after_seq_raw)
+            broker = _get_broker()
+            snap["after_seq"] = after_seq
+            snap["last_seq"] = broker.get_last_seq(thread_id or "")
+            buffered = broker.get_events_since(thread_id or "", after_seq)
+            if buffered:
+                snap["events"] = [
+                    {
+                        "event_id": e.event_id,
+                        "seq": e.seq,
+                        "method": e.method,
+                        "thread_id": e.thread_id,
+                        "run_id": e.run_id,
+                        "item_id": e.item_id,
+                        "payload": e.payload,
+                    }
+                    for e in buffered
+                ]
+                snap["is_full_snapshot"] = False
+            else:
+                # Distinguish "no new events" from "history evicted"
+                oldest_buffered_seq = (
+                    broker._seq.get(thread_id or "", 0) - broker._max_buffer
+                )
+                history_intact = after_seq < 0 or after_seq >= oldest_buffered_seq
+                snap["is_full_snapshot"] = not history_intact or after_seq < 0
+        request_id = command.get("request_id", "")
+        if isinstance(request_id, str) and request_id:
+            snap["request_id"] = request_id
+        _emit_jsonrpc("thread/snapshot", snap)
+        return runner
+
+    # ── Slash commands: intercepted BEFORE opening a runner ────────────
+    # Known slash commands are read-only local capabilities; /help and
+    # /sessions must work even without an open runner (no sandbox wake).
+    if cmd == "user":
+        text = command.get("text", "")
+        if isinstance(text, str) and text.lstrip().startswith("/"):
+            slash_name = text.strip().lstrip("/").split()[0]
+            known_commands = {item["name"] for item in SLASH_COMMANDS}
+            if slash_name in known_commands:
+                try:
+                    await run_slash_command(slash_name, runner)
+                except Exception as exc:
+                    log(f"[wire] slash failed: {exc}")
+                    emit_error(format_exc(exc), where="slash")
+                return runner
 
     # 以下命令需要已打开的 runner。
     opened_runner = runner is None
@@ -1192,6 +2999,7 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
         state["thread_id"] = runner.thread.id
         emit_current_thread(runner)
         emit_execution_state(runner)
+        emit_execution_context(runner)
         emit_history_replay(runner)
 
     if cmd == "user":
@@ -1211,20 +3019,156 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
                     log(f"[wire] slash failed: {exc}")
                     emit_error(format_exc(exc), where="slash")
                 return runner
-        if turn_active(state):
-            log("[wire] 上一轮还在跑，忽略新 user（一次一轮）")
+        thread_id = state.get("thread_id", runner.thread.id if runner else "")
+        tid = thread_id or "default"
+        # If input already went through the harness (from input/send),
+        # reuse the same message_id — don't create a second identity.
+        input_msg: InputMessage | None = command.get("_input_msg")
+        input_receipt = command.get("_input_receipt")
+        if input_msg is not None and input_receipt is not None:
+            # Already routed by input/send.  Only start a turn if this
+            # thread is idle (the harness queued it) — otherwise the
+            # input is already enqueued for the active run.
+            if _turn_active_for_thread(state, tid):
+                log(f"[wire] input already enqueued for active run on {tid}")
+                return runner
+        elif _turn_active_for_thread(state, tid):
+            # Legacy "user" command with no prior harness routing.
+            # Enqueue instead of silently dropping.
+            msg = InputMessage.create(
+                tid,
+                text,
+                delivery=InputDelivery.ENQUEUE,
+            )
+            receipt = await _harness_manager.send_input(msg)
+            _emit_input_state_ack(
+                receipt.message_id,
+                receipt.thread_id,
+                str(receipt.state),
+                detail=receipt.detail,
+            )
+            log(f"[wire] turn active, enqueued: {text[:50]}")
             return runner
         # 落一次 metainfo：首条用户消息定标题，供前端会话列表展示面向用户的名字。
         touch_thread_metainfo(runner, text)
-        state["turn"] = asyncio.create_task(run_user_turn(runner, text, config, state))
+        # Harness Spine: workspace write lease BEFORE the Run starts.
+        # Conflict → the input stays queued and the Run waits (the auto-
+        # start chain retries once the holder releases).  Read-only modes
+        # (ask/plan) never acquire the lease.
+        from electromind.harness.identity import new_run_id
+        from electromind.harness.state import SessionMode
+
+        ws_key = _workspace_key_for(runner)
+        # The UI's per-input requested mode drives BOTH the lease decision
+        # and the frozen RunSnapshot — a "plan" input must never acquire a
+        # write lease or run with write capability (Gate 1, 八 / 一-7).
+        requested_mode = getattr(command.get("_input_msg"), "requested_mode", None)
+        session_mode = _resolved_session_mode(config, requested_mode)
+        pre_run_id = new_run_id()
+        if ws_key is not None:
+            acquired = await _harness_manager.try_acquire_workspace(
+                tid, ws_key, pre_run_id, session_mode
+            )
+            if not acquired:
+                # Register as a waiter: the holder's release wakes us
+                # (Gate 1, 八 — a conflict must not wait forever).  The
+                # runner is registered first so the wake-up can start the
+                # Run even though start_run never ran (session.runner
+                # would be None).
+                _save_runner(state, tid, runner)
+                _harness_manager.register_workspace_waiter(tid, ws_key)
+                _emit_input_state_ack(
+                    getattr(command.get("_input_msg"), "message_id", "") or "",
+                    tid,
+                    "queued",
+                    detail=f"waiting_for_workspace:{ws_key}",
+                )
+                log(f"[wire] {tid} waiting for workspace {ws_key}")
+                return runner  # Input stays queued for the next attempt
+        # Harness Spine: atomically consume the queued input and create
+        # the Run (single entry — no separate preparation stage).
+        start_result = await _harness_manager.start_run(tid, runner, run_id=pre_run_id)
+        if start_result is None:
+            # Run did not start — release the pre-acquired lease if any
+            await _harness_manager.release_workspace(tid, pre_run_id)
+            log(f"[wire] start_run failed for {tid}")
+            return runner
+        run_id, consumed_msg = start_result
+        # Gate 1, 一-7: freeze the immutable RunSnapshot at Run creation.
+        await _harness_manager.set_run_snapshot(
+            tid,
+            _build_run_snapshot(
+                runner,
+                config,
+                run_id,
+                tid,
+                getattr(consumed_msg, "message_id", ""),
+                requested_mode=getattr(consumed_msg, "requested_mode", None),
+            ),
+        )
+        # Gate 2: persist the active-run marker BEFORE the turn starts so a
+        # crash mid-Run can be marked interrupted (never completed).
+        _persist_thread_state(tid)
+        # Use the consumed message's text and identity for the turn.
+        # The message_id from send_input is now the canonical identity.
+        turn_text = getattr(consumed_msg, "text", text)
+        requested_mode = getattr(consumed_msg, "requested_mode", None)
+        turn_msg_id = getattr(consumed_msg, "message_id", "")
+        task = asyncio.create_task(
+            run_user_turn(
+                runner,
+                turn_text,
+                config,
+                state,
+                requested_mode=requested_mode,
+            )
+        )
+        _set_turn(state, tid, task)
+        # Emit the final "applied" ACK with the consumed message's identity
+        if turn_msg_id:
+            _emit_input_state_ack(
+                turn_msg_id,
+                tid,
+                "applied",
+                detail="Turn started",
+            )
         return runner
 
     if cmd == "permit":
         tool_call_id = command.get("tool_call_id")
-        if isinstance(tool_call_id, str) and tool_call_id:
-            runner.inbound.permit(tool_call_id)
-        else:
+        if not (isinstance(tool_call_id, str) and tool_call_id):
             log("[wire] permit missing tool_call_id")
+            return runner
+        # Harness Spine: validate approval scope before resolving.
+        approval_id = command.get("approval_id", "")
+        thread_id = command.get("thread_id", "")
+        run_id = command.get("run_id", "")
+        if not await _approval_scope_valid(
+            runner, tool_call_id, approval_id, thread_id, run_id, approved=True
+        ):
+            log(f"[wire] permit rejected: scope mismatch for {tool_call_id}")
+            _emit_jsonrpc(
+                "approval/resolved",
+                {
+                    "thread_id": thread_id or "",
+                    "run_id": run_id or "",
+                    "approval_id": approval_id or "",
+                    "tool_call_id": tool_call_id,
+                    "status": "expired",
+                },
+            )
+            return runner
+        runner.inbound.permit(tool_call_id)
+        _emit_jsonrpc(
+            "approval/resolved",
+            {
+                "thread_id": thread_id or "",
+                "run_id": run_id or "",
+                "approval_id": approval_id or "",
+                "tool_call_id": tool_call_id,
+                "status": "approved",
+            },
+        )
         return runner
 
     if cmd == "deny":
@@ -1233,8 +3177,37 @@ async def handle_command(command: dict, runner, config: ReplConfig, state: dict)
             log("[wire] deny missing tool_call_id")
             return runner
         reason = command.get("reason", "")
+        # Harness Spine: validate approval scope before resolving.
+        approval_id = command.get("approval_id", "")
+        thread_id = command.get("thread_id", "")
+        run_id = command.get("run_id", "")
+        if not await _approval_scope_valid(
+            runner, tool_call_id, approval_id, thread_id, run_id, approved=False
+        ):
+            log(f"[wire] deny rejected: scope mismatch for {tool_call_id}")
+            _emit_jsonrpc(
+                "approval/resolved",
+                {
+                    "thread_id": thread_id or "",
+                    "run_id": run_id or "",
+                    "approval_id": approval_id or "",
+                    "tool_call_id": tool_call_id,
+                    "status": "expired",
+                },
+            )
+            return runner
         runner.inbound.deny(
             tool_call_id, reason=reason if isinstance(reason, str) else ""
+        )
+        _emit_jsonrpc(
+            "approval/resolved",
+            {
+                "thread_id": thread_id or "",
+                "run_id": run_id or "",
+                "approval_id": approval_id or "",
+                "tool_call_id": tool_call_id,
+                "status": "denied",
+            },
         )
         return runner
 
@@ -1249,13 +3222,22 @@ async def run_wire(config: ReplConfig) -> int:
     启动时直接打开该 thread 并回放历史（给非插件调用方用）。
     """
     runner = None
-    state: dict = {"turn": None, "client_features": {}}
+    state: dict = {
+        "turn": None,
+        "client_features": {},
+        "_runners": {},  # Harness Spine: per-thread runner registry
+        "_turns": {},  # Harness Spine: per-thread turn task registry
+    }
     had_user_turn = False
     # 启动即下发 slash 命令清单，前端无需显式请求就能填充斜杠菜单。
     emit_slash_commands()
     if config.thread_id:
         runner = await open_thread_runner(config, config.thread_id)
+        state["thread_id"] = runner.thread.id
         emit_history_replay(runner)
+    # Gate 2 recovery: mark interrupted runs, restore queued inputs and
+    # expire unverifiable approvals from a previous process lifetime.
+    await _recover_thread_states()
     log("[wire] ready")
     try:
         while True:
@@ -1274,6 +3256,16 @@ async def run_wire(config: ReplConfig) -> int:
             if runner is not None and len(runner.messages.data) > prev_count:
                 had_user_turn = True
     finally:
+        # Cancel all per-thread turns
+        turns: dict = state.get("_turns", {})
+        for tid, task in list(turns.items()):
+            if not task.done():
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+        # Also handle legacy turn
         task = state.get("turn")
         if task is not None and not task.done():
             task.cancel()
@@ -1281,8 +3273,16 @@ async def run_wire(config: ReplConfig) -> int:
                 await task
             except asyncio.CancelledError:
                 pass
+        # Close active runner
         if runner is not None:
             thread_id = runner.thread.id
             await runner.close()
             clean_empty_threads(keep_thread_ids={thread_id} if had_user_turn else set())
+        # Close all background runners
+        runners: dict = state.get("_runners", {})
+        for tid, bg_runner in runners.items():
+            try:
+                await bg_runner.close()
+            except Exception:
+                pass
     return 0

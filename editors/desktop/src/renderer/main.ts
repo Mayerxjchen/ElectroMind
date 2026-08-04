@@ -1,4 +1,6 @@
-import { ChatRenderer } from "../../../vscode/src/webview/render";
+import { getThreadStore } from "./store/ThreadStore";
+import { SessionManager } from "./store/SessionManager";
+import { MessageRenderer } from "./MessageRenderer";
 import { ContextUsageRing } from "../../../vscode/src/webview/context-usage";
 import { INSTALL_COMMANDS, bindHealthPanel, renderHealthPanel } from "./environment-health";
 import { mountOnboarding } from "./onboarding";
@@ -45,6 +47,10 @@ import type {
 import { renderIcon, renderWechatIcon, type DesktopIconName } from "./icons";
 import { paintDocsQr } from "./docs-qr";
 import { mountToaster, toast } from "./toast";
+import {
+  computeExecutionContextTransition,
+  shouldClearExecutionContextOnReplay,
+} from "./execution-context-state";
 
 const INPUT_MAX_HEIGHT_PX = 160;
 const LEFT_PANE_WIDTH_PX = 232;
@@ -950,6 +956,7 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
             <div class="pane-section-label" data-section-label>会话历史</div>
             <div class="session-list" data-session-list></div>
             <div class="skills-panel" data-skills-panel hidden>
+              <div id="execution-context-section" style="display:none; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:8px;"></div>
               <div class="skills-list" data-skills-list></div>
             </div>
             <div class="left-footer">
@@ -1689,6 +1696,10 @@ async function start(): Promise<void> {
   }
   finishBootSplash();
 
+  // Pending user input awaiting a terminal input/state ACK.
+  // Reused on retry so the backend can deduplicate via request_id.
+  let pendingInputRequest: { text: string; requestId: string } | null = null;
+
   const uiState = {
     theme: readStoredTheme(),
     activeTab: "project" as PanelTab,
@@ -1717,6 +1728,7 @@ async function start(): Promise<void> {
     sessions: [] as ThreadSummary[],
     skills: [] as Skill[],
     skillsState: null as SkillsStatePayload | null,
+    executionContextState: null as ExecutionContextStatePayload | null,
     runtime: initialRuntime,
   };
   const historyDockButton = findRequired<HTMLButtonElement>("[data-history-dock]");
@@ -1734,12 +1746,52 @@ async function start(): Promise<void> {
 
   renderArtifactList();
 
-  const chatRenderer = new ChatRenderer(chatLog, (toolCallId, approved) => {
-    if (approved) {
-      void window.desktop.permitToolCall(toolCallId);
+  // Harness Spine: ThreadStore is the single source of truth for the
+  // message timeline.  The renderer subscribes to the store and only
+  // renders the currently selected thread's items.
+  const threadStore = getThreadStore();
+  let lastRenderedThreadId: string | null = null;
+  threadStore.subscribe((state) => {
+    const currentId = uiState.runtime.currentThreadId ?? null;
+    if (!currentId) return;
+    const thread = state.threads[currentId];
+    if (!thread) return;
+    if (currentId !== lastRenderedThreadId) {
+      chatRenderer.resetRendered();
+      chatRenderer.clear();
+      lastRenderedThreadId = currentId;
+    }
+    chatRenderer.syncItems(thread.items);
+    // Activity state is a pure projection of the store (single source).
+    if (uiState.activityState !== state.activityState) {
+      uiState.activityState = state.activityState;
+      applyActivityState();
+    }
+  });
+
+  const chatRenderer = new MessageRenderer(chatLog, (toolCallId, approved) => {
+    // Harness Spine: look up the full approval scope (approval_id, thread_id,
+    // run_id) from the ThreadStore.  If the permit record is missing, do NOT
+    // fall back to a scoped-less approval — refuse and let the user refresh.
+    const store = getThreadStore();
+    const activeThread = store.getActiveThread();
+    const permit = activeThread?.pendingPermits.find(
+      (p) => p.toolCallId === toolCallId,
+    );
+    if (!permit || !permit.approvalId || !permit.runId) {
+      chatRenderer.showError(
+        "审批记录缺失，无法提交。请刷新会话状态后重试。",
+      );
       return;
     }
-    void window.desktop.denyToolCall(toolCallId);
+    const approvalId = permit.approvalId;
+    const threadId = activeThread?.id ?? permit.threadId;
+    const runId = permit.runId;
+    if (approved) {
+      void window.desktop.permitToolCall(toolCallId, approvalId, threadId, runId);
+      return;
+    }
+    void window.desktop.denyToolCall(toolCallId, undefined, approvalId, threadId, runId);
   });
   const contextUsageRing = new ContextUsageRing(contextUsageMount);
 
@@ -1934,7 +1986,7 @@ async function start(): Promise<void> {
           await navigator.clipboard.writeText(INSTALL_COMMANDS);
           toast("已复制安装命令", { type: "success" });
         },
-        onInstallPagent: async () => {
+        onInstallElectromind: async () => {
           const result = await window.desktop.installElectromindCli();
           if (!result.ok) {
             toast(result.error ?? "安装失败", { type: "error" });
@@ -2467,9 +2519,67 @@ async function start(): Promise<void> {
   interface SkillsStatePayload {
     thread_id: string;
     fingerprint: string;
+    generation: number;
+    digest: string;
     skills: SkillStateItem[];
     loaded: string[];
+    loaded_this_run: string[];
     diagnostics: SkillDiagnosticPayload[];
+  }
+
+  interface ExecutionContextStatePayload {
+    type: "ExecutionContextState";
+    thread_id: string;
+    target: string;
+    profile_id: string;
+    documents: ExecutionContextDocument[];
+    diagnostics: SkillDiagnosticPayload[];
+  }
+
+  interface ExecutionContextDocument {
+    remote_path: string;
+    sha256: string;
+    size: number;
+    fetched_at: number;
+  }
+
+  function renderExecutionContext(): void {
+    const ctx = uiState.executionContextState;
+    const el = document.getElementById("execution-context-section");
+    if (!el) return;
+
+    if (!ctx || (!ctx.documents.length && !ctx.diagnostics.length)) {
+      el.style.display = "none";
+      return;
+    }
+
+    el.style.display = "";
+    const docsHtml = ctx.documents
+      .map(
+        (d) =>
+          `<li class="ec-doc">
+            <span class="ec-path">${escapeHtml(d.remote_path)}</span>
+            <span class="ec-meta">${formatBytes(d.size)} &middot; ${d.sha256.slice(0, 8)}</span>
+          </li>`,
+      )
+      .join("");
+
+    const diagHtml = ctx.diagnostics
+      .map(
+        (d) =>
+          `<li class="ec-diag ec-diag-${d.severity}">
+            <span class="ec-diag-code">${escapeHtml(d.code)}</span>
+            <span class="ec-diag-msg">${escapeHtml(d.message)}</span>
+          </li>`,
+      )
+      .join("");
+
+    el.innerHTML =
+      `<details open>
+        <summary>执行上下文 <span class="ec-target">${escapeHtml(ctx.target)} &ndash; ${escapeHtml(ctx.profile_id)}</span></summary>
+        ${docsHtml ? `<ul class="ec-docs">${docsHtml}</ul>` : ""}
+        ${diagHtml ? `<ul class="ec-diags">${diagHtml}</ul>` : ""}
+      </details>`;
   }
 
   function renderSkillList(): void {
@@ -2501,20 +2611,42 @@ async function start(): Promise<void> {
 
     let html = "";
 
+    // ── generation header ──
+    if (state.generation > 0) {
+      const shortDigest = state.digest ? state.digest.slice(0, 8) : "";
+      html += `<div class="skill-section-label">Skills · Generation ${state.generation}${shortDigest ? ` · ${shortDigest}` : ""}</div>`;
+    }
+
     // ── available ──
     const available = state.skills.filter((s) => s.status === "available");
     if (available.length > 0) {
-      html += `<div class="skill-section-label">可用</div>`;
+      html += `<div class="skill-section-label">可用 (${available.length})</div>`;
       for (const skill of available) {
+        const sourceLabel = skill.source ? skill.source.split("-").slice(0, 2).join("/") : "";
         html += `
           <div class="skill-item" title="来源: ${escapeHtml(skill.source)}">
             <span class="skill-name">${escapeHtml(skill.name)}</span>
+            ${sourceLabel ? `<span class="skill-source-tag">${escapeHtml(sourceLabel)}</span>` : ""}
             <span class="skill-desc">${escapeHtml(skill.description)}</span>
           </div>`;
       }
     }
 
-    // ── loaded ──
+    // ── loaded this run ──
+    if (state.loaded_this_run && state.loaded_this_run.length > 0) {
+      html += `<div class="skill-section-label">本轮加载 (${state.loaded_this_run.length})</div>`;
+      for (const name of state.loaded_this_run) {
+        const skill = state.skills.find((s) => s.name === name);
+        html += `
+          <div class="skill-item skill-loaded" title="本轮 Run 中通过 use_skill 加载">
+            <span class="skill-name">${escapeHtml(name)}</span>
+            ${skill ? `<span class="skill-desc">${escapeHtml(skill.description)}</span>` : ""}
+            <span class="skill-badge">✓</span>
+          </div>`;
+      }
+    }
+
+    // ── loaded (all-time) ──
     const loaded = state.skills.filter((s) => s.status === "loaded");
     if (loaded.length > 0 || state.loaded.length > 0) {
       const displayLoaded = loaded.length > 0 ? loaded : state.loaded.map((n) => ({ name: n, description: "", source: "", sha256: "", status: "loaded" as const }));
@@ -2799,13 +2931,15 @@ async function start(): Promise<void> {
   }
 
   async function refreshProjectTree(): Promise<void> {
-    uiState.projectTreeNodes = await window.desktop.listProjectTree();
+    const nodes = await window.desktop.listProjectTree();
+    uiState.projectTreeNodes = nodes;
     uiState.projectLoadedPath = uiState.runtime.projectPath;
     uiState.expandedProjectTree = new Set(
-      uiState.projectTreeNodes
-        .filter((node) => node.kind === "dir")
-        .map((node) => node.id),
+      nodes.filter((node) => node.kind === "dir").map((node) => node.id),
     );
+    // Single source of truth: the React Inspector Files panel reads the
+    // ThreadStore, not the legacy uiState projection.
+    threadStore.setProjectTreeNodes(nodes as never);
     renderProjectTree();
   }
 
@@ -2945,26 +3079,77 @@ async function start(): Promise<void> {
   }
 
   async function sendMessage(): Promise<void> {
-    if (uiState.activityState === "running") {
-      return;
-    }
+    // Harness Spine: sending during a running turn is allowed — the wire
+    // enqueues the input and sends an input/state ACK back.
     const text = promptInput.value;
     if (!text.trim()) {
       return;
     }
-    chatRenderer.addUser(text);
+    // Stable request_id for idempotent send + retry: reuse the pending
+    // request's ID when the user re-sends the same text after a failure;
+    // otherwise generate a fresh one.
+    let requestId: string;
+    if (pendingInputRequest && pendingInputRequest.text === text) {
+      requestId = pendingInputRequest.requestId;
+    } else {
+      requestId = `req-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    }
+    pendingInputRequest = { text, requestId };
+    // Optimistic item in ThreadStore (single source of truth); the wire
+    // input/state ACK reconciles it with the real message_id.
+    const threadId = uiState.runtime.currentThreadId ?? "";
+    if (threadId) {
+      threadStore.addOptimisticInput(threadId, requestId, text);
+    }
     promptInput.value = "";
     resizePrompt(promptInput);
     setComposerHint("");
-    uiState.activityState = "running";
+    threadStore.setActivityState("running");
     applyActivityState();
     appendTerminalEntry("command", text);
     try {
-      await window.desktop.sendUserInput(text);
+      await window.desktop.sendUserInput(text, requestId);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      chatRenderer.showError(message);
-      uiState.activityState = "error";
+      if (threadId) {
+        threadStore.addErrorItem(threadId, message);
+      }
+      threadStore.setActivityState("error");
+      applyActivityState();
+      // Keep pendingInputRequest so a retry reuses the same request_id.
+    }
+  }
+
+  /** Send input from the React Composer (with delivery mode). */
+  async function sendComposerInput(
+    text: string,
+    delivery: string,
+    mode: string,
+  ): Promise<void> {
+    if (!text.trim()) return;
+    // Propagate the session mode so the backend freezes it in RunSnapshot
+    const activeThread = getThreadStore().getActiveThread();
+    if (activeThread) {
+      activeThread.sessionMode = mode as never;
+    }
+    const requestId = `req-${crypto.randomUUID().replace(/-/g, "").slice(0, 12)}`;
+    pendingInputRequest = { text, requestId };
+    // Optimistic item in ThreadStore (single source of truth)
+    const threadId = uiState.runtime.currentThreadId ?? "";
+    if (threadId) {
+      threadStore.addOptimisticInput(threadId, requestId, text);
+    }
+    threadStore.setActivityState("running");
+    applyActivityState();
+    appendTerminalEntry("command", text);
+    try {
+      await window.desktop.sendUserInput(text, requestId, delivery, mode);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (threadId) {
+        threadStore.addErrorItem(threadId, message);
+      }
+      threadStore.setActivityState("error");
       applyActivityState();
     }
   }
@@ -3016,8 +3201,24 @@ async function start(): Promise<void> {
   }
 
   function syncWireEvent(event: WireEvent): void {
+    // Harness Spine: route ALL events to ThreadStore for persistence,
+    // but only apply activity state for the currently selected thread.
+    const eventThreadId: string = String(event.params?.thread_id ?? "");
+    const currentId: string = uiState.runtime.currentThreadId ?? "";
+    const isCurrentThread = !eventThreadId || eventThreadId === currentId;
+
+    // Persist every event to ThreadStore (before any early return).
+    // The store handles per-thread dedup, sequencing, and snapshot recovery.
+    try {
+      const store = getThreadStore();
+      store.applyWireEvent(event.method, {
+        ...(event.params as Record<string, unknown> ?? {}),
+        thread_id: eventThreadId || currentId,
+      });
+    } catch { /* store not yet initialized */ }
+
     const subagent = unwrapSubagentEvent(event);
-    if (subagent) {
+    if (subagent && isCurrentThread) {
       const label = subagent.name || "subagent";
       if (subagent.inner.method === "RunBegin") {
         appendTerminalEntry(
@@ -3055,6 +3256,11 @@ async function start(): Promise<void> {
       return;
     }
 
+    // Protocol v2: only apply activity state for the currently selected thread.
+    // Background thread events were saved to ThreadStore above; do not render.
+    if (!isCurrentThread) {
+      return; // Background thread — saved to store but not rendered
+    }
     contextUsageRing.handleWireEvent(event);
     if (
       event.method === "RunBegin" ||
@@ -3062,25 +3268,36 @@ async function start(): Promise<void> {
       event.method === "TextDelta" ||
       event.method === "ToolCallBegin"
     ) {
-      uiState.activityState = "running";
-      if (event.method === "RunBegin") {
+      // Activity state is a store projection — the subscription mirrors
+      // it into uiState (single source of truth).
+      if (isCurrentThread) {
+        getThreadStore().setActivityState("running");
+      }
+      if (event.method === "RunBegin" && isCurrentThread) {
         setComposerHint("");
       }
     } else if (event.method === "RunEnd") {
-      uiState.activityState = "sleeping";
+      if (isCurrentThread) {
+        getThreadStore().setActivityState("sleeping");
+      }
       void refreshSessions();
       void refreshArtifacts();
     } else if (event.method === "HistoryReplay") {
       const threadId = String(event.params.thread_id ?? "");
-      // 空 thread_id 通常是 reset/resume 失败后的占位回放，等后续 Error 定态。
-      if (threadId) {
-        uiState.activityState = "sleeping";
+      if (shouldClearExecutionContextOnReplay(
+        threadId,
+        uiState.runtime.currentThreadId ?? "",
+      )) {
+        getThreadStore().setActivityState("sleeping");
         setComposerHint("");
+        uiState.executionContextState = null;
+        renderExecutionContext();
       }
       void refreshSessions();
       void refreshArtifacts();
     } else if (event.method === "Error") {
-      uiState.activityState = "error";
+      // Activity state via the store (single source of truth)
+      getThreadStore().setActivityState("error");
       const message = String(event.params.message ?? "").trim();
       if (message) {
         setComposerHint(message);
@@ -3089,6 +3306,8 @@ async function start(): Promise<void> {
       const where = String(event.params.where ?? "");
       if (where === "reset" || where === "resume" || where === "open") {
         clearSandboxPanel();
+        uiState.executionContextState = null;
+        renderExecutionContext();
         void refreshSessions();
       }
     }
@@ -3101,6 +3320,8 @@ async function start(): Promise<void> {
         uiState.skillsState = {
           thread_id: "",
           fingerprint: "",
+          generation: 0,
+          digest: "",
           skills: skillsParam.map((s) => ({
             name: s.name,
             description: s.description,
@@ -3109,6 +3330,7 @@ async function start(): Promise<void> {
             status: "available" as const,
           })),
           loaded: [],
+          loaded_this_run: [],
           diagnostics: [],
         };
       }
@@ -3124,6 +3346,20 @@ async function start(): Promise<void> {
         uiState.skillsState = state;
       }
       renderSkillList();
+    }
+
+    if (event.method === "ExecutionContextState") {
+      const state = event.params as unknown as ExecutionContextStatePayload;
+      const transition = computeExecutionContextTransition(
+        state,
+        uiState.runtime.currentThreadId ?? "",
+      );
+      if (transition.kind === "noop") {
+        return;
+      }
+      uiState.executionContextState =
+        transition.kind === "clear" ? null : transition.state;
+      renderExecutionContext();
     }
 
     if (event.method === "ToolCallBegin") {
@@ -3337,10 +3573,8 @@ async function start(): Promise<void> {
       return;
     }
     event.preventDefault();
-    if (uiState.activityState === "running") {
-      void cancelRun();
-      return;
-    }
+    // Harness Spine: Enter during running sends a steer/immediate input.
+    // Cancel is triggered by Escape or the stop button, not Enter.
     void sendMessage();
   });
   resizePrompt(promptInput);
@@ -4010,8 +4244,28 @@ async function start(): Promise<void> {
 
   const disposeAgentEvents = window.desktop.onAgentEvent((message) => {
     if (message.type === "wireEvent") {
+      // Harness Spine: single source of truth — events go to ThreadStore
+      // (and the vanilla state projection), NOT directly to the renderer.
       syncWireEvent(message.event);
-      chatRenderer.handleEvent(message.event);
+      // Terminal input/state ACK → reconcile the optimistic item with the
+      // real message_id, then clear the pending retry slot.
+      if (message.event.method === "input/state") {
+        const params = message.event.params ?? {};
+        const ackState = String(params.state ?? "");
+        const ackMessageId = String(params.message_id ?? "");
+        const ackThreadId = String(params.thread_id ?? "");
+        if (ackThreadId && ackMessageId) {
+          threadStore.reconcileInput(
+            ackThreadId,
+            ackMessageId,
+            ackState,
+            pendingInputRequest?.requestId,
+          );
+        }
+        if (["applied", "deferred", "rejected"].includes(ackState)) {
+          pendingInputRequest = null;
+        }
+      }
       return;
     }
     const text = message.text.trim();
@@ -4027,6 +4281,23 @@ async function start(): Promise<void> {
     }
     appendTerminalEntry("stderr", text);
   });
+
+  // ── React Composer bridge ──────────────────────────────────────────
+  // The React shell dispatches these events; the vanilla renderer owns
+  // the wire bridge, so we consume them here.
+  const handleComposerInput = (event: Event): void => {
+    const detail = (event as CustomEvent).detail ?? {};
+    const text = String(detail.text ?? "");
+    const delivery = String(detail.delivery ?? "auto");
+    const mode = String(detail.mode ?? "agent");
+    if (!text.trim()) return;
+    void sendComposerInput(text, delivery, mode);
+  };
+  const handleComposerStop = (): void => {
+    void cancelRun();
+  };
+  window.addEventListener("electromind:user-input", handleComposerInput);
+  window.addEventListener("electromind:stop", handleComposerStop);
 
   const disposeRuntimeState = window.desktop.onRuntimeState((state) => {
     const previousThreadId = uiState.runtime.currentThreadId;
@@ -4067,6 +4338,12 @@ async function start(): Promise<void> {
   renderTerminal();
   applyRightTab();
   applyRuntimeState(initialRuntime);
+  // Harness Spine: expose a live SessionManager so the React shell's
+  // thread switch/new/delete callbacks actually work.
+  const sessionManager = new SessionManager(window.desktop);
+  (window as unknown as Record<string, unknown>).__electromindSM =
+    sessionManager;
+  void sessionManager.bootstrap();
   chatRenderer.showHistorySkeleton();
   await Promise.all([
     refreshSessions(),

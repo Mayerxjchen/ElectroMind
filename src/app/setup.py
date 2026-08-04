@@ -1,8 +1,8 @@
-"""首次使用：检测缺失 API Key，引导写入当前 electromind home 的 ``electromind.toml``。
+"""首次使用：检测缺失 API Key，引导写入当前 electromind home 的 ``config.toml``。
 
 Home 二选一（与 thread / skills 同根）：
 
-- A ``./.electromind``（项目目录下已有 ``.electromind/`` 或遗留 ``./electromind.toml``）
+- A ``./.electromind``（项目目录下已有 ``.electromind/``）
 - B ``~/.electromind``
 
 Setup 收集 provider 三项：
@@ -72,7 +72,7 @@ def upsert_provider_api_key(text: str, api_key: str) -> str:
 
 
 def write_user_provider(setup: ProviderSetup, *, cwd: str | Path | None = None) -> Path:
-    """写入当前 electromind home 的 ``electromind.toml`` provider 段；目录不存在则创建。"""
+    """写入当前 electromind home 的 ``config.toml`` provider 段；目录不存在则创建。"""
     key = setup.api_key.strip()
     if not key:
         raise ValueError("api_key 不能为空")

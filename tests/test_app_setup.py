@@ -53,7 +53,7 @@ def test_write_user_provider_full(tmp_path, monkeypatch):
         ),
         cwd=tmp_path,
     )
-    assert path == home / ".electromind" / "electromind.toml"
+    assert path == home / ".electromind" / "config.toml"
     text = path.read_text(encoding="utf-8")
     assert 'api_key = "sk-test"' in text
     assert 'model = "my-model"' in text
@@ -62,7 +62,7 @@ def test_write_user_provider_full(tmp_path, monkeypatch):
 
 def test_write_user_provider_clears_base_url(tmp_path, monkeypatch):
     home = tmp_path / "home"
-    cfg = home / ".electromind" / "electromind.toml"
+    cfg = home / ".electromind" / "config.toml"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(
         '[provider]\napi_key = "old"\nbase_url = "https://old"\n',

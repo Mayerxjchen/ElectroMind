@@ -139,6 +139,31 @@ async def test_user_after_light_resume_opens_target_runner(monkeypatch):
 
     monkeypatch.setattr(wire, "open_thread_runner", fake_open_thread)
     monkeypatch.setattr(wire, "emit_current_thread", lambda _runner: None)
+    monkeypatch.setattr(wire, "emit_execution_state", lambda _runner: None)
+    monkeypatch.setattr(wire, "emit_execution_context", lambda _runner: None)
+    monkeypatch.setattr(wire, "emit_history_replay", lambda _runner: None)
+    monkeypatch.setattr(wire, "run_slash_command", AsyncMock())
+
+    result = await wire.handle_command(
+        {"cmd": "user", "text": "普通任务消息"},
+        None,
+        ReplConfig(),
+        {"turn": None, "thread_id": "thread-old"},
+    )
+    assert result is fake
+    assert opened == ["thread-old"]
+
+
+@pytest.mark.asyncio
+async def test_slash_before_runner_does_not_open_runner(monkeypatch):
+    """Known slash commands are intercepted BEFORE opening a runner."""
+    opened: list[str] = []
+
+    async def fake_open_thread(_config, thread_id: str, project_path=None):
+        opened.append(thread_id)
+        return MagicMock()
+
+    monkeypatch.setattr(wire, "open_thread_runner", fake_open_thread)
     monkeypatch.setattr(wire, "run_slash_command", AsyncMock())
 
     result = await wire.handle_command(
@@ -147,8 +172,9 @@ async def test_user_after_light_resume_opens_target_runner(monkeypatch):
         ReplConfig(),
         {"turn": None, "thread_id": "thread-old"},
     )
-    assert result is fake
-    assert opened == ["thread-old"]
+    # Slash consumed; runner NOT opened
+    assert opened == []
+    assert result is None
 
 
 @pytest.mark.asyncio
@@ -617,27 +643,21 @@ async def test_reset_cleans_previous_empty_thread(monkeypatch):
     assert cleaned == [frozenset()]
 
 
-def test_list_thread_entries_hides_soft_deleted(tmp_path, monkeypatch):
-    """metainfo.deleted_at 非空的 thread 不应出现在列表里。"""
-    from pathlib import Path
+def test_list_thread_entries_hides_soft_deleted(monkeypatch):
+    """list_sessions 已过滤软删除；wire 层正确映射 SessionInfo → dict。"""
+    from app.sessions import SessionInfo
 
-    alive = tmp_path / "thread-alive"
-    deleted = tmp_path / "thread-gone"
-    for folder, meta in (
-        (alive, {"title": "可见"}),
-        (deleted, {"title": "已删", "deleted_at": "2026-07-18T12:00:00"}),
-    ):
-        folder.mkdir()
-        (folder / "thread.toml").write_text(
-            '[sandbox]\nbackend = "local"\n', encoding="utf-8"
-        )
-        (folder / "metainfo.json").write_text(
-            json.dumps(meta, ensure_ascii=False),
-            encoding="utf-8",
-        )
+    alive = SessionInfo(
+        id="thread-alive",
+        title="可见",
+        project_path="/tmp/test",
+        backend="local",
+    )
 
-    monkeypatch.setattr(wire, "default_threads_root", lambda: Path(tmp_path))
-    monkeypatch.setattr(wire, "iter_thread_dirs", lambda root: [alive, deleted])
+    monkeypatch.setattr(
+        "app.sessions.list_sessions",
+        lambda home=None: [alive],
+    )
 
     entries = wire.list_thread_entries()
     assert [item["id"] for item in entries] == ["thread-alive"]
@@ -709,3 +729,72 @@ async def test_reset_applies_backend_and_project_overrides(monkeypatch):
         "ssh_host": "box",
         "ssh_workdir": "~/work",
     }
+
+
+@pytest.mark.asyncio
+async def test_ensure_runner_preserves_pending_config_on_retry_failure(monkeypatch):
+    """两次连续的 open_fresh_runner 失败，pending_config 不应被消费。
+
+    第一次 ensure_runner 读到 state["pending_config"]，open_fresh_runner 失败；
+    第二次 ensure_runner 仍应读到同一个 pending_config，不能回退到原始 config。
+    """
+    call_count = 0
+    seen_configs: list[str] = []
+
+    async def fake_open_fresh(config):
+        nonlocal call_count
+        call_count += 1
+        seen_configs.append(config.backend or "default")
+        raise RuntimeError(f"sandbox down #{call_count}")
+
+    monkeypatch.setattr(wire, "open_fresh_runner", fake_open_fresh)
+
+    state: dict = {"pending_config": ReplConfig(backend="ssh")}
+
+    # 第一次尝试 —— 应使用 pending_config（backend="ssh"）
+    with pytest.raises(RuntimeError, match="sandbox down #1"):
+        await wire.ensure_runner(None, ReplConfig(backend="local"), state)
+    assert "pending_config" in state, "失败后 pending_config 应保留供重试"
+    assert seen_configs == ["ssh"]
+
+    # 第二次尝试 —— 仍应使用 pending_config，不能回退到传入的 config
+    with pytest.raises(RuntimeError, match="sandbox down #2"):
+        await wire.ensure_runner(None, ReplConfig(backend="local"), state)
+    assert "pending_config" in state, "二次失败后 pending_config 仍应保留"
+    assert seen_configs == ["ssh", "ssh"]
+
+
+@pytest.mark.asyncio
+async def test_ensure_runner_clears_pending_config_on_success(monkeypatch):
+    """open_fresh_runner 成功后应清除 pending_config，避免后续调用读到脏状态。"""
+    fake = MagicMock()
+    fake.thread.id = "thread-new"
+
+    async def fake_open_fresh(config):
+        return fake
+
+    monkeypatch.setattr(wire, "open_fresh_runner", fake_open_fresh)
+
+    state: dict = {"pending_config": ReplConfig(backend="ssh")}
+
+    runner = await wire.ensure_runner(None, ReplConfig(backend="local"), state)
+    assert runner is fake
+    assert "pending_config" not in state, "成功后 pending_config 应被清除"
+
+
+@pytest.mark.asyncio
+async def test_ensure_runner_uses_original_config_when_no_pending(monkeypatch):
+    """没有 pending_config 时，应使用传入的原始 config。"""
+    seen: list[str] = []
+
+    async def fake_open_fresh(config):
+        seen.append(config.backend or "default")
+        fake = MagicMock()
+        fake.thread.id = "thread-new"
+        return fake
+
+    monkeypatch.setattr(wire, "open_fresh_runner", fake_open_fresh)
+
+    state: dict = {}
+    await wire.ensure_runner(None, ReplConfig(backend="container"), state)
+    assert seen == ["container"]

@@ -1,4 +1,4 @@
-"""用户入站事件 —— 应用层 → Runner 的控制面（pagentv4）。
+"""用户入站事件 —— 应用层 → Runner 的控制面（electromind）。
 
 与 :mod:`electromind.core.events` 的出站 ``Event`` 分离：
 
@@ -31,9 +31,15 @@ from ..core.turn_result import TurnResult
 
 @dataclass(frozen=True, slots=True)
 class Steer:
-    """中途插话：在下一检查点追加 ``Message.user(text)``，继续当前 run。"""
+    """中途插话：在下一检查点追加 ``Message.user(text)``，继续当前 run。
+
+    ``message_id`` (optional) is the harness InputMessage identity — it
+    lets the harness settle EXACTLY which messages the loop consumed
+    (never inferred from text, which can repeat).
+    """
 
     text: str
+    message_id: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -138,6 +144,9 @@ class RunCancelled(Exception):
 @dataclass(frozen=True, slots=True)
 class DrainResult:
     steers: tuple[str, ...] = ()
+    # Parallel to ``steers``: the harness InputMessage identity of each
+    # drained steer ("" when the steer carried no identity).
+    steer_ids: tuple[str, ...] = ()
     cancelled: bool = False
 
     @property
@@ -148,6 +157,7 @@ class DrainResult:
 def fold_inbound(events: list[InboundEvent]) -> DrainResult:
     """FIFO 折叠。遇到 ``CancelRun`` 后不再收录后续 steer。"""
     steers: list[str] = []
+    steer_ids: list[str] = []
     cancelled = False
     for event in events:
         if isinstance(event, Steer):
@@ -155,9 +165,12 @@ def fold_inbound(events: list[InboundEvent]) -> DrainResult:
                 text = event.text.strip()
                 if text:
                     steers.append(text)
+                    steer_ids.append(event.message_id)
         elif isinstance(event, CancelRun):
             cancelled = True
-    return DrainResult(steers=tuple(steers), cancelled=cancelled)
+    return DrainResult(
+        steers=tuple(steers), steer_ids=tuple(steer_ids), cancelled=cancelled
+    )
 
 
 class InboundMailbox:
@@ -166,8 +179,8 @@ class InboundMailbox:
     def __init__(self, *, maxsize: int = 0) -> None:
         self._queue: asyncio.Queue[InboundEvent] = asyncio.Queue(maxsize=maxsize)
 
-    def steer(self, text: str) -> None:
-        self._queue.put_nowait(Steer(text))
+    def steer(self, text: str, *, message_id: str = "") -> None:
+        self._queue.put_nowait(Steer(text, message_id=message_id))
 
     def cancel(self) -> None:
         self._queue.put_nowait(CancelRun())
@@ -218,6 +231,7 @@ class InboundMailbox:
             return DrainResult()
 
         steers_apply: list[str] = []
+        steer_ids_apply: list[str] = []
         steers_requeue: list[Steer] = []
         passthrough: list[InboundEvent] = []
         cancelled = False
@@ -232,6 +246,7 @@ class InboundMailbox:
                     continue
                 if steer_ok:
                     steers_apply.append(text)
+                    steer_ids_apply.append(event.message_id)
                 else:
                     steers_requeue.append(event)
 
@@ -240,7 +255,11 @@ class InboundMailbox:
         for event in steers_requeue:
             self._queue.put_nowait(event)
 
-        return DrainResult(steers=tuple(steers_apply), cancelled=cancelled)
+        return DrainResult(
+            steers=tuple(steers_apply),
+            steer_ids=tuple(steer_ids_apply),
+            cancelled=cancelled,
+        )
 
     def drain_if_policy(
         self,

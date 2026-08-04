@@ -73,13 +73,15 @@ def run_ddgs_search(
     search: Callable,
     error_prefix: str,
 ) -> ToolOutput:
-    client = ddgs_client()
-    if client is None:
-        return ToolOutput.fail(f"{error_prefix}: {DDGS_MISSING}")
-
+    # Validate arguments BEFORE checking the optional dependency so the
+    # error message reflects the actual problem.
     q = query.strip()
     if not q:
         return ToolOutput.fail(f"{error_prefix}: empty query")
+
+    client = ddgs_client()
+    if client is None:
+        return ToolOutput.fail(f"{error_prefix}: {DDGS_MISSING}")
 
     n = clamp_max_results(max_results)
     try:
@@ -135,10 +137,6 @@ def fetch_url(url: str, max_chars: int = DEFAULT_FETCH_MAX_CHARS) -> ToolOutput:
     url: 完整 URL，必须以 http:// 或 https:// 开头。
     max_chars: 最多返回多少字符（500-100000，默认 20000）；超出部分会截断。
     """
-    client = ddgs_client()
-    if client is None:
-        return ToolOutput.fail(f"fetch_url error: {DDGS_MISSING}")
-
     target = url.strip()
     if not target:
         return ToolOutput.fail("fetch_url error: empty url")
@@ -146,6 +144,10 @@ def fetch_url(url: str, max_chars: int = DEFAULT_FETCH_MAX_CHARS) -> ToolOutput:
         return ToolOutput.fail(
             "fetch_url error: url must start with http:// or https://"
         )
+
+    client = ddgs_client()
+    if client is None:
+        return ToolOutput.fail(f"fetch_url error: {DDGS_MISSING}")
 
     limit = clamp_max_chars(max_chars)
     try:
