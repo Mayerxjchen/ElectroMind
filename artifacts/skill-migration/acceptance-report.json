@@ -2,7 +2,7 @@
   "base_commit": "83e006c9f381a97edbcf47a4a04c8643cdbe3b52",
   "branch": "main",
   "coverage": 78.2094,
-  "generated_at": "2026-08-04T17:52:32.288761+00:00",
+  "generated_at": "2026-08-04T17:55:33.477754+00:00",
   "install": {
     "note": "scripts/test-uv-tool-install.sh\uff08INSTALL-001~010\uff09",
     "result": "pass"
@@ -40,7 +40,7 @@
   },
   "status": "pass",
   "sync_check_clean": true,
-  "tested_commit": "49766e76a4f481cf27e4a5a917683789f4415fc3",
+  "tested_commit": "ccccbefa4cec60e040e2ae17f7640a1ec26b2912",
   "tests": {
     "collected": 1490,
     "failed": 0,
