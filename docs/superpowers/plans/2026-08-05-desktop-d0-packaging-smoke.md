@@ -71,6 +71,33 @@ F3  agent.ts resolveElectromindWireInvocation / resolveBackendAvailability
 无害——copyIcon 的 .icns 分支正常（已验证 bundle 内 electron.icns 与源 icon
 MD5 一致，即 Dock 图标已生效）。
 
+## 7. D2 Standalone 最小可行性验证（2026-08-05，用户决策：先验证 Standalone）
+
+### 结论：**可行** ✅ —— PyInstaller 单文件 + 嵌入 + 内置优先启动，全链路实测通过。
+
+### 验证证据
+
+| 项 | 结果 |
+| --- | --- |
+| 单文件构建 | ✅ `dist/electromind-0.7.20-macosx_11.0_arm64`（34M，SHA-256 `08fc7aac…`） |
+| 独立运行 | ✅ 干净 PATH（/usr/bin:/bin）下 `--wire` 全链路（doctor 物化配置 / config validate / plan propose→approve 事件回流） |
+| 嵌入 | ✅ `Resources/agent/electromind` 进包；ZIP 113M → **147M** |
+| 内置优先 | ✅ 隐藏系统 CLI 后启动 app → spawn `Resources/agent/electromind --wire --execution-mode local`（非系统 CLI）；kill 后无泄漏 |
+| 启动顺序 | `resolveElectromindWireInvocation`：isPackaged → 内置 → 系统 → （开发）uv run；`resolveBackendAvailability` 同步（mode: "bundled"） |
+
+### 过程中发现并修复的 bug
+
+1. **`src/app/__main__.py` 相对导入**（build-standalone.sh 从未验证）：PyInstaller 顶层脚本模式下 `from .cli import main` → ImportError。改为绝对导入 `from app.cli import main`（`python -m app` 与 PyInstaller 双兼容）。
+2. **`package.js` embedAgent 少拼一级 `.app`**：agent 拷进 `packagedDir()/Contents/Resources/agent`（packager 输出根）而非 `.app/Contents/Resources/agent`，ZIP 不含内置 agent。已修 + 清理残留。
+3. **脚本注释声称的 `--venv` 分支未实现**（build-standalone.sh 用法注释有、代码无）：本次用手工临时 venv 流程替代（`uv venv` + `uv pip install -e . pyinstaller`）；脚本补丁留待后续。
+
+### 遗留与风险（1.0 前）
+
+- win/linux 嵌入未验证（package.js 已留 `D2-win/linux` TODO 分支；win 需 `.exe` 后缀分支，linux 资源路径不同）
+- 单文件启动时间（PyInstaller onefile 解包开销，~秒级）未量化
+- 嵌入式 agent 的 ad-hoc 签名随 `codesign --deep` 覆盖（已验证不影响启动）
+- 内置 agent 更新策略：随 Desktop 版本绑定（内置 0.7.20 = 当前核心版本）
+
 ## 5. 手动验收清单（用户 GUI 侧）
 
 - [ ] Finder 双击 `.app` 能打开（非终端）

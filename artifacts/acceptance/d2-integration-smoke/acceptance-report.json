@@ -1,0 +1,76 @@
+{
+  "milestone": "D2-CLI-DESKTOP-INTEGRATION-SMOKE",
+  "title": "CLI + Desktop 全链路集成验收烟囱（macOS arm64）",
+  "tested_commit": "9c4621e229c8e32af64e179ca8a9e40ffe0c1bd7",
+  "commit_note": "working tree 含未提交改动（G1b/D1/D2 全部改动未提交）；产物由此工作树构建",
+  "generated_at": "2026-08-05T14:00:00+00:00",
+  "platform": "darwin-arm64",
+  "artifact": {
+    "zip": "editors/desktop/release/electromind-Desktop-0.7.20-mac-arm64.zip",
+    "zip_sha256": "8caac424f11a60abf3016508202e86fa32506ae6c1a5e710b6d4af1e507ca064",
+    "zip_bytes": 154140672,
+    "codesign_deep_strict": "valid on disk; satisfies its Designated Requirement",
+    "embedded_agent": {
+      "path": ".app/Contents/Resources/agent/electromind",
+      "size_bytes": 35654336,
+      "mode": "0755",
+      "version": "0.7.20",
+      "sha256": "08fc7aac2c628951ceb5e7b0f01943f3ec58e2effe3d17beb008657982d15cd3"
+    }
+  },
+  "automated_results": {
+    "standalone_independence": {
+      "clean_env_no_python_no_uv_no_source": "PASS",
+      "first_run_materializes_config": "PASS",
+      "unicode_and_space_path": "PASS",
+      "cwd_without_source_repo": "PASS"
+    },
+    "launch_priority": {
+      "packaged_with_bundled_agent": "PASS (bundled path)",
+      "packaged_without_bundled_agent": "PASS (system CLI ~/.local/bin/electromind)",
+      "dev_mode_with_project": "PASS (uv run --project)",
+      "dev_mode_without_project": "PASS (system CLI)",
+      "availability_mode_bundled": "PASS",
+      "availability_mode_global": "PASS",
+      "availability_mode_project": "PASS"
+    },
+    "wire_command_surface": {
+      "wire_process_alive": "PASS",
+      "event_stream_output": "PASS (8 events)",
+      "thread_snapshot": "PASS",
+      "plan_state_query": "PASS",
+      "plan_propose_to_ready": "PASS",
+      "plan_approve_to_approved": "PASS",
+      "artifact_state": "PASS",
+      "invalid_command_no_crash": "PASS",
+      "no_orphan_process_after_terminate": "PASS"
+    },
+    "fault_injection": {
+      "agent_missing_enoint": "PASS (AgentBridge onError ENOENT)",
+      "agent_no_permission_eacces": "PASS (AgentBridge onError EACCES)",
+      "agent_exit_on_start": "CONFIRMED-BY-CODE (onExit -> Error event with code+stderr; GUI 呈现留手动)",
+      "no_auto_restart_loop": "PASS (start 仅显式调用; reportBridgeFailure 清空 bridge)",
+      "short_path_fallback": "PASS (enrichedPath 恒加 ~/.local/bin /opt/homebrew/bin /usr/local/bin)"
+    }
+  },
+  "known_limitations": [
+    "真实 LLM 会话（消息/工具调用/审批按钮/Cancel 按钮）需 GUI 手动验收",
+    "Finder 双击启动场景需 GUI 手动验收",
+    "重启后历史 Thread UI 恢复需 GUI 手动验收",
+    "Windows/Linux 嵌入未验证（package.js 留 TODO）",
+    "单文件启动时间未量化",
+    "内置 agent 与系统 CLI 的版本一致性由用户手动确认（当前均为 0.7.20）"
+  ],
+  "manual_gui_checklist": [
+    "Finder 双击 .app 打开（Standalone：隐藏系统 electromind 后验证内置 agent 被启动）",
+    "Standalone 下新建 Thread 并发送一条消息（真实 LLM）",
+    "一次低风险工具调用 + Approval Permit",
+    "Approval Deny 正常拒绝",
+    "Cancel 终止当前 Run",
+    "关闭 Desktop 后 ps 确认无遗留 agent 子进程",
+    "重启 Desktop 恢复历史 Thread",
+    "Companion 模式（删除内置 agent 或系统 CLI 场景）：使用系统 CLI 且内置不被误启动",
+    "健康面板在故障注入（缺失/无权限）时显示明确诊断，无白屏",
+    "~/.electromind 首次不存在时自动创建"
+  ]
+}
