@@ -24,6 +24,13 @@ accent/run `#22C55E`, background `#0F172A`, foreground `#F8FAFC`, muted
 color alone — text/icon always present.  Focus ring required on every
 interactive element (no `outline: none` without replacement).
 
+D3.5 contrast pass (WCAG 4.5:1 measured, both themes): dark
+`--text-tertiary` `#666b75 → #858a96`; light `--text-tertiary`
+`#8a9096 → #6a6f76`; light statuses darkened — `--success #15803d`,
+`--danger #b91c1c`, `--warning #8a6400`, `--added #0f766e`,
+`--modified #1d4ed8`.  All status colors are theme-aware tokens
+(`var(--success)` etc.) — no hardcoded hexes in status styles.
+
 ## Layout
 
 | Window | Left | Center | Right Inspector |

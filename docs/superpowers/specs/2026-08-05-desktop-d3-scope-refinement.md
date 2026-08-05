@@ -268,7 +268,7 @@ rewrite of the Timeline.
 
 ---
 
-## D3.4 — Composer polish (React, exists: mode/model/autonomy)
+## D3.4 — Composer polish (React, exists: mode/model/autonomy) — IN PROGRESS (second agent)
 
 Codex-style info hierarchy: `＋  Local▾  Plan▾  Ask▾  Model▾  ↑/■`.
 
@@ -293,7 +293,7 @@ Codex-style info hierarchy: `＋  Local▾  Plan▾  Ask▾  Model▾  ↑/■`.
 
 ---
 
-## D3.5 — Visual unification (tokens, not re-theming)
+## D3.5 — Visual unification (tokens, not re-theming) — DONE (commit after 2026-08-05 D3.4-1)
 
 Freeze tokens:
 
