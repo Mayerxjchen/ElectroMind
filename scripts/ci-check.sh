@@ -6,6 +6,18 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
+# R2-10: container 验收默认使用本地预构建镜像（可被 env 覆盖）；
+# 缺失时先探测，未构建则明确失败（禁止自动 pull）。
+if [ -z "${ELECTROMIND_TEST_CONTAINER_IMAGE:-}" ]; then
+  if docker image inspect electromind-base:0.1 >/dev/null 2>&1; then
+    export ELECTROMIND_TEST_CONTAINER_IMAGE=electromind-base:0.1
+  else
+    echo "缺少 ELECTROMIND_TEST_CONTAINER_IMAGE 且本地无 electromind-base:0.1" >&2
+    echo "请先构建验收镜像（src/app/Dockerfile）或设置该环境变量" >&2
+    exit 1
+  fi
+fi
+
 step() { printf '\n==> %s\n' "$*"; }
 
 step "uv sync --group dev --frozen"

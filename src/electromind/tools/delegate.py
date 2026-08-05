@@ -120,6 +120,13 @@ def filter_tools_by_whitelist(
     return [t for t in tools if t.name in names]
 
 
+# R2-5: 路径工具的显式分类（读/写边界各管各的）
+_READ_PATH_TOOLS = frozenset({"read_file", "list_dir"})
+_WRITE_PATH_TOOLS = frozenset(
+    {"write_file", "str_replace", "copy_from_host", "copy_to_host"}
+)
+
+
 def bound_paths(
     tools: list[FunctionTool],
     *,
@@ -152,26 +159,28 @@ def bound_paths(
 
     def wrap(tool: FunctionTool) -> FunctionTool:
         orig = tool.func
+        # R2-5: 按工具名显式分类（不再用名称前缀猜测）
+        read_kind = tool.name in _READ_PATH_TOOLS
+        write_kind = tool.name in _WRITE_PATH_TOOLS
 
         async def guarded(*args, **kwargs) -> ToolOutput:
             path = kwargs.get("path") or (args[0] if args else "")
             if isinstance(path, str):
-                if (
-                    tool.name.startswith("read")
-                    and read_prefixes
-                    and not _within(read_prefixes, path)
-                ):
+                if read_kind and read_prefixes and not _within(read_prefixes, path):
                     return ToolOutput.fail(
                         f"子 agent 路径越界：读取 {path!r} 不在允许目录 {read_paths} 内"
                     )
-                if (
-                    tool.name.startswith("write")
-                    and write_prefixes
-                    and not _within(write_prefixes, path)
-                ):
+                if write_kind and write_prefixes and not _within(write_prefixes, path):
                     return ToolOutput.fail(
                         f"子 agent 路径越界：写入 {path!r} 不在允许目录 {write_paths} 内"
                     )
+            # R2-5: 无法静态判定路径的命令类工具（run_command）在设置
+            # 边界时保守拒绝——shell 可访问任意路径。
+            if tool.name == "run_command" and (read_prefixes or write_prefixes):
+                return ToolOutput.fail(
+                    "子 agent 设置了路径边界时 run_command 不可用"
+                    "（无法静态判定 shell 访问范围）"
+                )
             if inspect.iscoroutinefunction(orig):
                 return await orig(*args, **kwargs)
             result = orig(*args, **kwargs)
@@ -188,7 +197,12 @@ def bound_paths(
         )
 
     return [
-        wrap(t) if t.name.startswith(("read_", "write_", "str_")) else t for t in tools
+        wrap(t)
+        if t.name in _READ_PATH_TOOLS
+        or t.name in _WRITE_PATH_TOOLS
+        or t.name == "run_command"
+        else t
+        for t in tools
     ]
 
 
@@ -271,12 +285,15 @@ async def build_sub_frame(context, name: str, sub_spec: SubAgentSpec) -> RunFram
         if sub_spec.max_tokens > 0
         else None
     )
+    context_manager = getattr(context.agent, "context_manager", None)
     sub_agent = Agent(
         provider,
         system=system_prompt,
         tools=tools,
         max_turns=sub_spec.max_turns,
         budget=budget,
+        # R2-1: 子 Agent 同样注入 ContextManager（85% 门禁全覆盖）
+        context_manager=context_manager,
     )
 
     conversation_id = next_sub_conversation_id(

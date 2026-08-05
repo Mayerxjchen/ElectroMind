@@ -100,6 +100,7 @@ def test_verifier_skip_and_fail_require_reason():
 def test_tracker_blocks_completed_without_evidence():
     tracker = PlanTracker()
     tracker.propose(_plan())
+    tracker.approve()  # R2-7: 步骤完成需计划已批准
     with pytest.raises(StepTransitionError):
         tracker.update_step("s1", StepStatus.COMPLETED)
     # 带证据可完成

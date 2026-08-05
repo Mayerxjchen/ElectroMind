@@ -1,6 +1,6 @@
 {
   "milestone": "M8-RECOVERABLE-WORKFLOW",
-  "tested_commit": "6106f298064bb51caa43b5ed75ec4ef9f48c8d5f",
+  "tested_commit": "ba417111ce1860d20451a9ca9477a1d5bf196511",
   "status": "pass",
   "workflow": "cp2k-deepmd-recoverable",
   "all_steps_passed": true,
@@ -22,10 +22,11 @@
     },
     {
       "step": 3,
-      "name": "提交 Slurm Job 并持久化 Job ID",
+      "name": "提交 Slurm Job（正式 Runner 幂等路径）",
       "ok": true,
-      "detail": "job_id=job-0001，幂等键已持久化",
-      "job_id": "job-0001"
+      "detail": "job_id=job-0001；Runner intent 已 commit、幂等键已持久化",
+      "job_id": "job-0001",
+      "submit_calls": 1
     },
     {
       "step": 4,
@@ -33,16 +34,17 @@
       "ok": true,
       "detail": "job 状态 / 幂等记录 / Plan / Artifact 均已落盘；进程在此终止",
       "persisted_files": [
-        "idempotency.jsonl",
-        "scheduler_jobs.json"
+        "scheduler_jobs.json",
+        "water.inp"
       ]
     },
     {
       "step": 5,
-      "name": "恢复后查询 Scheduler 不重复提交",
+      "name": "恢复后查询 Scheduler 不重复提交（正式 Runner 重放）",
       "ok": true,
-      "detail": "查询到 job job-0001 状态 running；重放/重提均返回原 job id",
-      "queried_status": "running"
+      "detail": "查询到 job job-0001 状态 running；恢复 Runner 重放原结果，scheduler 提交次数仍为 1",
+      "queried_status": "running",
+      "total_submits": 1
     },
     {
       "step": 6,
@@ -53,17 +55,21 @@
     },
     {
       "step": 7,
-      "name": "解析 Energy/Force 并保留单位与来源",
+      "name": "解析 Energy/Force 并保留单位与来源（真实 SHA-256）",
       "ok": true,
-      "detail": "E=-76.4 Hartree ← water-1.ENERGY_FORCE.out:1 via cp2k_energy_force_parser",
+      "detail": "E=-76.4 Hartree；F=FORCES Hartree/bohr ← water-1.ENERGY_FORCE.out:1 via cp2k_energy_force_parser",
       "value": "-76.4",
-      "unit": "Hartree"
+      "unit": "Hartree",
+      "force_unit": "Hartree/bohr",
+      "sha256": "d37bfd0bf0caecf4"
     },
     {
       "step": 8,
-      "name": "Parser 失败保持 Completed 而非 Validated",
+      "name": "Parser 失败保持 Completed 而非 Validated（validation 侧拒绝）",
       "ok": true,
-      "detail": "解析失败 → validation=created（未升级）；acceptance=rejected"
+      "detail": "解析失败 → validation=rejected（未升级）；acceptance 保持 completed",
+      "validation_status": "rejected",
+      "acceptance_status": "completed"
     },
     {
       "step": 9,
@@ -74,22 +80,22 @@
     },
     {
       "step": 10,
+      "name": "DeepMD 数据转换→训练→测试（阶段产物 + 溯源）",
+      "ok": true,
+      "detail": "data/model/test 三个阶段产物均已 COMPLETED+VALIDATED，训练记录含 seed=42 与软件版本"
+    },
+    {
+      "step": 11,
       "name": "独立 Reviewer 结构化评审（角色隔离）",
       "ok": true,
       "detail": "Reviewer 不能批准自己产物；评审产物已 COMPLETED+VALIDATED"
     },
     {
-      "step": 11,
-      "name": "用户确认后才 ACCEPTED",
-      "ok": true,
-      "detail": "accepted_by=user-alice",
-      "accepted_by": "user-alice"
-    },
-    {
       "step": 12,
-      "name": "Provenance 最终报告",
+      "name": "用户确认 ACCEPTED + Provenance 最终报告",
       "ok": true,
-      "detail": "报告数值可追溯到文件/行/解析器/单位",
+      "detail": "accepted_by=user-alice；报告数值可追溯到文件/行/解析器/单位",
+      "accepted_by": "user-alice",
       "report": {
         "artifact": "energy-1",
         "status": "accepted",
@@ -111,7 +117,17 @@
             "source_snippet": "ENERGY| Total FORCE_EVAL ( QS ) energy [Hartree]       -76.4",
             "parser": "cp2k_energy_force_parser",
             "artifact_id": "energy-1",
-            "created_at": 1785908789.591799
+            "created_at": 1785916058.310695
+          },
+          {
+            "value": "FORCES",
+            "unit": "Hartree/bohr",
+            "source_file": "water-1.ENERGY_FORCE.out",
+            "source_line": 2,
+            "source_snippet": "ATOMIC FORCES in [Hartree/bohr]",
+            "parser": "cp2k_energy_force_parser",
+            "artifact_id": "energy-1",
+            "created_at": 1785916058.3108091
           },
           {
             "value": "-76.4",
@@ -121,15 +137,21 @@
             "source_snippet": "ENERGY| Total FORCE_EVAL ( QS ) energy [Hartree]       -76.4",
             "parser": "cp2k_energy_force_parser",
             "artifact_id": "energy-1",
-            "created_at": 1785908789.592334
+            "created_at": 1785916058.311508
           }
         ]
       }
     }
   ],
+  "r2_fixes": [
+    "提交经正式 Runner 工具路径（intent→commit + 幂等重放；simulator 不再自去重）",
+    "Energy 与 Force 双解析溯源（值→文件→行→解析器→单位）",
+    "Parser 失败 validation 侧 REJECTED（acceptance 保持 COMPLETED）",
+    "真实 SHA-256 + Artifact 完整性验证",
+    "DeepMD 数据转换→训练→测试三阶段产物（seed/版本记录）"
+  ],
   "scope": {
-    "engine_machinery": "PlanStore/ArtifactRegistry/IdempotencyStore/ValueProvenance/角色门（真实引擎）",
     "scheduler": "SimulatedSlurm（job id 为恢复事实源；真实 Slurm 集成不在本阶段）",
-    "science": "CP2K 输入与解析为确定性模拟内容；真实 CP2K/DeepMD 计算由用户在真实环境复验"
+    "science": "CP2K 输入/解析与 DeepMD 阶段为确定性模拟内容；真实计算由用户在真实环境复验"
   }
 }

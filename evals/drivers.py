@@ -902,6 +902,8 @@ async def driver_plan_evidence_gate(task: TaskSpec, thread_root: Path) -> dict:
             steps=(step,),
         )
     )
+    # R2-7: 先批准（步骤完成需计划已批准）
+    tracker.approve()
     # 无证据 → COMPLETED 必须被拒
     try:
         tracker.update_step("s1", StepStatus.COMPLETED)

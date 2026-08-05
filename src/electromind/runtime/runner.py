@@ -108,10 +108,14 @@ class Runner(BaseRunner):
             self.approved_arguments[tool_call_id] = digest
 
     def check_approved_arguments(self, tool_call_id: str, digest: str) -> bool:
-        """执行时校验：已批准的调用参数必须与审批时一致。"""
+        """执行时校验：已批准的调用参数必须与审批时一致。
+
+        R2-3 fail-closed：需要审批的工具若缺少审批摘要（摘要丢失/未记录）
+        → 拒绝执行；只有明确跳过审批（auto 模式不装审批钩子）才不校验。
+        """
         expected = self.approved_arguments.get(tool_call_id)
         if expected is None:
-            return True  # 未走审批路径（auto 模式）不校验
+            return False  # 审批路径缺失摘要 = 未审批（fail-closed）
         return expected == digest
 
     def steer(self, text: str, *, message_id: str = "") -> None:
@@ -269,6 +273,32 @@ class Runner(BaseRunner):
         self.frame.tool_calls_executed += 1
         return await super().execute_tool(tool_call)
 
+    def recover_pending_intents(self) -> dict:
+        """R2-4: 生产恢复消费者 —— 启动时处理未 committed 的 intent。
+
+        进程在副作用完成后、commit 前崩溃时：
+        - IdempotencyStore 有结果（已确认完成）→ 补 commit（重放语义）。
+        - 无结果（状态未知）→ RECONCILING（禁止盲目重试）。
+        """
+        from ..execution.idempotency import IdempotencyKey as _Key
+
+        pending = self.intent_log.pending_for(self.current_run_id)
+        recovered = {"committed": [], "reconciled": []}
+        for intent in pending:
+            key = _Key.derive(
+                run_id=intent.run_id,
+                tool_name=intent.tool,
+                args={"digest": intent.arguments_digest},
+            )
+            result = self.idempotency_store.get_result(key)
+            if result is not None:
+                self.intent_log.commit(intent.intent_id, result_ref=result[:200])
+                recovered["committed"].append(intent.intent_id)
+            else:
+                self.intent_log.reconcile(intent.intent_id)
+                recovered["reconciled"].append(intent.intent_id)
+        return recovered
+
     async def _execute_with_intent(self, info, *, turn_id: int) -> ToolOutput:
         """P0-5: 副作用工具执行包装 —— intent→commit→reconcile + 幂等提交。
 
@@ -299,8 +329,15 @@ class Runner(BaseRunner):
             return await self.run_tool_with_hooks(hook_ctx, tool_call)
 
         args_digest = _arguments_digest(_dump_arguments(info.arguments))
+        # R2-4: 命令级分类 —— run_command 含 sbatch/qsub/srun 视为外部提交，
+        # 走幂等重放保护（真实 HPC 提交不再裸奔）。
+        effective_effect = info.effect
+        if info.effect == ToolEffect.EXECUTE:
+            command = str(info.arguments.get("command", ""))
+            if any(marker in command for marker in ("sbatch", "qsub ", "srun ")):
+                effective_effect = ToolEffect.SUBMIT_EXTERNAL
         # 幂等提交：外部提交类先查已记录结果
-        if info.effect == ToolEffect.SUBMIT_EXTERNAL:
+        if effective_effect == ToolEffect.SUBMIT_EXTERNAL:
             key = IdempotencyKey.derive(
                 run_id=self.current_run_id,
                 tool_name=info.name,
@@ -326,7 +363,7 @@ class Runner(BaseRunner):
             self.intent_log.commit(
                 intent.intent_id, result_ref=str(output.content)[:200]
             )
-            if info.effect == ToolEffect.SUBMIT_EXTERNAL:
+            if effective_effect == ToolEffect.SUBMIT_EXTERNAL:
                 self.idempotency_store.record_completed(
                     IdempotencyKey.derive(
                         run_id=self.current_run_id,

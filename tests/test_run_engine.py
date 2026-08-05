@@ -619,3 +619,103 @@ async def test_submit_external_replays_idempotent_result(tmp_path, monkeypatch):
         assert calls["n"] == 1
     finally:
         await runner.close()
+
+
+# ── R2-4 验收：恢复消费者 + 命令级 submit ───────────────────────────────
+
+
+async def test_recover_pending_intents(tmp_path, monkeypatch):
+    """R2-4: 崩溃后未 commit 的 intent 恢复（有结果→补 commit；无→reconcile）。"""
+    from electromind.execution.idempotency import IdempotencyKey
+    from electromind.runtime import Runner
+
+    monkeypatch.chdir(tmp_path)
+
+    class P:
+        async def complete(self, messages, tools=None, **kw):
+            async def stream():
+                yield type("C", (), {"choices": [], "usage": None})()
+
+            return stream()
+
+    runner = await Runner.create("t-rec", P(), overrides={"backend": "none"})
+    try:
+        runner.current_run_id = "run-recovery"
+        # 模拟：intent 已记录但未 commit（进程崩溃）
+        committed_key = IdempotencyKey.derive(
+            run_id="run-recovery", tool_name="write_file", args={"digest": "d1"}
+        )
+        runner.idempotency_store.record_completed(committed_key, "wrote ok")
+        i1 = runner.intent_log.record(
+            run_id="run-recovery",
+            tool_call_id="c1",
+            tool="write_file",
+            arguments_digest="d1",
+        )
+        i2 = runner.intent_log.record(
+            run_id="run-recovery",
+            tool_call_id="c2",
+            tool="write_file",
+            arguments_digest="d2",  # 无幂等结果
+        )
+        recovered = runner.recover_pending_intents()
+        assert recovered["committed"] == [i1.intent_id]
+        assert recovered["reconciled"] == [i2.intent_id]
+        assert runner.intent_log.get(i1.intent_id).status.value == "committed"
+        assert runner.intent_log.get(i2.intent_id).status.value == "reconciling"
+    finally:
+        await runner.close()
+
+
+async def test_run_command_sbatch_classified_as_submit(tmp_path, monkeypatch):
+    """R2-4: run_command('sbatch ...') 走幂等重放（真实 HPC 提交保护）。"""
+    from electromind.core.tool import FunctionTool
+    from electromind.execution.effects import ToolEffect
+    from electromind.execution.idempotency import IdempotencyKey
+    from electromind.runtime import Runner
+
+    monkeypatch.chdir(tmp_path)
+    calls = {"n": 0}
+
+    async def run_command(command: str) -> str:
+        calls["n"] += 1
+        return "job-9001"
+
+    tool = FunctionTool(
+        "run_command",
+        "run_command",
+        {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+        run_command,
+        effect=ToolEffect.EXECUTE,
+    )
+    from evals.provider import ProviderStep, ScriptedProvider
+
+    provider = ScriptedProvider(
+        [
+            ProviderStep.tools(
+                {"name": "run_command", "arguments": {"command": "sbatch run.pbs"}}
+            ),
+            ProviderStep.text("ok"),
+        ]
+    )
+    runner = await Runner.create(
+        "t-sbatch", provider, overrides={"backend": "none"}, tools=[tool]
+    )
+    try:
+        async for _ in runner.run("提交"):
+            pass
+        assert calls["n"] == 1
+        # 命令级分类 → 幂等记录存在
+        key = IdempotencyKey.derive(
+            run_id=runner.current_run_id,
+            tool_name="run_command",
+            args={"command": "sbatch run.pbs"},
+        )
+        assert runner.idempotency_store.is_duplicate(key)
+        assert runner.idempotency_store.get_result(key) == "job-9001"
+    finally:
+        await runner.close()

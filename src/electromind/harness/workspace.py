@@ -143,6 +143,7 @@ class ApprovalRequest:
     summary: str = ""
     expires_at: str = ""  # ISO 8601
     arguments_digest: str = ""  # P0-4: 审批时的工具参数摘要（防参数篡改）
+    created_at: float = 0.0  # R2-3: 创建时间（空 expires_at 的 TTL 兜底）
 
     status: ApprovalStatus = ApprovalStatus.PENDING
 
@@ -154,19 +155,28 @@ class ApprovalRequest:
             return False
         return True
 
-    def is_expired(self, *, now: float | None = None) -> bool:
-        """按 expires_at（ISO 8601）判定过期；空 = 永不过期。"""
-        if not self.expires_at:
-            return False
-        try:
-            import time as _time
-            from datetime import datetime
+    # R2-3: 空/非法 expires_at 的兜底 TTL（秒）——不再"永不过期"
+    DEFAULT_TTL_SECONDS = 300
 
-            parsed = datetime.fromisoformat(self.expires_at.replace("Z", "+00:00"))
-            current = now if now is not None else _time.time()
-            return parsed.timestamp() < current
+    def is_expired(self, *, now: float | None = None) -> bool:
+        """按 expires_at（ISO 8601）判定过期。
+
+        R2-3 fail-closed：空或非法 expires_at → 按 created_at + 默认
+        TTL（300s）判定（不再当作永不过期）。
+        """
+        import time as _time
+
+        current = now if now is not None else _time.time()
+        try:
+            if self.expires_at:
+                from datetime import datetime
+
+                parsed = datetime.fromisoformat(self.expires_at.replace("Z", "+00:00"))
+                return parsed.timestamp() < current
         except (ValueError, TypeError):
-            return False
+            pass  # 非法格式 → 走 TTL 兜底
+        created = self.created_at or _time.time()
+        return current > created + self.DEFAULT_TTL_SECONDS
 
     def approve(self) -> bool:
         if not self.is_resolvable():

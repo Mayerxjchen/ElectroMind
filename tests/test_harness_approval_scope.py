@@ -1294,5 +1294,5 @@ async def test_tampered_arguments_denied_at_execution():
     assert not runner.check_approved_arguments(
         "call-1", _arguments_digest('{"command": "rm -rf /etc"}')
     )
-    # 未审批路径 → 不校验
-    assert runner.check_approved_arguments("call-9", "whatever")
+    # R2-3 fail-closed：审批路径缺失摘要 → 拒绝（不校验放行）
+    assert not runner.check_approved_arguments("call-9", "whatever")

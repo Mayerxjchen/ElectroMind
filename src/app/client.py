@@ -569,6 +569,13 @@ class EmbeddedAgentClient:
         if runner is not None and tool_call_id:
             if approved:
                 self.engine.permit_tool(thread_id, run_id, tool_call_id)
+                # R2-3: 保存审批时的参数摘要（执行时校验参数未被篡改）
+                record = getattr(runner, "record_approved_arguments", None)
+                if callable(record):
+                    record(
+                        tool_call_id,
+                        getattr(resolved, "arguments_digest", ""),
+                    )
             else:
                 self.engine.deny_tool(
                     thread_id, run_id, tool_call_id, reason="user denied"

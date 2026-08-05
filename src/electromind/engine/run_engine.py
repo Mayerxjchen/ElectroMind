@@ -58,6 +58,7 @@ class RunEngine:
     # PlanTracker（内存当前态）+ PlanStore（<thread>/plans/ 磁盘，含版本历史）；
     # ArtifactRegistry（<thread>/artifacts.jsonl 磁盘）。惰性初始化并按需恢复。
     _plan_trackers: dict[str, PlanTracker] = field(default_factory=dict)
+    _active_plan_ids: dict[str, str] = field(default_factory=dict)
     _artifact_registries: dict[str, ArtifactRegistry] = field(default_factory=dict)
     # 领域状态变更回调：emit(thread_id, "plan"|"artifact", payload)。
     # 由 App 层（wire / CLI client）挂接，把变更推送为 plan/state、artifact/state。
@@ -176,6 +177,7 @@ class RunEngine:
         """
         tracker = self._ensure_plan(thread_id)
         proposed = tracker.propose(plan)
+        self._active_plan_ids[thread_id] = plan.plan_id
         self._plan_store(thread_id).save(proposed)
         self._emit_state(thread_id, "plan", {"plan": proposed.to_dict()})
         return proposed
@@ -257,6 +259,14 @@ class RunEngine:
             thread_id, artifact_id, "validate", parser=parser, who=who
         )
 
+    def artifact_validate_fail(
+        self, thread_id: str, artifact_id: str, *, reason: str
+    ) -> ArtifactManifest | None:
+        """R2-9: 解析失败 → validation=REJECTED（acceptance 保持 COMPLETED）。"""
+        return self._artifact_transition(
+            thread_id, artifact_id, "reject_validation", reason=reason
+        )
+
     def artifact_accept(
         self, thread_id: str, artifact_id: str, *, who: str, role: str = "user"
     ) -> ArtifactManifest | None:
@@ -288,9 +298,19 @@ class RunEngine:
         tracker = self._plan_trackers.get(thread_id)
         if tracker is None:
             tracker = PlanTracker()
-            latest = self._plan_store(thread_id).latest("default")
+            # R2-7: 恢复按活跃 plan_id（propose 时记录）或磁盘最新版本，
+            # 不再硬编码 "default"。
+            plan_id = self._active_plan_ids.get(thread_id)
+            latest = None
+            if plan_id is not None:
+                latest = self._plan_store(thread_id).latest(plan_id)
+            if latest is None:
+                store_ids = self._plan_store(thread_id).list_ids()
+                if store_ids:
+                    latest = self._plan_store(thread_id).latest(store_ids[-1])
             if latest is not None:
                 tracker.restore(latest)
+                self._active_plan_ids[thread_id] = latest.plan_id
             self._plan_trackers[thread_id] = tracker
         return tracker
 

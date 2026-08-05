@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 
 from evals.workflows.cp2k_deepmd import run_recoverable_workflow
@@ -13,7 +14,7 @@ def test_recoverable_workflow_12_steps(tmp_path):
     Validated→Reviewer 角色隔离→用户 ACCEPTED→Provenance 报告。"""
     prev = os.environ.get("ELECTROMIND_HOME")
     try:
-        evidence = run_recoverable_workflow(tmp_path)
+        evidence = asyncio.run(run_recoverable_workflow(tmp_path))
         assert evidence["all_passed"], [
             (s["step"], s["name"], s["detail"])
             for s in evidence["steps"]
@@ -26,7 +27,7 @@ def test_recoverable_workflow_12_steps(tmp_path):
         assert steps[3]["job_id"].startswith("job-")
         assert steps[7]["unit"] == "Hartree"
         assert steps[8]["ok"]
-        assert steps[11]["accepted_by"] == "user-alice"
+        assert steps[12]["accepted_by"] == "user-alice"
     finally:
         if prev is None:
             os.environ.pop("ELECTROMIND_HOME", None)

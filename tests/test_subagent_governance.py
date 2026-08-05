@@ -320,3 +320,105 @@ def test_reviewer_role_cannot_accept_own_artifact():
     # 同角色不能互批（reviewer 不能接受 reviewer 的产物）
     with pytest.raises(ArtifactTransitionError, match="创建者角色"):
         m.accept(who="reviewer-carol", role="reviewer")
+
+
+# ── R2-5 验收：路径工具全覆盖 ───────────────────────────────────────────
+
+
+async def test_str_replace_path_bound_enforced():
+    """R2-5: str_replace 写越界必须被拒绝（此前按前缀分类未覆盖）。"""
+    from electromind.core.tool import FunctionTool
+
+    async def str_replace(path: str, old_string: str, new_string: str) -> str:
+        return f"replaced {path}"
+
+    tool = FunctionTool(
+        "str_replace",
+        "str_replace",
+        {
+            "type": "object",
+            "properties": {
+                "path": {"type": "string"},
+                "old_string": {"type": "string"},
+                "new_string": {"type": "string"},
+            },
+            "required": ["path", "old_string", "new_string"],
+        },
+        str_replace,
+    )
+    bounded = bound_paths([tool], write_paths=("data/",))
+    blocked = await bounded[0].acall(
+        '{"path": "secret.txt", "old_string": "a", "new_string": "b"}',
+        context=None,
+    )
+    assert not blocked.ok
+    assert "路径越界" in blocked.content
+    ok = await bounded[0].acall(
+        '{"path": "data/file.txt", "old_string": "a", "new_string": "b"}',
+        context=None,
+    )
+    assert ok.ok
+
+
+async def test_run_command_rejected_under_bounds():
+    """R2-5: 设置边界后 run_command 保守拒绝（无法静态判定 shell 范围）。"""
+    from electromind.core.tool import FunctionTool
+
+    async def run_command(command: str) -> str:
+        return "ran"
+
+    tool = FunctionTool(
+        "run_command",
+        "run_command",
+        {
+            "type": "object",
+            "properties": {"command": {"type": "string"}},
+            "required": ["command"],
+        },
+        run_command,
+    )
+    bounded = bound_paths([tool], read_paths=("data/",))
+    result = await bounded[0].acall('{"command": "ls /"}', context=None)
+    assert not result.ok
+    assert "run_command 不可用" in result.content
+
+
+async def test_list_dir_and_copy_bounds():
+    """R2-5: list_dir 走读边界；copy_to_host 走写边界。"""
+    from electromind.core.tool import FunctionTool
+
+    async def list_dir(path: str) -> str:
+        return f"list {path}"
+
+    async def copy_to_host(path: str) -> str:
+        return f"copy {path}"
+
+    tools = [
+        FunctionTool(
+            "list_dir",
+            "list_dir",
+            {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+            list_dir,
+        ),
+        FunctionTool(
+            "copy_to_host",
+            "copy_to_host",
+            {
+                "type": "object",
+                "properties": {"path": {"type": "string"}},
+                "required": ["path"],
+            },
+            copy_to_host,
+        ),
+    ]
+    bounded = bound_paths(tools, read_paths=("data/",), write_paths=("out/",))
+    blocked_list = await bounded[0].acall('{"path": "/etc"}', context=None)
+    assert not blocked_list.ok
+    blocked_copy = await bounded[1].acall('{"path": "secret"}', context=None)
+    assert not blocked_copy.ok
+    ok_copy = await bounded[1].acall('{"path": "out/x.txt"}', context=None)
+    assert ok_copy.ok

@@ -34,7 +34,7 @@ class FakeProvider:
         return stream()
 
 
-@tool()
+@tool(effect="pure")
 def agent_tool() -> str:
     """Agent 原有工具。"""
     return "agent"

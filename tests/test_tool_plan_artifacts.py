@@ -203,6 +203,8 @@ def test_artifact_register_with_auto_evidence(_engine):
             runner,
         )
     )
+    # R2-7: 步骤完成需计划已批准
+    assert _engine.plan_approve("thread-tool-bridge") is not None
     register = tool_by_name("artifact_register")
     out = asyncio.run(
         _acall(

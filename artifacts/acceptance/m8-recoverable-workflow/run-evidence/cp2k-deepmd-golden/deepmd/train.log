@@ -1,0 +1,1 @@
+DEEPMD train: seed=42 model=se_e2_a config=water.json epochs=100

@@ -42,11 +42,12 @@ import sys
 
 subprocess.run(
     [
+        # R2-8: cov 目标用目录（pytest-cov 对文件路径报 module-not-imported）；
+        # core 与 tools 整目录采集，targets 只统计关键文件。
         sys.executable, "-m", "pytest", "-q", "--no-header",
         "--cov=src/electromind/engine", "--cov=src/electromind/execution",
         "--cov=src/electromind/context", "--cov=src/electromind/artifacts",
-        "--cov=src/electromind/core/budget.py", "--cov=src/electromind/core/capabilities.py",
-        "--cov=src/electromind/core/retry.py", "--cov=src/electromind/tools/delegate.py",
+        "--cov=src/electromind/core", "--cov=src/electromind/tools",
         "--cov-report=json", "-o", "addopts=",
     ],
     check=True,
@@ -86,11 +87,35 @@ if below:
     raise SystemExit(1)
 PY
 
-echo "==> 发布门禁 4/4：验收报告存在性"
-test -f artifacts/acceptance/m1-m7-runengine/acceptance-report.json || {
-  echo "缺少 m1-m7 验收报告，中止发布" >&2
-  exit 1
+echo "==> 发布门禁 4/4：验收报告校验（status/commit/schema/M8）"
+uv run python - <<'PY'
+import json
+import subprocess
+from pathlib import Path
+
+head = subprocess.run(
+    ["git", "rev-parse", "HEAD"], capture_output=True, text=True
+).stdout.strip()
+required = {
+    "m1-m7": "artifacts/acceptance/m1-m7-runengine/acceptance-report.json",
+    "m0": "artifacts/acceptance/m0-eval-baseline/acceptance-report.json",
+    "m8": "artifacts/acceptance/m8-recoverable-workflow/acceptance-report.json",
 }
+for label, rel in required.items():
+    path = Path(rel)
+    if not path.is_file():
+        raise SystemExit(f"缺少验收报告 {label}: {rel}")
+    report = json.loads(path.read_text(encoding="utf-8"))
+    if report.get("status") != "pass":
+        raise SystemExit(f"{label} 报告 status != pass")
+    if report.get("tested_commit") != head:
+        raise SystemExit(
+            f"{label} 报告 tested_commit {report.get('tested_commit')} != HEAD {head}"
+        )
+    if "milestone" not in report:
+        raise SystemExit(f"{label} 报告缺少 milestone")
+print("OK: 三份验收报告 status=pass 且 tested_commit == HEAD")
+PY
 
 echo "==> 构建 ${VERSION}（tag ${TAG}）"
 rm -rf dist build

@@ -56,11 +56,16 @@ def build_code_agent(
     tools: list[FunctionTool],
 ) -> Agent:
     """重新构造 Agent，让 tools / tool_schemas / tool_map 保持一致。"""
+    from ..execution.effects import apply_builtin_effects, assert_effects_declared
+
+    merged = apply_builtin_effects([*agent.tools, *tools])
+    assert_effects_declared(merged)  # R2-2: CodeRunner 重建路径同样过门
     return Agent(
         agent.provider,
         system=system_prompt,
-        tools=[*agent.tools, *tools],
+        tools=merged,
         max_turns=agent.max_turns,
+        context_manager=getattr(agent, "context_manager", None),  # R2-1
     )
 
 

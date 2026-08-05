@@ -273,6 +273,17 @@ class BaseRunner(LoopAdapter):
         self.sandbox = sandbox
         self.skills = skills or SkillRegistry()
         self.skill_runtime = skill_runtime
+        # R2-2: 注册门兜底 —— 覆盖 ChatRunner / 直接构造等未走
+        # assemble_run_resources 的路径（补全内置 effect 后仍缺失即拒绝）。
+        from ..execution.effects import apply_builtin_effects, assert_effects_declared
+
+        resolved_tools = apply_builtin_effects(list(agent.tools or []))
+        assert_effects_declared(resolved_tools)
+        if resolved_tools != list(agent.tools or []):
+            agent.replace_runtime_context(tools=resolved_tools)
+        # R2-1: ContextManager 兜底注入（未显式注入的构造路径）
+        if getattr(agent, "context_manager", None) is None:
+            agent.context_manager = build_context_manager(thread.spec)
 
         self.store = store or thread.open_store()
         self.conversation_id = thread.messages_conversation_id

@@ -1,0 +1,1 @@
+{"intent_id": "intent-d26380341e14", "run_id": "", "tool_call_id": "call_1", "tool": "sbatch", "arguments_digest": "5e6c559ff2186abab6e478113f90febfd68fb6c232943646365b837fc5ba5252", "status": "committed", "result_ref": "job-0001", "created_at": 1785916058.121381}

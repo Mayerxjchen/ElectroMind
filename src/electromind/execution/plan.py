@@ -500,6 +500,17 @@ class PlanTracker:
             target = target.copy_with(status=status)
         # 状态门：缺证据 / 缺验证器结果 / 无原因跳过 一律拒绝
         self.verifier.assert_transition(target, target.status)
+        # R2-7: 步骤完成/验证要求计划已批准（未 APPROVED 的 READY 计划
+        # 不能仅凭 Evidence 直接进入 COMPLETED/VERIFIED）。
+        if target.status in (StepStatus.COMPLETED, StepStatus.VERIFIED):
+            if self._current.status not in (
+                PlanStatus.APPROVED,
+                PlanStatus.EXECUTING,
+            ):
+                raise StepTransitionError(
+                    f"步骤 {step_id} 不能进入 {target.status}："
+                    f"计划尚未批准（status={self._current.status}）"
+                )
         self._current = self._current.with_step(target)
         return self._current
 

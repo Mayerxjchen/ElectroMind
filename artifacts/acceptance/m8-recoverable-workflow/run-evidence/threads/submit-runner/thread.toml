@@ -1,0 +1,23 @@
+[agent]
+session_mode = "agent"
+autonomy = "prompt"
+model = "deepseek-v4-flash"
+system = ""
+
+[conversation]
+backend = "jsonl"
+root = "messages"
+db_path = "conversations.sqlite"
+messages_id = "messages"
+
+[sandbox]
+backend = "none"
+command_policy = "workdir"
+
+[ssh]
+config = "~/.ssh/config"
+workdir = "~/.electromind"
+
+[lock]
+schema_version = 1
+file_self_fs_pos = "/Users/chenxuanjie/agent/electromind/artifacts/acceptance/m8-recoverable-workflow/run-evidence/threads/submit-runner/thread.toml"

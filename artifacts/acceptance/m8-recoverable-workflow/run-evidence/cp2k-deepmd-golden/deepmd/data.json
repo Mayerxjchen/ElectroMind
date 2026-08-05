@@ -1,0 +1,1 @@
+{"frames": [{"energy": "-76.4", "energy_unit": "Hartree", "forces": [{"value": "FORCES", "unit": "Hartree/bohr"}]}], "source": "water-1.ENERGY_FORCE.out", "parser": "cp2k_energy_force_parser", "atom_order": ["O", "H", "H"]}

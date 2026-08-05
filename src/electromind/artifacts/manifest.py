@@ -206,6 +206,18 @@ class ArtifactManifest:
                 f"artifact {self.artifact_id} 不能由创建者角色 "
                 f"{self.created_by_role!r} 自行 ACCEPTED"
             )
+        # R2-6 科学状态门：ACCEPTED 必须先 VALIDATED（未验证结果不得作为结论）。
+        # 仅当转换表本身允许（如 COMPLETED→ACCEPTED）时才检查；表不允许的
+        # 非法跳级（CREATED→ACCEPTED）由 _transition 报"非法转换"。
+        if (
+            self.validation_status != ArtifactStatus.VALIDATED
+            and ArtifactStatus.ACCEPTED
+            in _ACCEPTANCE_TRANSITIONS.get(self.acceptance_status, frozenset())
+        ):
+            raise ArtifactTransitionError(
+                f"artifact {self.artifact_id} 未 VALIDATED（"
+                f"validation={self.validation_status}），不能 ACCEPTED"
+            )
         return self._transition(ArtifactStatus.ACCEPTED, who=who, acceptance=True)
 
     def reject(self, *, reason: str) -> "ArtifactManifest":
@@ -214,6 +226,38 @@ class ArtifactManifest:
             raise ArtifactTransitionError("REJECTED 必须记录原因")
         return self._transition(
             ArtifactStatus.REJECTED, who=f"checker:{reason[:80]}", acceptance=True
+        )
+
+    def reject_validation(self, *, reason: str) -> "ArtifactManifest":
+        """R2-9: 解析/校验失败 → validation=REJECTED（acceptance 保持
+        COMPLETED——程序已完成，只是解析未通过；科学状态验收语义）。"""
+        if not reason:
+            raise ArtifactTransitionError("REJECTED 必须记录原因")
+        rejected = self._transition(
+            ArtifactStatus.REJECTED, who=f"parser:{reason[:80]}", acceptance=False
+        )
+        return ArtifactManifest(
+            artifact_id=rejected.artifact_id,
+            type=rejected.type,
+            path=rejected.path,
+            sha256=rejected.sha256,
+            run_id=rejected.run_id,
+            step_id=rejected.step_id,
+            created_by=rejected.created_by,
+            created_by_role=rejected.created_by_role,
+            input_artifacts=rejected.input_artifacts,
+            command=rejected.command,
+            software=rejected.software,
+            software_version=rejected.software_version,
+            environment_digest=rejected.environment_digest,
+            units=rejected.units,
+            validation_status=ArtifactStatus.REJECTED,
+            acceptance_status=rejected.acceptance_status,
+            parser=rejected.parser,
+            accepted_by=rejected.accepted_by,
+            created_at=rejected.created_at,
+            scheduler=rejected.scheduler,
+            job_id=rejected.job_id,
         )
 
     def supersede(self, *, by: str) -> "ArtifactManifest":

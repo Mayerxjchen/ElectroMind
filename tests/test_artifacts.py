@@ -300,3 +300,15 @@ def test_registry_trace_and_cycle_branches(tmp_path):
     r3 = ArtifactRegistry(path)
     assert r3.get("x") is None
     assert any(e["event"] == "delete" for e in r3.events())
+
+
+def test_accept_requires_validated():
+    """R2-6: 未 VALIDATED 不能 ACCEPTED（科学状态验收）。"""
+    from electromind.artifacts.manifest import ArtifactTransitionError
+
+    completed_only = _manifest().complete()
+    with pytest.raises(ArtifactTransitionError, match="未 VALIDATED"):
+        completed_only.accept(who="user")
+    validated = completed_only.validate(parser="checker")
+    accepted = validated.accept(who="user")
+    assert accepted.acceptance_status == ArtifactStatus.ACCEPTED

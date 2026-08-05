@@ -101,10 +101,23 @@ def test_plan_version_gate_blocks_overwrite():
 def test_plan_step_evidence_gate():
     engine = RunEngine()
     engine.plan_propose(THREAD, make_plan())
+    # R2-7: 计划未批准时步骤不能进入 COMPLETED（先审批后执行）
+    with pytest.raises(StepTransitionError, match="尚未批准"):
+        engine.plan_update_step(
+            THREAD,
+            "s1",
+            StepStatus.COMPLETED,
+            step=PlanStep(
+                id="s1",
+                title="第一步",
+                evidence=(Evidence.file("out.txt", "a" * 64, by="tool-1"),),
+            ),
+        )
+    engine.plan_approve(THREAD)
     # 无 Evidence 标记 COMPLETED → 拒绝（禁止模型文本声明完成）
     with pytest.raises(StepTransitionError, match="无 Evidence"):
         engine.plan_update_step(THREAD, "s1", StepStatus.COMPLETED)
-    # 带文件 Evidence 才可 COMPLETED
+    # 已批准 + 带文件 Evidence → 可 COMPLETED
     step = PlanStep(
         id="s1",
         title="第一步",

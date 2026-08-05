@@ -335,3 +335,39 @@ async def test_agentcore_retry_policy():
     assert provider.calls == 3  # 1 初始 + 2 重试
     assert agent.last_retry is not None
     assert agent.last_retry["kind"] == "server_error"
+
+
+# ── R2-1 验收：Context limit 硬门禁 ─────────────────────────────────────
+
+
+async def test_context_limit_hard_gate_rejects_provider_call():
+    """R2-1: decision=limit 时拒绝调用 Provider（fail-closed）。"""
+    from electromind.context import Compactor, ContextManager
+    from electromind.core.agent import AgentCore, ContextLimitError
+    from electromind.core.capabilities import ModelCapabilities
+    from electromind.core.message import Messages
+
+    calls = {"n": 0}
+
+    class CountingProvider(_StreamingProvider):
+        async def complete(self, messages, tools=None, **run_kwargs):
+            calls["n"] += 1
+            return await super().complete(messages, tools, **run_kwargs)
+
+    provider = CountingProvider([_text_chunk("hi")])
+    caps = ModelCapabilities(context_window=2_000)
+    manager = ContextManager(caps, compactor=Compactor())
+    agent = AgentCore(provider, context_manager=manager, max_turns=2)
+    big = Messages()
+    # 构造远超窗口的消息（压缩后仍超）
+    big += _big_user_message(150_000)
+    with pytest.raises(ContextLimitError, match="上下文超限"):
+        async for _ in agent.generate_messages(big):
+            pass
+    assert calls["n"] == 0  # Provider 未被调用
+
+
+def _big_user_message(chars: int):
+    from electromind.core.message import Message
+
+    return Message.user("x" * chars)

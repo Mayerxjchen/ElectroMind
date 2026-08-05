@@ -7,6 +7,11 @@ from .provider import ProviderProtocol
 from .tool import FunctionTool, to_openai_tools
 from .usage import usage_to_dict
 
+
+class ContextLimitError(RuntimeError):
+    """上下文预算硬门禁：压缩后仍超限，模型调用被拒绝（fail-closed）。"""
+
+
 if TYPE_CHECKING:
     from ..context.manager import ContextManager
     from .budget import RunBudget
@@ -100,6 +105,13 @@ class AgentCore:
                     ),
                 )
             )
+            if prepared.budget.decision == "limit":
+                # R2-1 硬门禁：压缩后仍超限 → 拒绝调用 Provider（fail-closed）
+                raise ContextLimitError(
+                    f"上下文超限：estimate={prepared.budget.estimate} "
+                    f"threshold={prepared.budget.threshold} "
+                    f"window={prepared.budget.window}；压缩后仍无法满足"
+                )
             if prepared.budget.decision != "ok":
                 outbound = prepared.messages
             self.last_context_budget = prepared.budget
