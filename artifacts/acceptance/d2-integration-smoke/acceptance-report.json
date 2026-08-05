@@ -62,25 +62,33 @@
     }
   },
   "manual_gui": {
-    "status": "pending",
-    "checklist": [
-      "Finder 双击 .app 打开（Standalone：隐藏系统 electromind 后验证内置 agent 被启动）",
-      "健康面板显示使用内置 Agent",
-      "新建 Thread 并发送一条消息（真实 LLM）",
-      "一次低风险工具调用 + Approval Permit",
-      "Approval Deny 正常拒绝",
-      "Cancel 终止当前 Run",
-      "关闭 Desktop 后 pgrep 确认无遗留 agent 子进程",
-      "重启 Desktop 恢复历史 Thread（不重复执行已有副作用）",
-      "Companion：显式切换到系统 CLI，界面显示实际 CLI 路径和版本，完成一次最小对话",
-      "切回 Standalone 后实际来源同步变化",
-      "系统 CLI 缺失时健康面板给出明确诊断",
-      "故障注入（缺失/无权限/退出码42）时 UI 不白屏、诊断明确、可手动重试"
+    "status": "pass-cdp-driven",
+    "method": "LaunchServices open（Finder 等价）+ CDP（remote-debugging-port）驱动 renderer：sendUserInput 真实会话、DOM click 会话激活、sendWireCommand cancel",
+    "standalone": {
+      "launch_and_bundled_agent_spawn": "PASS（open 启动 → Resources/agent/electromind --wire 自动拉起，UI 自动 ensureBridge）",
+      "real_llm_session": "PASS（sendUserInput → 模型 thinking → run_command 工具调用 exit 0 → 回复落盘 messages.jsonl）",
+      "cancel_mid_run": "PASS（长任务发入 4s 后 cancel → 输入落盘、无最终回复 = Run 中断）",
+      "process_reclamation": "PASS（kill app 后多次验证 NO residual）",
+      "restart_recovery": "PASS（重启后内置 agent 自动拉起 + listThreads 恢复历史 thread）",
+      "no_duplicate_side_effects": "PASS（恢复会话未重放工具；模型补答未完成计算为纯文本，无 run_command 重跑）",
+      "finding_thread_activation": "重启后未点开会话直接 sendUserInput → 消息无归属 thread 不落盘（main currentThreadId 由 wire 事件学习，line 1013）；DOM click 会话后恢复。UI 行为，非崩溃"
+    },
+    "companion": {
+      "system_cli_spawn_when_bundled_hidden": "PASS（内置改名后 spawn /Users/chenxuanjie/.local/share/uv/tools/electromind/bin/python .../electromind --wire，非内置）",
+      "minimal_conversation": "PASS（回复落盘）",
+      "finding_version_mismatch": "系统 PyPI CLI 0.7.20 不认识新配置名 config.toml（自物化旧名 electromind.toml 无 key → open runner 缺 key 诊断明确）；已 uv tool install --editable --force . 更新系统 CLI 至仓库版本，此后正常",
+      "bundled_restore": "PASS（恢复内置 agent 后无残留）"
+    },
+    "remaining_manual_items": [
+      "Permit/Deny 按钮显式点击（审批链路已验证工作：工具执行成功，但按钮 UI 未直接点击）",
+      "Finder 物理双击（open 为 LaunchServices 等价启动）",
+      "健康面板视觉呈现（spawn 来源已由 pgrep 验证）",
+      "故障注入时 UI 白屏检查（AgentBridge 层已验证错误路径与无重启循环）"
     ],
-    "residual_process_check": "pgrep -afil 'electromind|electromind Desktop'"
+    "residual_process_check": "pgrep -afil 'electromind|electromind Desktop' → 验收结束时 ALL CLEAN"
   },
   "overall_status": "conditional-pass",
-  "overall_note": "自动化验收 PASS（clean tree 重跑一致）；GUI 手动验收 PENDING；总体 CONDITIONAL PASS，GUI 通过后置 PASS",
+  "overall_note": "自动化 PASS + CDP 驱动 GUI 验收 PASS（Standalone 会话/Cancel/回收/恢复 + Companion 系统 CLI）；Permit/Deny 按钮点击等 4 项留物理手动；总体 CONDITIONAL PASS → 手动项确认后置 PASS。验收中发现 2 项（thread 激活机制、系统 CLI 版本一致性）已记录且不阻塞",
   "known_limitations": [
     "Windows/Linux 嵌入未验证（package.js 留 TODO 分支）",
     "单文件启动时间未量化（PyInstaller onefile 解包开销）",
