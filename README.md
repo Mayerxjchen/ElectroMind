@@ -105,8 +105,6 @@ Supported interfaces（正式支持）:
 
 Experimental interfaces（暂停开发，maintenance-only）:
 - HTTP       —— 不承诺兼容，新功能不要求适配
-- Web        —— 同上
-- VS Code    —— 同上
 ```
 
 边界原则：**CLI 是完整功能入口，Desktop 是 CLI 能力的图形化呈现，Wire 只是连接
@@ -157,9 +155,7 @@ src/
 ├── app/                 CLI、REPL、配置、会话管理、HTTP/Wire 后端、Dockerfile
 └── electromind/         核心：运行时、Thread、对话持久化、Sandbox、Skills、工具、Trace
 editors/
-├── desktop/             Electron 桌面端（正式支持，经 Wire 协议驱动 Core）
-├── vscode/              VS Code 扩展（experimental，暂停开发）
-└── web/                 浏览器 Web UI（experimental，暂停开发）
+└── desktop/             Electron 桌面端（正式支持，经 Wire 协议驱动 Core）
 skills/                  科学计算领域 Skills（CP2K / VASP / LAMMPS / DeepMD / MCMC 等）
 tests/                   应用、核心、Sandbox 与协议测试
 scripts/                 质量检查与发布脚本
@@ -256,7 +252,7 @@ docker build -t electromind:browser -f src/app/Dockerfile.browser src/app
 
 ---
 
-## 桌面端（正式支持）与实验性编辑器
+## 桌面端（正式支持）
 
 ### Electron Desktop（正式支持）
 
@@ -273,12 +269,9 @@ npm start
 > Desktop，并确保本机已安装 `electromind` CLI（`uv tool install electromind`）——
 > Desktop 是图形壳，Agent 能力由 CLI 的 `--wire` 子进程提供。
 
-### Web UI 与 VS Code 扩展（experimental，暂停开发）
+### Web UI 与 VS Code 扩展（已删除 2026-08-05）
 
-代码保留但不在开发计划内，不承诺兼容；新功能不要求适配。仅维护既有测试防腐化。
-
-- **Web UI**：`cd editors/web && npm install && npm run dev`（Vite :5173）
-- **VS Code 扩展**：`editors/vscode/`
+范围收缩后不再使用，代码已从仓库删除（历史版本可从 git 找回）。
 
 
 
