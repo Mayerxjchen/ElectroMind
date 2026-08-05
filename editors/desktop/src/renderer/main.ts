@@ -1225,6 +1225,12 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
               </section>
 
               <section class="right-view" data-view="logs">
+                <div class="logs-panel-header">
+                  <span class="file-panel-title">日志</span>
+                  <button class="file-panel-refresh" type="button" data-open-log-dir title="打开日志目录" aria-label="打开日志目录">
+                    ${renderIcon("folder-open")}
+                  </button>
+                </div>
                 <div class="terminal-panel" data-terminal-panel></div>
               </section>
             </div>
@@ -4236,6 +4242,10 @@ async function start(): Promise<void> {
     if (openButton?.dataset.artifactPath) {
       void window.desktop.openArtifact(openButton.dataset.artifactPath);
     }
+    // P4.4: 一键打开日志目录。
+    if (target.closest("[data-open-log-dir]")) {
+      void window.desktop.openLogDir();
+    }
   });
 
   bindLeftResizer();
@@ -4393,6 +4403,12 @@ start().catch((error: unknown) => {
   if (!root) {
     return;
   }
+  // P4.5: 启动错误页用 textContent，不拼 innerHTML。
   const message = error instanceof Error ? error.message : String(error);
-  root.innerHTML = `<pre>${escapeHtml(message)}</pre>`;
+  const pre = document.createElement("pre");
+  pre.style.padding = "16px";
+  pre.style.whiteSpace = "pre-wrap";
+  pre.textContent = message;
+  root.textContent = "";
+  root.appendChild(pre);
 });

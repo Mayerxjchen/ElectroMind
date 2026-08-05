@@ -38,7 +38,15 @@
       const root = document.getElementById("app");
       if (!root || root.childElementCount > 0) return;
       const msg = event.error?.stack || event.message || "未知错误";
-      root.innerHTML = "<pre style=\"padding:16px;color:#f8fafc;white-space:pre-wrap\">" + msg + "</pre>";
+      // P4.5: 用 textContent 而非 innerHTML —— 错误信息可能含任意文本，
+      // innerHTML 拼接未转义内容有 XSS 风险。
+      const pre = document.createElement("pre");
+      pre.style.padding = "16px";
+      pre.style.color = "#f8fafc";
+      pre.style.whiteSpace = "pre-wrap";
+      pre.textContent = msg;
+      root.textContent = "";
+      root.appendChild(pre);
       document.documentElement.dataset.boot = "done";
       const splash = document.getElementById("boot-splash");
       if (splash) splash.hidden = true;

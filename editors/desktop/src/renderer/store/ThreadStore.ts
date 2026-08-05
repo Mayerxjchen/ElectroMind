@@ -172,6 +172,15 @@ export class ThreadStore {
   private listeners: Set<Listener> = new Set();
 
   constructor() {
+    // P4.6: 运行时断言——同一进程内只允许一个 ThreadStore 被构造。
+    // 双实例（双锁失效 / 重复挂载）会并行改同一批 thread 状态，宁可
+    // 启动期立刻失败，也不能静默漂移。
+    if (_storeConstructed) {
+      throw new Error(
+        "ThreadStore 单例断言失败：已有 ThreadStore 实例存活，禁止再构造。",
+      );
+    }
+    _storeConstructed = true;
     this.state = {
       activeThreadId: null,
       sessions: [],
@@ -1229,6 +1238,11 @@ export class ThreadStore {
 
 let _store: ThreadStore | null = null;
 
+// P4.6: 运行时断言——整个 Desktop 同时只允许一个 ThreadStore 实例。
+// 若在已有实例存活时又被 `new ThreadStore()`，说明两个状态源在并行维护
+// 同一批 thread（例如双实例锁失效 / 热重载重复挂载），立即抛错暴露。
+let _storeConstructed = false;
+
 export function getThreadStore(): ThreadStore {
   if (!_store) {
     _store = new ThreadStore();
@@ -1239,4 +1253,5 @@ export function getThreadStore(): ThreadStore {
 /** Reset the singleton (for tests). */
 export function resetThreadStore(): void {
   _store = null;
+  _storeConstructed = false;
 }

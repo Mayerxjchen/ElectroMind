@@ -52,15 +52,25 @@ export class AgentBridge implements AgentTransport {
   private child: ChildProcessWithoutNullStreams | undefined;
   private stdoutBuffer = "";
   private stopping = false;
+  private exitedResolve: (() => void) | undefined;
+  private exited = new Promise<void>((resolve) => {
+    this.exitedResolve = resolve;
+  });
 
   constructor(private readonly options: AgentBridgeOptions) { }
 
   start(): void {
     this.stopping = false;
+    this.exited = new Promise<void>((resolve) => {
+      this.exitedResolve = resolve;
+    });
+    // P4.1: 独立进程组（detached:true + 组内启动），关闭时按整棵树终止，
+    // 避免 wire 进程派生的子进程成为孤立进程。
     const child = spawn(this.options.command, this.options.args, {
       cwd: this.options.cwd,
       env: { ...process.env, ...this.options.env, PATH: enrichedPath() },
       stdio: ["pipe", "pipe", "pipe"],
+      detached: process.platform !== "win32",
     });
     this.child = child;
 
@@ -80,6 +90,8 @@ export class AgentBridge implements AgentTransport {
     });
 
     child.on("exit", (code) => {
+      // 无论是意外退出还是主动 stop，都记下"已退出"供重连守卫等待。
+      this.exitedResolve?.();
       if (this.stopping || this.child !== child) {
         return;
       }
@@ -104,8 +116,52 @@ export class AgentBridge implements AgentTransport {
     const child = this.child;
     this.child = undefined;
     this.stdoutBuffer = "";
-    child.stdin.end();
-    child.kill();
+    try {
+      child.stdin.end();
+    } catch {
+      // stdin 已关闭
+    }
+    // P4.1: 先 SIGTERM 整个进程组，等 1.5s 未退出再 SIGKILL。
+    const pid = child.pid;
+    if (pid && process.platform !== "win32") {
+      try {
+        process.kill(-pid, "SIGTERM");
+      } catch {
+        try {
+          child.kill("SIGTERM");
+        } catch {
+          /* already gone */
+        }
+      }
+      const timer = setTimeout(() => {
+        try {
+          process.kill(-pid, "SIGKILL");
+        } catch {
+          try {
+            child.kill("SIGKILL");
+          } catch {
+            /* already gone */
+          }
+        }
+      }, 1500);
+      timer.unref?.();
+    } else {
+      try {
+        child.kill();
+      } catch {
+        /* already gone */
+      }
+    }
+  }
+
+  /** P4.2: 该进程是否仍在运行（重连前确认旧 Agent 已退出）。 */
+  isRunning(): boolean {
+    return this.child !== undefined && this.child.exitCode === null && this.child.signalCode === null;
+  }
+
+  /** P4.2: 等待该进程彻底退出（stop 后 resolve）。 */
+  whenExited(): Promise<void> {
+    return this.exited;
   }
 
   private onStdoutChunk(chunk: string): void {

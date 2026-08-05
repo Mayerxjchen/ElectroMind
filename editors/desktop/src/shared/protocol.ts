@@ -361,6 +361,8 @@ export type DesktopApi = {
     getThreadMeta(threadId: string): Promise<ThreadMeta>;
     getSettings(): Promise<AppSettings>;
     openDocumentation(): Promise<void>;
+    /** P4.4: 一键打开日志目录。 */
+    openLogDir(): Promise<{ ok: boolean; error?: string }>;
     listArtifacts(): Promise<ArtifactSummary[]>;
     openArtifact(path: string): Promise<void>;
     readArtifact(path: string): Promise<ArtifactPreview>;

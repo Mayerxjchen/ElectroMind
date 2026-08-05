@@ -12,10 +12,13 @@ import {
 import * as crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import {
+  closeSync,
   existsSync,
   mkdirSync,
-  readdirSync,
+  openSync,
   readFileSync,
+  readSync,
+  readdirSync,
   statSync,
 } from "node:fs";
 import * as fs from "node:fs";
@@ -58,6 +61,7 @@ import {
   saveProviderSetup,
 } from "./setup";
 import { atomicWriteJsonFile } from "./atomicfile";
+import { LOG_DIR, log } from "./log";
 
 type ThreadListEntry = {
   id: string;
@@ -668,6 +672,37 @@ function readArtifactPreview(filePath: string): ArtifactPreview {
   return readConstrainedPreview(target, name);
 }
 
+/** P4.7: 用 fd 定位读一个文本文件的【头 + 尾】，绝不加载整份。
+ *
+ * 返回 { head, tail, truncated }：
+ * - 文件 ≤ limit：head 即全文，tail 空，truncated=false。
+ * - 文件 > limit：head=开头 limit 字节，tail=结尾 limit 字节，
+ *   truncated=true。中间内容不读。
+ */
+function readHeadTailText(
+  target: string,
+  size: number,
+  limit: number,
+): { head: string; tail: string; truncated: boolean } {
+  if (size <= limit) {
+    return { head: readFileSync(target, "utf8"), tail: "", truncated: false };
+  }
+  const fd = openSync(target, "r");
+  try {
+    const headBuf = Buffer.alloc(limit);
+    readSync(fd, headBuf, 0, limit, 0);
+    const tailBuf = Buffer.alloc(limit);
+    readSync(fd, tailBuf, 0, limit, size - limit);
+    return {
+      head: headBuf.toString("utf8"),
+      tail: tailBuf.toString("utf8"),
+      truncated: true,
+    };
+  } finally {
+    closeSync(fd);
+  }
+}
+
 /** 读取一个【已通过 containment 授权】的规范路径供内联预览。
  *  与 artifact 路径解析解耦：preview-file 传入 resolveProjectPath 的结果，
  *  read-artifact 传入 resolveArtifactPath 的结果，二者共用此读取逻辑。 */
@@ -691,13 +726,14 @@ function readConstrainedPreview(target: string, _name: string): ArtifactPreview 
   }
 
   const known = ext in ARTIFACT_LANGUAGES || ARTIFACT_TEXT_EXT.has(ext);
-  const buffer = readFileSync(target, { flag: "r" });
-  const slice = buffer.subarray(0, ARTIFACT_TEXT_LIMIT);
-  if (!known && slice.includes(0)) {
+  // P4.7: 只读头 + 尾（positional read），绝不把数 GB 文件一次性读进内存。
+  // 大文件用 fd 定位读：头部 <limit> 字节 + 尾部 <limit> 字节，中间省略。
+  const { head, tail, truncated } = readHeadTailText(target, stat.size, ARTIFACT_TEXT_LIMIT);
+  if (!known && head.includes("\x00")) {
     return { ...base, kind: "binary", reason: "二进制文件，无法内联预览" };
   }
-  const text = slice.toString("utf8");
-  const truncated = stat.size > ARTIFACT_TEXT_LIMIT;
+  // 文本合并：小文件直接读全文（head 已含全文）；大文件给 head + 分隔 + tail。
+  const text = !truncated ? head : `${head}\n… [文件较大，仅显示首尾各 ${ARTIFACT_TEXT_LIMIT} 字节] …\n${tail}`;
   if (ext === ".md" || ext === ".markdown") {
     return { ...base, kind: "markdown", text, truncated };
   }
@@ -967,6 +1003,8 @@ function reportBridgeFailure(message: string, where: string): void {
 function handleWireLine(line: string): void {
   const event = parseWireLine(line);
   if (!event) {
+    // P4.4: 无法解析的 wire 协议行落 wire.log（排查协议漂移）。
+    log.wire(`invalid line: ${line.slice(0, 500)}`);
     postDesktopEvent({ type: "log", text: `[wire] skip invalid line: ${line}` });
     return;
   }
@@ -1036,20 +1074,32 @@ function handleWireLine(line: string): void {
   postWireEvent(event);
 }
 
+// P4.2: 记录"正在退出"的旧 Agent；ensureBridge 在它彻底退出前不启动新进程，
+// 防止两个 wire Agent 同时跑（双写同 thread 会互相覆盖状态）。
+let stoppingBridge: AgentBridge | undefined;
+let stoppingBridgeExited: Promise<void> = Promise.resolve();
+
 function disposeBridge(): void {
-  bridge?.stop();
+  if (bridge) {
+    stoppingBridge = bridge as AgentBridge;
+    stoppingBridgeExited = stoppingBridge.whenExited();
+    bridge.stop();
+  }
   bridge = undefined;
   bridgeStatus = "idle";
   recentStderr = "";
   sandboxStatus = { thread_id: "", backend: "", alive: false, workdir: "" };
   reconnectScheduler.cancel();
+  log.desktop("bridge disposed");
 }
 
 // ── D3: wire 自动重连（指数退避，有上限；不无限循环） ────────────
 let reconnectedOnce = false; // 本次连接是否经历过断线（首个事件时触发重建）
 
 const reconnectScheduler = createReconnectScheduler({
-  onReconnect: () => {
+  onReconnect: async () => {
+    // P4.2: 重连前等旧 Agent 进程树彻底退出，防止两个 wire Agent 同时跑。
+    await settleStoppingBridge();
     // bridge 已被 reportBridgeFailure 清空；重新 ensureBridge（wire 新进程
     // 启动时自行从磁盘恢复线程状态）。
     const revived = ensureBridge();
@@ -1058,6 +1108,17 @@ const reconnectScheduler = createReconnectScheduler({
     }
   },
 });
+
+/** P4.2: 等正在退出的旧 Agent 进程彻底结束（带超时兜底）。 */
+async function settleStoppingBridge(timeoutMs = 4000): Promise<void> {
+  if (!stoppingBridge) {
+    return;
+  }
+  stoppingBridge = undefined;
+  // stop() 已 SIGTERM 整组 + 1.5s 后 SIGKILL；这里只需等到 exit 事件。
+  const timer = new Promise<void>((resolve) => setTimeout(resolve, timeoutMs));
+  await Promise.race([stoppingBridgeExited, timer]);
+}
 
 function onWireDisconnected(): void {
   reconnectedOnce = true;
@@ -1109,6 +1170,7 @@ function ensureBridge(): AgentTransport | undefined {
   bridge = nextBridge;
   bridgeStatus = "ready";
   notifyRuntimeState();
+  log.desktop(`bridge ${transport.mode} starting (${transport.mode === "wire" ? wireInvocationArg() : transport.serverUrl})`);
   nextBridge.start();
   nextBridge.send({
     cmd: "client_features",
@@ -1116,6 +1178,14 @@ function ensureBridge(): AgentTransport | undefined {
   });
   nextBridge.send({ cmd: "commands" });
   return nextBridge;
+}
+
+function wireInvocationArg(): string {
+  const inv = resolveElectromindWireInvocation(electromindProjectRoot(), {
+    yolo: yoloMode,
+    isPackaged: app.isPackaged,
+  });
+  return `${inv.command} ${inv.args.join(" ")}`;
 }
 
 function buildWireBridge(): AgentBridge {
@@ -1138,6 +1208,12 @@ function bridgeCallbacks(mode: "wire" | "http") {
     onLine: handleWireLine,
     onStderr: (text: string) => {
       recentStderr = (recentStderr + text).slice(-4000);
+      // P4.4: agent stderr 落 agent.log。
+      for (const line of text.split("\n")) {
+        if (line.trim()) {
+          log.agent(line);
+        }
+      }
       postDesktopEvent({ type: "log", text });
     },
     onExit: (code: number | null) => {
@@ -1149,10 +1225,12 @@ function bridgeCallbacks(mode: "wire" | "http") {
             : `子进程已退出，code=${code}。`;
       const extra = recentStderr.trim();
       reportBridgeFailure(extra ? `${base}\n${extra}` : base, "bridge");
+      log.desktop(`bridge ${mode} exited: ${base}${extra ? " | " + extra : ""}`);
       onWireDisconnected();
     },
     onError: (error: Error) => {
       reportBridgeFailure(error.message, mode === "http" ? "bridge" : "spawn");
+      log.desktop(`bridge ${mode} error: ${error.message}`);
       onWireDisconnected();
     },
   };
@@ -1329,12 +1407,14 @@ function createWindow(): BrowserWindow {
     );
   });
   window.webContents.on("render-process-gone", (_event, details) => {
-    void dialog.showErrorBox(
-      "electromind Desktop",
-      `界面进程异常退出: ${details.reason}`,
-    );
+    // P4.3: Renderer 崩溃 → 自动 reload，并从 Agent Snapshot 恢复当前
+    // Thread（renderer 启动时 requestHistoryReplay + 主进程 currentThreadId
+    // 驱动 wire 重建）。带重试上限，避免崩溃循环时无限 reload。
+    void handleRendererCrash(window, details.reason);
   });
   window.webContents.once("did-finish-load", () => {
+    // P4.3: 加载成功 → 重置崩溃计数。
+    rendererCrashStreak = 0;
     notifyRuntimeState();
   });
   return window;
@@ -1346,6 +1426,42 @@ function hideAppDuringQuit(): void {
   }
   if (process.platform === "darwin") {
     app.dock?.hide();
+  }
+}
+
+// P4.3: Renderer 崩溃自动 reload。连续崩溃超过上限 → 弹出错误框并停止
+// 自动重载（避免进程崩溃循环空转）。
+let rendererCrashStreak = 0;
+const RENDERER_CRASH_RELOAD_LIMIT = 3;
+
+async function handleRendererCrash(
+  window: BrowserWindow,
+  reason: string,
+): Promise<void> {
+  rendererCrashStreak += 1;
+  if (rendererCrashStreak > RENDERER_CRASH_RELOAD_LIMIT) {
+    rendererCrashStreak = 0;
+    void dialog.showErrorBox(
+      "electromind Desktop",
+      `界面进程连续崩溃 ${RENDERER_CRASH_RELOAD_LIMIT} 次，已停止自动重载。\n` +
+        `最近一次原因: ${reason}\n请查看 desktop.log 定位问题。`,
+    );
+    return;
+  }
+  console.log(`[main] P4.3: renderer crashed (${reason}), reloading (${rendererCrashStreak}/${RENDERER_CRASH_RELOAD_LIMIT})`);
+  try {
+    window.webContents.reload();
+  } catch {
+    window.reload();
+  }
+  // 重载成功 → 从 Agent Snapshot 恢复当前 Thread（renderer 启动时
+  // requestHistoryReplay；currentThreadId 保留在 main 进程）。
+  if (currentThreadId) {
+    bridge?.send({
+      cmd: "thread/snapshot",
+      thread_id: currentThreadId,
+      after_seq: -1,
+    });
   }
 }
 
@@ -1401,6 +1517,16 @@ app.on("will-quit", () => {
 
 ipcMain.handle("desktop:get-app-info", async () => appInfo());
 ipcMain.handle("desktop:get-runtime-state", async () => runtimeState());
+/** P4.4: 一键打开日志目录。 */
+ipcMain.handle("desktop:open-log-dir", async () => {
+  try {
+    mkdirSync(LOG_DIR, { recursive: true });
+    const err = await shell.openPath(LOG_DIR);
+    return { ok: !err, error: err || undefined };
+  } catch (error) {
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
+  }
+});
 /** YOLO 改变审批 hook 装配，持久化后重启 wire 生效。 */
 ipcMain.handle("desktop:set-yolo-mode", async (_event, enabled: boolean) => {
   const next = Boolean(enabled);
@@ -1411,6 +1537,7 @@ ipcMain.handle("desktop:set-yolo-mode", async (_event, enabled: boolean) => {
   saveYoloMode(next);
   const resumeId = currentThreadId;
   disposeBridge();
+  await settleStoppingBridge(); // P4.2: 旧 Agent 退出后再起新进程
   ensureBridge();
   if (resumeId) {
     bridge?.send({

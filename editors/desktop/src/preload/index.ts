@@ -69,6 +69,10 @@ const desktopApi: DesktopApi = {
   openArtifact(path: string) {
     return ipcRenderer.invoke("desktop:open-artifact", path);
   },
+  /** P4.4: 一键打开日志目录。 */
+  openLogDir() {
+    return ipcRenderer.invoke("desktop:open-log-dir");
+  },
   readArtifact(path: string) {
     return ipcRenderer.invoke("desktop:read-artifact", path);
   },
