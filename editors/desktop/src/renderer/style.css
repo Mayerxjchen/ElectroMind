@@ -4738,6 +4738,106 @@ html:has(.desktop-shell.macos) .sonner-toaster {
 .composer-error-dismiss:hover {
   background: var(--danger)22;
 }
+
+/* D3.4: attachment menu (first version) — keyboard-accessible. */
+.composer-attach {
+  position: relative;
+  display: inline-flex;
+}
+.composer-attach-btn {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+}
+.composer-attach-btn:hover {
+  background: var(--input-bg, color-mix(in srgb, var(--foreground) 4%, transparent));
+}
+.composer-attach-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.composer-attach-menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  z-index: 40;
+  min-width: 180px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.18);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.composer-attach-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  font-size: 12px;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+.composer-attach-item:hover:not(:disabled) {
+  background: var(--input-bg, color-mix(in srgb, var(--foreground) 4%, transparent));
+}
+.composer-attach-item:focus-visible {
+  outline: 1px solid var(--primary);
+}
+.composer-attach-item.is-disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.composer-attach-reason {
+  font-size: 10px;
+  opacity: 0.7;
+  white-space: nowrap;
+}
+
+/* D3.4: disconnected → composer disabled + reconnect entry. */
+.composer-disconnected {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--danger)1a;
+  border: 1px solid var(--danger)44;
+  color: var(--danger);
+}
+.composer-reconnect-btn {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 3px 10px;
+  border: 1px solid var(--danger)66;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.composer-reconnect-btn:hover {
+  background: var(--danger)22;
+}
 .composer-input-row {
   display: flex;
   gap: 6px;
@@ -6627,4 +6727,21 @@ pre:hover .copy-btn,
         animation: none !important;
         transition: none !important;
     }
+}
+
+/* ── D3.4-2: React Composer mount (progressive activation) ─────────────
+ * The vanilla composer stays live until the React root mounts and the
+ * dock signals readiness — no window without a composer. */
+.composer-react {
+    display: none;
+    width: min(920px, 100%);
+    pointer-events: auto;
+}
+
+.composer-dock[data-composer-react="ready"] .composer-react {
+    display: block;
+}
+
+.composer-dock[data-composer-react="ready"] .composer-floating {
+    display: none;
 }

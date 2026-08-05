@@ -1058,8 +1058,12 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
             </div>
           </div>
           <div class="chat-log" data-chat-log></div>
-          <div class="composer-dock">
+          <div class="composer-dock" data-composer-dock>
             <div class="mention-popup" data-mention-popup hidden></div>
+            <!-- D3.4-2: the React Composer mounts here.  It stays hidden
+                 until entry.tsx signals readiness (data-composer-react);
+                 the vanilla composer remains the live one until then. -->
+            <div class="composer-react" data-composer-react></div>
             <div class="composer composer-floating">
               <textarea id="prompt" placeholder="给 electromind 下达任务，输入 @ 引用文件"></textarea>
               <div class="composer-actions">
@@ -3552,6 +3556,12 @@ async function start(): Promise<void> {
 
   skillsButton.addEventListener("click", () => {
     toggleSkillsPanel(sessionList.hidden === false);
+  });
+
+  // D3.4-2: bridge for the React Composer's skills button (vanilla owns
+  // the skills panel; React never touches its DOM).
+  window.addEventListener("electromind:skills-open", () => {
+    skillsButton.click();
   });
 
   yoloButton.addEventListener("click", () => {
