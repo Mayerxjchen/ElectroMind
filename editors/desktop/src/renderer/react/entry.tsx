@@ -13,8 +13,9 @@ import { createRoot } from "react-dom/client";
 import { ThreadList } from "./components/ThreadList";
 import { Composer } from "./components/Composer";
 import { InspectorShell } from "./components/InspectorShell";
-import { getThreadStore } from "../store/ThreadStore";
 import { SessionManager } from "../store/SessionManager";
+import type { ThreadStore } from "../store/ThreadStore";
+import { sharedThreadStore } from "./useStore";
 
 let _sessionManager: SessionManager | null = null;
 
@@ -29,8 +30,76 @@ function ensureContainer(id: string, parentId = "app"): HTMLElement {
   return el;
 }
 
+/** Render the Composer into a given container with the wire-bridge props. */
+function mountComposerAt(el: HTMLElement, store: ThreadStore): void {
+  createRoot(el).render(
+    <Composer
+      onSend={(text) => {
+        window.dispatchEvent(
+          new CustomEvent("electromind:user-input", { detail: { text } }),
+        );
+      }}
+      onStop={() => {
+        window.dispatchEvent(new CustomEvent("electromind:stop"));
+      }}
+      onModeChange={(mode) => {
+        const id = store.getActiveThreadId();
+        if (id) store.updateThread(id, { sessionMode: mode as never });
+      }}
+      onModelChange={(modelId) => {
+        const id = store.getActiveThreadId();
+        if (id) {
+          store.updateThread(id, {
+            model:
+              modelId === "auto"
+                ? { kind: "auto" }
+                : { kind: "named", modelId },
+          } as never);
+        }
+      }}
+      onAutonomyChange={(level) => {
+        const id = store.getActiveThreadId();
+        if (id) store.updateThread(id, { autonomy: level as never });
+      }}
+    />,
+  );
+}
+
+/** D3.4: mount the Composer into the dock's [data-composer-react] container
+ *  and, only then, advertise readiness.
+ *
+ *  The vanilla shell creates the dock AFTER an await in start(), so this
+ *  retries briefly.  A premature "ready" + an off-layout fallback mount would
+ *  hide the vanilla composer while the React composer sits elsewhere — the
+ *  input box disappears (reported bug).  Falls back to a standalone root only
+ *  on non-desktop hosts where the dock never exists. */
+function mountComposerIntoDock(store: ThreadStore, attempt = 0): void {
+  const dockContainer = document.querySelector<HTMLElement>("[data-composer-react]");
+  if (dockContainer) {
+    mountComposerAt(dockContainer, store);
+    const dock = document.querySelector<HTMLElement>("[data-composer-dock]");
+    if (dock) {
+      // rAF: let React commit before the shell swaps vanilla → React.
+      requestAnimationFrame(() => {
+        dock.setAttribute("data-composer-react", "ready");
+      });
+    }
+    return;
+  }
+  if (attempt < 25) {
+    // Dock not rendered yet (renderShell runs after the first await in
+    // start()).  Retry ~80ms for up to ~2s before giving up.
+    window.setTimeout(() => mountComposerIntoDock(store, attempt + 1), 80);
+    return;
+  }
+  const fallback = ensureContainer("react-composer-root");
+  if (fallback) mountComposerAt(fallback, store);
+}
+
 function mountReactShell(): void {
-  const store = getThreadStore();
+  // D3.4-2: bind to the VANILLA shell's ThreadStore singleton (the two
+  // bundles each inline their own copy — sharing is mandatory).
+  const store = sharedThreadStore();
   const sm = _sessionManager;
 
   // ── Left sidebar: Thread list ──────────────────────────────────
@@ -47,57 +116,11 @@ function mountReactShell(): void {
     );
   }
 
-  // ── Bottom: Composer ───────────────────────────────────────────
-  // D3.4: mount into the dock's [data-composer-react] container when the
-  // main agent's shell has created it; otherwise fall back to a standalone
-  // root (pre-activation / non-desktop hosts).
-  const composerEl =
-    document.querySelector<HTMLElement>("[data-composer-react]") ??
-    ensureContainer("react-composer-root");
-  if (composerEl) {
-    createRoot(composerEl).render(
-      <Composer
-        onSend={(text) => {
-          window.dispatchEvent(
-            new CustomEvent("electromind:user-input", { detail: { text } }),
-          );
-        }}
-        onStop={() => {
-          window.dispatchEvent(new CustomEvent("electromind:stop"));
-        }}
-        onModeChange={(mode) => {
-          const id = store.getActiveThreadId();
-          if (id) store.updateThread(id, { sessionMode: mode as never });
-        }}
-        onModelChange={(modelId) => {
-          const id = store.getActiveThreadId();
-          if (id) {
-            store.updateThread(id, {
-              model:
-                modelId === "auto"
-                  ? { kind: "auto" }
-                  : { kind: "named", modelId },
-            } as never);
-          }
-        }}
-        onAutonomyChange={(level) => {
-          const id = store.getActiveThreadId();
-          if (id) store.updateThread(id, { autonomy: level as never });
-        }}
-      />,
-    );
-  }
-
-  // ── D3.4 activation signal (3-line contract from the main agent) ──
-  // The shell swaps the vanilla composer → React composer when the dock
-  // carries `data-composer-react="ready"`.  rAF lets React commit the root
-  // before we advertise readiness.
-  const dock = document.querySelector<HTMLElement>("[data-composer-dock]");
-  if (dock) {
-    requestAnimationFrame(() => {
-      dock.setAttribute("data-composer-react", "ready");
-    });
-  }
+  // ── Bottom: Composer (D3.4) ────────────────────────────────────
+  // Mounts into the dock's [data-composer-react] once it exists and only
+  // then signals ready (see mountComposerIntoDock).  Retries so the input
+  // box never disappears behind a premature vanilla→React swap.
+  mountComposerIntoDock(store);
 
   // ── Right sidebar: Inspector ───────────────────────────────────
   const rightEl = ensureContainer("react-inspector-root");
