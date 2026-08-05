@@ -36,6 +36,7 @@ import {
   RefreshCw,
   Server,
   Settings,
+  Sparkles,
   Square,
   Terminal,
   Trash2,
@@ -84,6 +85,7 @@ type DesktopIconName =
   | "refresh-cw"
   | "server"
   | "settings"
+  | "sparkles"
   | "square"
   | "terminal"
   | "trash-2"
@@ -129,6 +131,7 @@ const iconRegistry: Record<DesktopIconName, IconNode> = {
   "refresh-cw": RefreshCw,
   server: Server,
   settings: Settings,
+  sparkles: Sparkles,
   square: Square,
   terminal: Terminal,
   "trash-2": Trash2,

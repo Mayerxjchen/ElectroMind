@@ -159,6 +159,13 @@ export const Composer: React.FC<Props> = ({
     }
   }, []);
 
+  // D3-polish: the timeline's welcome empty state asks for focus.
+  useEffect(() => {
+    const focus = () => inputRef.current?.focus();
+    window.addEventListener("electromind:focus-composer", focus);
+    return () => window.removeEventListener("electromind:focus-composer", focus);
+  }, []);
+
   // Close the attachment menu on outside click / Escape.
   useEffect(() => {
     if (!attachOpen) return;

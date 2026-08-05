@@ -111,6 +111,17 @@ globalThis.ResizeObserver = class {
   unobserve() {}
 };
 globalThis.requestAnimationFrame = (fn) => fn();
+globalThis.window = {
+  listeners: {},
+  addEventListener(name, fn) {
+    this.listeners[name] = fn;
+  },
+  removeEventListener() {},
+  dispatchEvent(event) {
+    this.listeners[event.type]?.();
+  },
+};
+
 Object.defineProperty(globalThis, "navigator", {
   value: { clipboard: { writeText: async () => {} } },
   configurable: true,
@@ -386,4 +397,36 @@ test("status fingerprint triggers refresh on in-place action updates", () => {
   // After refresh the visible block reflects the terminal state.
   const block = mountedBlocks(container)[0];
   assert.match(collectText(block.children[0]), /Worked for 4s · 1 action/);
+});
+
+
+test("welcome empty state: rendered on empty timeline, focuses composer on click", () => {
+  const container = new FakeElement();
+  const renderer = new MessageRenderer(container, () => {});
+  let focused = 0;
+  globalThis.window.listeners["electromind:focus-composer"] = () => focused++;
+
+  renderer.syncTimeline([]);
+  const empty = container.children.find((c) => c.className === "timeline-empty");
+  assert.ok(empty, "empty state rendered");
+  assert.match(collectText(empty), /还没有任务/);
+  assert.match(collectText(empty), /按 Enter 发送/);
+
+  // Click → focuses the composer
+  const header = empty.children[0];
+  empty.fire("click");
+  assert.equal(focused, 1, "focus-composer dispatched on click");
+
+  // Content arrives → empty state removed
+  renderer.syncTimeline([groupItem()]);
+  assert.equal(container.children.some((c) => c.className === "timeline-empty"), false);
+});
+
+test("clear() removes the welcome empty state", () => {
+  const container = new FakeElement();
+  const renderer = new MessageRenderer(container, () => {});
+  renderer.syncTimeline([]);
+  assert.ok(container.children.some((c) => c.className === "timeline-empty"));
+  renderer.clear();
+  assert.equal(container.children.some((c) => c.className === "timeline-empty"), false);
 });

@@ -34,6 +34,8 @@ export class MessageRenderer {
   /** Projected task timeline (single source of truth). */
   private timeline: TimelineItem[] = [];
   private lastSyncKey = "";
+  /** Welcome empty state element (never a blank timeline pane). */
+  private emptyStateEl: HTMLElement | null = null;
   /** User expansion overrides for activity groups (default by status). */
   private groupOverrides = new Map<string, boolean>();
   private virtualList: VirtualList;
@@ -75,6 +77,12 @@ export class MessageRenderer {
     this.hideSkeleton();
     const prevCount = this.timeline.length;
     this.timeline = timeline;
+    if (this.timeline.length === 0) {
+      // Welcome empty state — never a blank pane (click focuses the composer).
+      this.renderEmptyState();
+      return;
+    }
+    this.removeEmptyState();
     const key = this.timelineKey(timeline);
     const changed = key !== this.lastSyncKey;
     this.lastSyncKey = key;
@@ -87,6 +95,39 @@ export class MessageRenderer {
     if (!this.userScrolledUp) {
       this.virtualList.scrollToBottom();
     }
+  }
+
+  /** Welcome empty state — helpful message, never a blank pane.  Clicking
+   *  it focuses the composer (the React composer listens for
+   *  electromind:focus-composer). */
+  private renderEmptyState(): void {
+    if (this.emptyStateEl) return;
+    const el = document.createElement("div");
+    el.className = "timeline-empty";
+    const icon = document.createElement("div");
+    icon.className = "timeline-empty-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = renderIcon("sparkles");
+    const title = document.createElement("div");
+    title.className = "timeline-empty-title";
+    title.textContent = "还没有任务";
+    const copy = document.createElement("div");
+    copy.className = "timeline-empty-copy";
+    copy.textContent = "描述要执行的分析或实验，按 Enter 发送";
+    el.appendChild(icon);
+    el.appendChild(title);
+    el.appendChild(copy);
+    el.addEventListener("click", () => {
+      window.dispatchEvent(new CustomEvent("electromind:focus-composer"));
+    });
+    this.container.appendChild(el);
+    this.emptyStateEl = el;
+  }
+
+  private removeEmptyState(): void {
+    if (!this.emptyStateEl) return;
+    this.emptyStateEl.remove();
+    this.emptyStateEl = null;
   }
 
   /** Fingerprint of the timeline — detects in-place mutations that need
@@ -497,6 +538,7 @@ export class MessageRenderer {
     this.virtualList.setCount(0);
     this.groupOverrides.clear();
     this.lastSyncKey = "";
+    this.removeEmptyState();
     this.skeletonVisible = false;
   }
 
