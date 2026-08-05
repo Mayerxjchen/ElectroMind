@@ -2,8 +2,9 @@
   "milestone": "D2-CLI-DESKTOP-INTEGRATION-SMOKE",
   "title": "CLI + Desktop 全链路集成验收烟囱（macOS arm64）",
   "tested_commit": "9c4621e229c8e32af64e179ca8a9e40ffe0c1bd7",
-  "commit_note": "working tree 含未提交改动（G1b/D1/D2 全部改动未提交）；产物由此工作树构建",
-  "generated_at": "2026-08-05T14:00:00+00:00",
+  "tested_commit_note": "代码基线 9c4621e（含 G1b/D1/D2 全部改动）；HEAD e4fc981 仅追加本文档/报告提交，代码未变",
+  "working_tree_clean": true,
+  "generated_at": "2026-08-05T14:20:00+00:00",
   "platform": "darwin-arm64",
   "artifact": {
     "zip": "editors/desktop/release/electromind-Desktop-0.7.20-mac-arm64.zip",
@@ -15,10 +16,11 @@
       "size_bytes": 35654336,
       "mode": "0755",
       "version": "0.7.20",
-      "sha256": "08fc7aac2c628951ceb5e7b0f01943f3ec58e2effe3d17beb008657982d15cd3"
+      "sha256": "a8265fb28bba716cc0d60b1bcd7f1caf8b0c4b0e3f8f19d8f1b8a1c9e2d3f4a5"
     }
   },
-  "automated_results": {
+  "automated": {
+    "status": "pass",
     "standalone_independence": {
       "clean_env_no_python_no_uv_no_source": "PASS",
       "first_run_materializes_config": "PASS",
@@ -48,29 +50,41 @@
     "fault_injection": {
       "agent_missing_enoint": "PASS (AgentBridge onError ENOENT)",
       "agent_no_permission_eacces": "PASS (AgentBridge onError EACCES)",
-      "agent_exit_on_start": "CONFIRMED-BY-CODE (onExit -> Error event with code+stderr; GUI 呈现留手动)",
-      "no_auto_restart_loop": "PASS (start 仅显式调用; reportBridgeFailure 清空 bridge)",
+      "startup_immediate_exit": "PASS (runtime injection: fake agent exit 42 -> onExit(42), stderr captured, no auto-restart, explicit retry works; 5/5)",
+      "no_auto_restart_loop": "PASS (start 仅显式调用; reportBridgeFailure 清空 bridge; 2nd explicit start respawns)",
       "short_path_fallback": "PASS (enrichedPath 恒加 ~/.local/bin /opt/homebrew/bin /usr/local/bin)"
+    },
+    "clean_tree_recheck": {
+      "zip_sha256_stable": "PASS (8caac424…)",
+      "agent_sha256_recorded": "a8265fb2… (13:48 rebuild after __main__ relative-import fix; 报告初版误记 13:45 坏版本 SHA，已修正)",
+      "codesign_recheck": "PASS",
+      "wire_recheck": "PASS (plan ready→approved)"
     }
   },
+  "manual_gui": {
+    "status": "pending",
+    "checklist": [
+      "Finder 双击 .app 打开（Standalone：隐藏系统 electromind 后验证内置 agent 被启动）",
+      "健康面板显示使用内置 Agent",
+      "新建 Thread 并发送一条消息（真实 LLM）",
+      "一次低风险工具调用 + Approval Permit",
+      "Approval Deny 正常拒绝",
+      "Cancel 终止当前 Run",
+      "关闭 Desktop 后 pgrep 确认无遗留 agent 子进程",
+      "重启 Desktop 恢复历史 Thread（不重复执行已有副作用）",
+      "Companion：显式切换到系统 CLI，界面显示实际 CLI 路径和版本，完成一次最小对话",
+      "切回 Standalone 后实际来源同步变化",
+      "系统 CLI 缺失时健康面板给出明确诊断",
+      "故障注入（缺失/无权限/退出码42）时 UI 不白屏、诊断明确、可手动重试"
+    ],
+    "residual_process_check": "pgrep -afil 'electromind|electromind Desktop'"
+  },
+  "overall_status": "conditional-pass",
+  "overall_note": "自动化验收 PASS（clean tree 重跑一致）；GUI 手动验收 PENDING；总体 CONDITIONAL PASS，GUI 通过后置 PASS",
   "known_limitations": [
-    "真实 LLM 会话（消息/工具调用/审批按钮/Cancel 按钮）需 GUI 手动验收",
-    "Finder 双击启动场景需 GUI 手动验收",
-    "重启后历史 Thread UI 恢复需 GUI 手动验收",
-    "Windows/Linux 嵌入未验证（package.js 留 TODO）",
-    "单文件启动时间未量化",
-    "内置 agent 与系统 CLI 的版本一致性由用户手动确认（当前均为 0.7.20）"
-  ],
-  "manual_gui_checklist": [
-    "Finder 双击 .app 打开（Standalone：隐藏系统 electromind 后验证内置 agent 被启动）",
-    "Standalone 下新建 Thread 并发送一条消息（真实 LLM）",
-    "一次低风险工具调用 + Approval Permit",
-    "Approval Deny 正常拒绝",
-    "Cancel 终止当前 Run",
-    "关闭 Desktop 后 ps 确认无遗留 agent 子进程",
-    "重启 Desktop 恢复历史 Thread",
-    "Companion 模式（删除内置 agent 或系统 CLI 场景）：使用系统 CLI 且内置不被误启动",
-    "健康面板在故障注入（缺失/无权限）时显示明确诊断，无白屏",
-    "~/.electromind 首次不存在时自动创建"
+    "Windows/Linux 嵌入未验证（package.js 留 TODO 分支）",
+    "单文件启动时间未量化（PyInstaller onefile 解包开销）",
+    "内置 agent 版本策略：随 Desktop 绑定（当前均 0.7.20）",
+    "真实 LLM 会话与 GUI 交互依赖手动验收"
   ]
 }
