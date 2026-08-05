@@ -1291,12 +1291,19 @@ function createWindow(): BrowserWindow {
   const defaultHeight = Math.min(900, workArea.height);
   const minWidth = Math.min(1100, workArea.width);
   const minHeight = Math.min(600, workArea.height);
+  // The window must NEVER exceed the work area — otherwise dragging the
+  // bottom edge down tucks the composer (window bottom) behind the macOS
+  // dock.  max* clamps manual resizes, not just the open size.
+  const maxWidth = workArea.width;
+  const maxHeight = workArea.height;
 
   const window = new BrowserWindow({
     width: defaultWidth,
     height: defaultHeight,
     minWidth,
     minHeight,
+    maxWidth,
+    maxHeight,
     title: "electromind Desktop",
     backgroundColor: "#0f1115",
     icon: appIconPath(),
