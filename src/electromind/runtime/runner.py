@@ -1,10 +1,13 @@
-"""Runner —— 带 inbound 控制面 + tool hooks 的完整 Agent Runner。
+"""Runner —— 带语义检查点控制面 + tool hooks 的完整 Agent Runner。
 
 继承 `BaseRunner`（从而继承 `LoopAdapter` 的循环骨架与持久化），叠加两个
 能力：
 
-- **inbound 控制面**：steer / cancel / permit / deny；在 `emit` 的每个检查点
-  drain 邮箱，在 `_event_source` 里捕获 `RunCancelled`。
+- **语义检查点控制面**（M1 统一）：steer / cancel 走
+  ``harness/checkpoints.InboundCheckpoint``，在循环的六个命名检查点
+  （RUN_STARTED / BEFORE_MODEL / AFTER_MODEL / BEFORE_TOOL_BATCH /
+  AFTER_TOOL_BATCH / BEFORE_FINALIZE）统一处理；permit / deny 仍走
+  ``InboundMailbox``（工具审批是等待语义，与检查点注入无关）。
 - **tool hooks**：`emit_tool_events` 走 `run_tool_with_hooks`（before/after）。
 
 `Runner` 与 thread 同生共死：`await Runner.create(...)` → 多次
@@ -22,6 +25,12 @@ from ..core.events import RunEnd, ToolCallBegin, ToolResult, TurnEnd
 from ..core.message import Message, Messages, ToolCall
 from ..core.provider import ProviderProtocol
 from ..core.tool import FunctionTool, ToolOutput
+from ..harness.checkpoints import (
+    CheckpointDrain,
+    CheckpointKind,
+    InboundCheckpoint,
+)
+from ..harness.inbound import InputDelivery, InputMessage
 from ..sandbox import Sandbox
 from ..skills import SkillRegistry
 from ..skills.runtime import SkillRuntime
@@ -30,7 +39,6 @@ from .helper import append_message
 from .hooks import PostToolHookContext, ToolHookContext, ToolHooks
 from .inbound import (
     CancelRun,
-    CheckpointPolicy,
     DenyTool,
     InboundMailbox,
     PermitTool,
@@ -59,7 +67,7 @@ class Runner(BaseRunner):
         skills: SkillRegistry,
         conversation_id: str,
         inbound: InboundMailbox | None = None,
-        checkpoint_policy: CheckpointPolicy | None = None,
+        checkpoint_policy: object | None = None,  # 保留兼容参数（已废弃语义）
         tool_hooks: ToolHooks | None = None,
         skill_runtime: SkillRuntime | None = None,
     ):
@@ -73,15 +81,24 @@ class Runner(BaseRunner):
             skill_runtime=skill_runtime,
         )
         self.conversation_id = conversation_id
+        # M1: steer/cancel 走语义检查点；permit/deny 仍走邮箱
+        self.inbound_checkpoint = InboundCheckpoint()
         self.inbound = inbound or InboundMailbox()
-        self.checkpoint_policy = checkpoint_policy or CheckpointPolicy()
         self.tool_hooks = tool_hooks
 
-    def steer(self, text: str) -> None:
-        self.inbound.steer(text)
+    def steer(self, text: str, *, message_id: str = "") -> None:
+        message = InputMessage(
+            message_id=message_id or f"steer-{id(self)}",
+            thread_id=str(getattr(self.thread, "id", "")),
+            target_run_id=None,
+            text=text,
+            delivery=InputDelivery.IMMEDIATE,
+            created_at="",
+        )
+        self.inbound_checkpoint.submit_immediate(message)
 
     def cancel_run(self) -> None:
-        self.inbound.cancel()
+        self.inbound_checkpoint.request_cancel()
 
     def permit_tool(self, tool_call_id: str) -> None:
         self.inbound.permit(tool_call_id)
@@ -125,15 +142,26 @@ class Runner(BaseRunner):
     def _apply_inbound_drain(
         self, outbound_event: object, *, turn_id: int, turn: int
     ) -> None:
-        drain = self.inbound.drain_for_checkpoint(
-            outbound_event, self.checkpoint_policy
-        )
-        if drain is None:
-            return
-        for text in drain.steers:
-            append_message(self.messages, Message.user(text), turn_id=turn_id)
-        if drain.cancelled:
-            raise RunCancelled(turn)
+        # 旧事件类型轮询检查点 —— M1 起废弃：由 checkpoints.InboundCheckpoint
+        # 的六个命名语义检查点取代。此方法仅保留签名以兼容外部调用。
+        del outbound_event, turn_id, turn
+        return
+
+    async def checkpoint(
+        self,
+        kind: CheckpointKind,
+        tool_call_ids: list[str] | None = None,
+    ) -> CheckpointDrain | None:
+        """语义检查点：drain 立即输入与取消请求。
+
+        BEFORE_TOOL_BATCH 时登记批次工具 id（取消时产出合成取消结果所需）。
+        """
+        if kind == CheckpointKind.BEFORE_TOOL_BATCH and tool_call_ids is not None:
+            self.inbound_checkpoint.begin_tool_batch(tool_call_ids)
+        drain = self.inbound_checkpoint.checkpoint(kind)
+        if kind == CheckpointKind.AFTER_TOOL_BATCH:
+            self.inbound_checkpoint.end_tool_batch()
+        return drain
 
     async def emit(
         self,
@@ -142,8 +170,8 @@ class Runner(BaseRunner):
         turn_id: int,
         turn: int,
     ) -> AsyncGenerator:
+        del turn_id, turn
         yield event
-        self._apply_inbound_drain(event, turn_id=turn_id, turn=turn)
 
     async def emit_tool_events(
         self,

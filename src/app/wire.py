@@ -52,7 +52,6 @@ from electromind import ToolCallBegin
 from electromind.adapters.acp import encode_event_line, json_value
 from electromind.core.context_limit import DEFAULT_CONTEXT_LIMIT, resolve_context_limit
 from electromind.core.message import TextChunk, ThinkingChunk, ToolCall, ToolResult
-from electromind.core.turn_result import TurnResult
 from electromind.harness import (
     InputDelivery,  # used in handle_command input/send handler
     InputMessage,  # used in handle_command input/send handler
@@ -75,6 +74,22 @@ from .transport import active_sink
 _harness_manager: ThreadSessionManager = ThreadSessionManager()
 _harness_broker = None  # Lazy-init: protocol_v2.EventBroker()
 _harness_idempotency = None  # Lazy-init: protocol_v2.IdempotencyStore()
+# M1: 唯一 RunEngine —— wire/http 共用同一实例（与 _harness_manager 同源）
+_wire_engine = None  # Lazy-init: engine.RunEngine(manager=_harness_manager)
+
+
+def _get_engine():
+    """返回共享 RunEngine（M1：唯一 Run 生命周期实现）。
+
+    与 Application Service 单例同源（共用 ``_harness_manager``），
+    CLI/Wire/HTTP 由此共享同一执行内核。
+    """
+    global _wire_engine
+    if _wire_engine is None:
+        from .service import get_application_service
+
+        _wire_engine = get_application_service(manager=_harness_manager).engine
+    return _wire_engine
 
 
 def _get_broker():
@@ -1501,6 +1516,64 @@ def format_exc(exc: BaseException, *, phase: str = "start") -> str:
     return format_fatal_error(exc, phase=phase)
 
 
+def _encode_and_emit_event(thread_id, run_id, event, seq, state) -> None:
+    """M1: 事件统一编码输出（broker seq/event_id + emit_line）。"""
+
+    if thread_id:
+        from electromind.harness.protocol_v2 import EventEnvelope
+
+        line = encode_event_line(event)
+        try:
+            parsed = json.loads(line)
+            params = parsed.get("params", {}) if isinstance(parsed, dict) else {}
+            method = (
+                parsed.get("method", "event") if isinstance(parsed, dict) else "event"
+            )
+        except (json.JSONDecodeError, TypeError):
+            params = {}
+            method = "event"
+        # Item events carry a stable item_id (Gate 1, 六-3)
+        item_id = None
+        if method in ("ToolCallBegin", "ToolResult"):
+            tc = str(params.get("tool_call_id", "") if isinstance(params, dict) else "")
+            if tc:
+                item_id = f"item-{tc}"
+        elif method in ("TextDelta", "ReasoningDelta"):
+            item_ids: dict = state.setdefault("_item_ids", {})
+            cur = item_ids.get(thread_id)
+            if cur is None:
+                item_ids[thread_id] = cur = (
+                    f"item-{thread_id}-{len(item_ids) + 1}-{run_id or 'run'}"
+                )
+            item_id = cur
+        elif method == "RunEnd":
+            state.get("_item_ids", {}).pop(thread_id, None)
+        envelope = EventEnvelope.create(
+            thread_id,
+            str(method),
+            params if isinstance(params, dict) else {},
+            run_id=run_id,
+            item_id=item_id,
+        )
+        tracked = _get_broker().emit(envelope)
+        if isinstance(params, dict):
+            params["thread_id"] = tracked.thread_id
+            params["seq"] = tracked.seq
+            params["event_id"] = tracked.event_id
+            params["protocol_version"] = tracked.protocol_version
+            params["timestamp"] = tracked.timestamp
+            if tracked.run_id:
+                params["run_id"] = tracked.run_id
+            if tracked.item_id:
+                params["item_id"] = tracked.item_id
+        if isinstance(parsed, dict):
+            parsed["params"] = params
+            line = json.dumps(parsed, ensure_ascii=False) + "\n"
+        emit_line(line)
+    else:
+        emit_line(encode_event_line(event))
+
+
 async def run_user_turn(
     runner,
     text: str,
@@ -1620,103 +1693,64 @@ async def run_user_turn(
 
         runner.execute_tool = tracked_execute_tool
     try:
-        async for event in runner.run(text, return_type="event"):
-            from electromind.core.events import RunEnd
+        from electromind.core.events import RunEnd, TurnResult
 
+        engine = _get_engine()
+        engine.register_runner(thread_id, runner)
+
+        def _emit(thread_id_, run_id_, event, seq) -> None:
+            nonlocal stop_reason, last_usage, run_id
             if isinstance(event, RunEnd):
                 stop_reason = getattr(event, "stop_reason", None)
-            # Protocol v2: route every ACP event through EventBroker for
-            # per-thread seq, event_id, and snapshot buffering.
-            if thread_id:
-                from electromind.harness.protocol_v2 import EventEnvelope
-
-                session = _harness_manager.get_session(thread_id)
-                if session is not None:
-                    run_id = session.active_run_id
-                line = encode_event_line(event)
-                try:
-                    parsed = json.loads(line)
-                    params = (
-                        parsed.get("params", {}) if isinstance(parsed, dict) else {}
-                    )
-                    method = (
-                        parsed.get("method", "event")
-                        if isinstance(parsed, dict)
-                        else "event"
-                    )
-                except (json.JSONDecodeError, TypeError):
-                    params = {}
-                    method = "event"
-                # Item events carry a stable item_id (Gate 1, 六-3):
-                # - tool events key on tool_call_id
-                # - text/reasoning deltas group into one item per run
-                item_id = None
-                if method in ("ToolCallBegin", "ToolResult"):
-                    tc = str(
-                        params.get("tool_call_id", "")
-                        if isinstance(params, dict)
-                        else ""
-                    )
-                    if tc:
-                        item_id = f"item-{tc}"
-                elif method in ("TextDelta", "ReasoningDelta"):
-                    item_ids: dict = state.setdefault("_item_ids", {})
-                    cur = item_ids.get(thread_id)
-                    if cur is None:
-                        item_ids[thread_id] = cur = (
-                            f"item-{thread_id}-{len(item_ids) + 1}-{run_id or 'run'}"
-                        )
-                    item_id = cur
-                elif method == "RunEnd":
-                    state.get("_item_ids", {}).pop(thread_id, None)
-                envelope = EventEnvelope.create(
-                    thread_id,
-                    str(method),
-                    params if isinstance(params, dict) else {},
-                    run_id=run_id,
-                    item_id=item_id,
-                )
-                tracked = _get_broker().emit(envelope)
-                if isinstance(params, dict):
-                    params["thread_id"] = tracked.thread_id
-                    params["seq"] = tracked.seq
-                    params["event_id"] = tracked.event_id
-                    params["protocol_version"] = tracked.protocol_version
-                    params["timestamp"] = tracked.timestamp
-                    if tracked.run_id:
-                        params["run_id"] = tracked.run_id
-                    if tracked.item_id:
-                        params["item_id"] = tracked.item_id
-                if isinstance(parsed, dict):
-                    parsed["params"] = params
-                    line = json.dumps(parsed, ensure_ascii=False) + "\n"
-                emit_line(line)
-            else:
-                emit_line(encode_event_line(event))
             if isinstance(event, TurnResult) and event.usage:
                 last_usage = event.usage
-            if (
-                ask_permit
-                and isinstance(event, ToolCallBegin)
-                and needs_tool_permit(event.name)
-            ):
-                # Unified decision: the SAME policy the runner enforces.
-                # auto-safe must not produce ghost approvals for commands
-                # the backend auto-approves.
-                from .tool_permit import requires_permit_prompt
+            if run_id_:
+                run_id = run_id_
+            _encode_and_emit_event(thread_id_, run_id_, event, seq, state)
 
-                if not requires_permit_prompt(config.resolved_permission_mode(), event):
-                    continue
-                await emit_permit_request(
-                    event,
-                    thread_id=thread_id,
-                    run_id=run_id or "",
-                )
-            # ── FileChange events for write tools (Changes panel) ─────
-            # NOTE: FileChange events are NOT emitted per ToolResult —
-            # the tracker accumulates the NET change and is flushed once
-            # when the Run ends (N writes → ONE timeline item).
-        success = True
+        async def _on_approval(thread_id_, run_id_, event) -> None:
+            # Unified decision: the SAME policy the runner enforces.
+            # auto-safe must not produce ghost approvals for commands
+            # the backend auto-approves.
+            from .tool_permit import requires_permit_prompt
+
+            if not requires_permit_prompt(config.resolved_permission_mode(), event):
+                return
+            await emit_permit_request(
+                event,
+                thread_id=thread_id_,
+                run_id=run_id_ or "",
+            )
+
+        async def _before_finish(thread_id_, run_id_, outcome) -> None:
+            # Settle pending immediates BEFORE the terminal transition
+            # (the transition defers anything still pending).
+            await _settle_pending_immediates(runner, thread_id_, state, config)
+
+        async def _on_finish(thread_id_, run_id_, outcome) -> None:
+            nonlocal success, cancelled
+            success = outcome == "completed"
+            cancelled = outcome == "cancelled"
+            await _wire_after_finish(
+                runner, thread_id_, run_id_, outcome, state, config
+            )
+
+        outcome = await engine.run_loop(
+            thread_id,
+            runner,
+            text,
+            emitter=_emit,
+            needs_permit=(
+                (lambda ev: ask_permit and needs_tool_permit(ev.name))
+                if ask_permit
+                else None
+            ),
+            on_approval=_on_approval,
+            before_finish=_before_finish,
+            on_finish=_on_finish,
+        )
+        success = outcome == "completed"
+        cancelled = outcome == "cancelled"
     except asyncio.CancelledError:
         # Explicit cancellation (task.cancel()) → CANCELLED, not FAILED
         cancelled = True
@@ -1727,46 +1761,6 @@ async def run_user_turn(
     finally:
         restore_subagent_observer()
         restore_sandbox_mode()
-        # Settle pending immediates: steers never read from the mailbox
-        # are re-queued at the queue head with their ORIGINAL identity
-        # (never a re-created message); consumed ones get the applied ACK.
-        # Both sides reach a terminal receipt state (Gate 1, 二-5).
-        inbound = getattr(runner, "inbound", None)
-        unread: list[tuple[str, str]] = []
-        if inbound is not None and hasattr(inbound, "drain"):
-            try:
-                leftover = inbound.drain()
-            except Exception:
-                leftover = None
-            if leftover is not None and leftover.steers:
-                ids = getattr(leftover, "steer_ids", ())
-                unread = [
-                    (ids[i] if i < len(ids) else "", t)
-                    for i, t in enumerate(leftover.steers)
-                ]
-        deferred, applied = await _harness_manager.settle_pending_immediate(
-            thread_id, unread
-        )
-        if deferred:
-            _harness_manager.restore_queued_at_head(thread_id, deferred)
-            for msg in deferred:
-                _emit_input_state_ack(
-                    msg.message_id,
-                    thread_id,
-                    "deferred",
-                    detail="Run ended before the message could be applied",
-                )
-            log(
-                f"[wire] {thread_id} {len(deferred)} unread steer(s) "
-                f"→ deferred to next run"
-            )
-        for msg in applied:
-            _emit_input_state_ack(
-                msg.message_id,
-                thread_id,
-                "applied",
-                detail="Applied at checkpoint",
-            )
         # Restore the original tool dispatch (remove the mutation wrapper)
         if orig_execute_tool is not None:
             runner.execute_tool = orig_execute_tool
@@ -1801,46 +1795,8 @@ async def run_user_turn(
                 last_usage,
                 context_limit=thread_context_limit(runner.thread),
             )
-        # Wire harness lifecycle into ThreadSessionManager.
-        # Explicit cancel (task.cancel or runner stop_reason=cancelled) →
-        # CANCELLED; normal completion → COMPLETED; errors → FAILED.
-        session = _harness_manager.get_session(thread_id)
-        if session is not None and session.active_run_id:
-            if cancelled or stop_reason == "cancelled":
-                await _harness_manager.cancel_run(thread_id, session.active_run_id)
-            elif success:
-                await _harness_manager.complete_run(thread_id, session.active_run_id)
-            else:
-                await _harness_manager.fail_run(thread_id, session.active_run_id)
-            # Workspace write lease is released on ANY terminal end
-            # (Gate 1, 八: 不得静默抢占；终态必须释放).
-            await _harness_manager.release_workspace(thread_id, session.active_run_id)
-            # Wake threads waiting on the same workspace: a released lease
-            # must never leave a queued waiter waiting forever (Gate 1, 八).
-            ws_key = _workspace_key_for(runner)
-            if ws_key is not None:
-                for wtid in _harness_manager.take_workspace_waiters(ws_key):
-                    if wtid == thread_id:
-                        continue
-                    # First-run waiters register their runner in the wire
-                    # registry (state["_runners"]) BEFORE waiting — the
-                    # session runner only exists after start_run.  Peek
-                    # (non-destructive): a conflict re-registers the
-                    # waiter and the NEXT release must still find it.
-                    wsession = _harness_manager.get_session(wtid)
-                    wrunner = _peek_runner(state, wtid) or getattr(
-                        wsession, "runner", None
-                    )
-                    if wrunner is None:
-                        # Not startable yet — re-register so a LATER
-                        # release can wake it (never take-and-drop).
-                        _harness_manager.register_workspace_waiter(wtid, ws_key)
-                        continue
-                    if _turn_active_for_thread(state, wtid):
-                        continue
-                    await _auto_start_next(wtid, wrunner, config, state)
-            _persist_thread_state(thread_id)
-        # Expired approvals: emit approval/resolved(expired) for each one
+        # M1: 终端转换 / workspace 释放由 RunEngine._finish_run 统一完成；
+        # 这里只负责过期审批事件、turn 清理与 auto-start 链。
         expired = await _harness_manager.take_expired_approvals(thread_id)
         for approval in expired:
             _emit_jsonrpc(
@@ -1854,20 +1810,78 @@ async def run_user_turn(
                 },
             )
         _set_turn(state, thread_id, None)  # Clear per-thread and legacy turn
+        _get_engine().unregister_runner(thread_id)
         # Auto-start next queued input.  Frozen policy: cancel only cancels
         # the CURRENT Run — explicitly queued inputs continue FIFO after ANY
         # terminal end (completed or cancelled).  Failures do NOT auto-start
         # (avoids failure loops).
-        #
-        # Single atomic entry: start_run consumes the queued input, creates
-        # the run_id, and transitions to RUNNING in one lock-held operation.
-        # There is no separate start_next_queued preparation stage.
         run_ended = success or cancelled or stop_reason == "cancelled"
         if run_ended and not _turn_active_for_thread(state, thread_id):
             # Same full creation flow as the first Run (Gate 1, 八 / 一-7;
             # Gate 2, 九): workspace lease → start_run → freeze RunSnapshot
             # → persist the active-run marker BEFORE the turn starts.
             await _auto_start_next(thread_id, runner, config, state)
+
+
+async def _settle_pending_immediates(
+    runner, thread_id: str, state: dict, config
+) -> None:
+    """M1: 终态转换前 settle 立即输入（语义检查点 pending）。
+
+    未被读取的立即输入 → defer 到队列头（保留原始 identity）；
+    已应用的 → applied ACK。两侧都到达终态 receipt。
+    """
+    ckp = getattr(runner, "inbound_checkpoint", None)
+    unread: list[tuple[str, str]] = []
+    if ckp is not None:
+        pending = ckp.take_pending()
+        unread = [(m.message_id, m.text) for m in pending]
+    deferred, applied = await _harness_manager.settle_pending_immediate(
+        thread_id, unread
+    )
+    if deferred:
+        _harness_manager.restore_queued_at_head(thread_id, deferred)
+        for msg in deferred:
+            _emit_input_state_ack(
+                msg.message_id,
+                thread_id,
+                "deferred",
+                detail="Run ended before the message could be applied",
+            )
+        log(
+            f"[wire] {thread_id} {len(deferred)} unread steer(s) → deferred to next run"
+        )
+    for msg in applied:
+        _emit_input_state_ack(
+            msg.message_id,
+            thread_id,
+            "applied",
+            detail="Applied at checkpoint",
+        )
+
+
+async def _wire_after_finish(
+    runner, thread_id: str, run_id: str, outcome: str, state: dict, config
+) -> None:
+    """M1: RunEngine 终态转换后的 wire 收尾（waiter 唤醒 + 持久化）。"""
+    # Wake threads waiting on the same workspace: a released lease
+    # must never leave a queued waiter waiting forever (Gate 1, 八).
+    ws_key = _workspace_key_for(runner)
+    if ws_key is not None:
+        for wtid in _harness_manager.take_workspace_waiters(ws_key):
+            if wtid == thread_id:
+                continue
+            wsession = _harness_manager.get_session(wtid)
+            wrunner = _peek_runner(state, wtid) or getattr(wsession, "runner", None)
+            if wrunner is None:
+                # Not startable yet — re-register so a LATER
+                # release can wake it (never take-and-drop).
+                _harness_manager.register_workspace_waiter(wtid, ws_key)
+                continue
+            if _turn_active_for_thread(state, wtid):
+                continue
+            await _auto_start_next(wtid, wrunner, config, state)
+    _persist_thread_state(thread_id)
 
 
 def turn_active(state: dict) -> bool:
@@ -2829,7 +2843,10 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
                 )
                 return runner
         if runner is not None and _turn_active_for_thread(state, active_tid):
-            runner.cancel_run()
+            # M1: 控制面经 RunEngine（run_id 绑定校验在内）
+            engine = _get_engine()
+            engine.register_runner(active_tid, runner)
+            engine.cancel_run(active_tid, bound_run_id or None)
             _cancel_thread_turn(state, active_tid)
             log(f"[wire] cancel：已请求停止 {active_tid}")
         else:
@@ -2883,12 +2900,13 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
         # it; the Run end re-queues unread steers with their ORIGINAL
         # identity.
         if str(receipt.state) == "immediate_pending":
-            inbound = getattr(runner, "inbound", None)
-            if inbound is not None and hasattr(inbound, "steer"):
-                # The message_id rides along so the Run-end settle can
-                # classify THIS message exactly (never by text).
-                inbound.steer(text, message_id=receipt.message_id)
-                log(f"[wire] {receipt.thread_id} steer → checkpoint: {text[:40]}")
+            # M1: 立即输入经 RunEngine 注入语义检查点（message_id 随行，
+            # Run 结束 settle 按 id 精确分类，永不按文本猜）。
+            engine = _get_engine()
+            if runner is not None:
+                engine.register_runner(receipt.thread_id, runner)
+            engine.steer(receipt.thread_id, text, message_id=receipt.message_id)
+            log(f"[wire] {receipt.thread_id} steer → checkpoint: {text[:40]}")
         _emit_input_state_ack(
             receipt.message_id,
             receipt.thread_id,
@@ -3158,7 +3176,10 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
                 },
             )
             return runner
-        runner.inbound.permit(tool_call_id)
+        engine = _get_engine()
+        if thread_id and runner is not None:
+            engine.register_runner(thread_id, runner)
+        engine.permit_tool(thread_id or "", run_id or "", tool_call_id)
         _emit_jsonrpc(
             "approval/resolved",
             {
@@ -3196,8 +3217,14 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
                 },
             )
             return runner
-        runner.inbound.deny(
-            tool_call_id, reason=reason if isinstance(reason, str) else ""
+        engine = _get_engine()
+        if thread_id and runner is not None:
+            engine.register_runner(thread_id, runner)
+        engine.deny_tool(
+            thread_id or "",
+            run_id or "",
+            tool_call_id,
+            reason=reason if isinstance(reason, str) else "",
         )
         _emit_jsonrpc(
             "approval/resolved",

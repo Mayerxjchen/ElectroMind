@@ -67,6 +67,10 @@ class EmbeddedAgentClient:
         self.manager = ThreadSessionManager(_idle_ttl_seconds=idle_ttl_seconds)
         self.broker = EventBroker()
         self.idempotency = IdempotencyStore()
+        # M1: 唯一 Run 生命周期（与 manager 同源）
+        from electromind.engine import RunEngine
+
+        self.engine = RunEngine(manager=self.manager)
         self._runners: dict[str, object] = {}
         self._run_tasks: dict[str, asyncio.Task] = {}
         self._run_workspace: dict[str, WorkspaceKey] = {}  # run_id → 写租约键
@@ -311,90 +315,133 @@ class EmbeddedAgentClient:
         success = False
         cancelled = False
         stop_reason = ""
+
+        async def _emit_event(thread_id_, run_id_, event, seq) -> None:
+            nonlocal stop_reason
+            # IMMEDIATE 输入在检查点 steer（applied）
+            await self._drain_immediate(thread_id_, runner)
+            if isinstance(event, RunEnd):
+                stop_reason = event.stop_reason
+            if isinstance(event, TextDelta):
+                self._emit(
+                    thread_id_,
+                    "item/delta",
+                    {
+                        "thread_id": thread_id_,
+                        "run_id": run_id_,
+                        "item_id": f"item-{run_id_}-text",
+                        "kind": "text",
+                        "text": event.text,
+                    },
+                    run_id=run_id_,
+                    item_id=f"item-{run_id_}-text",
+                )
+            elif isinstance(event, ReasoningDelta):
+                self._emit(
+                    thread_id_,
+                    "item/delta",
+                    {
+                        "thread_id": thread_id_,
+                        "run_id": run_id_,
+                        "item_id": f"item-{run_id_}-reasoning",
+                        "kind": "reasoning",
+                        "text": event.text,
+                    },
+                    run_id=run_id_,
+                    item_id=f"item-{run_id_}-reasoning",
+                )
+            elif isinstance(event, ToolCallBegin):
+                item_id = f"item-{event.tool_call_id}"
+                self._emit(
+                    thread_id_,
+                    "item/started",
+                    {
+                        "thread_id": thread_id_,
+                        "run_id": run_id_,
+                        "item_id": item_id,
+                        "kind": "tool",
+                        "tool_call_id": event.tool_call_id,
+                        "name": event.name,
+                        "arguments": event.arguments,
+                    },
+                    run_id=run_id_,
+                    item_id=item_id,
+                )
+            elif isinstance(event, ToolResult):
+                item_id = f"item-{event.tool_call_id}"
+                self._emit(
+                    thread_id_,
+                    "item/completed",
+                    {
+                        "thread_id": thread_id_,
+                        "run_id": run_id_,
+                        "item_id": item_id,
+                        "kind": "tool",
+                        "tool_call_id": event.tool_call_id,
+                        "ok": bool(event.ok),
+                        "content": event.content or "",
+                    },
+                    run_id=run_id_,
+                    item_id=item_id,
+                )
+
+        async def _on_approval(thread_id_, run_id_, event) -> None:
+            await self._request_approval(thread_id_, run_id_, runner, event)
+
+        async def _before_finish(thread_id_, run_id_, outcome) -> None:
+            # 终态转换前：未应用的 immediate 输入取走并原位放回队首
+            # （转换会 defer 剩余项），逐条发 deferred（带原 request_id）。
+            session = self.manager.get_session(thread_id_)
+            if session is None or session.active_run_id != run_id_:
+                return
+            deferred = await self.manager.take_pending_immediate(thread_id_)
+            if not deferred:
+                return
+            self.manager.restore_queued_at_head(thread_id_, deferred)
+            for message in deferred:
+                params = {
+                    "thread_id": thread_id_,
+                    "message_id": message.message_id,
+                    "state": str(InputDeliveryState.DEFERRED),
+                    "detail": "Run ended before the message could be applied",
+                }
+                request_id = self._message_request.pop(message.message_id, "")
+                if request_id:
+                    params["request_id"] = request_id
+                self._emit(thread_id_, "input/state", params)
+
+        async def _on_finish(thread_id_, run_id_, outcome) -> None:
+            nonlocal success, cancelled
+            success = outcome == "completed"
+            cancelled = outcome == "cancelled"
+            await self._finish_run(
+                thread_id_,
+                run_id_,
+                success=success,
+                cancelled=cancelled,
+                stop_reason=stop_reason,
+            )
+
         try:
-            async for event in runner.run(input_message.text):
-                # IMMEDIATE 输入在检查点 steer（applied）
-                await self._drain_immediate(thread_id, runner)
-                if isinstance(event, TextDelta):
-                    self._emit(
-                        thread_id,
-                        "item/delta",
-                        {
-                            "thread_id": thread_id,
-                            "run_id": run_id,
-                            "item_id": f"item-{run_id}-text",
-                            "kind": "text",
-                            "text": event.text,
-                        },
-                        run_id=run_id,
-                        item_id=f"item-{run_id}-text",
-                    )
-                elif isinstance(event, ReasoningDelta):
-                    self._emit(
-                        thread_id,
-                        "item/delta",
-                        {
-                            "thread_id": thread_id,
-                            "run_id": run_id,
-                            "item_id": f"item-{run_id}-reasoning",
-                            "kind": "reasoning",
-                            "text": event.text,
-                        },
-                        run_id=run_id,
-                        item_id=f"item-{run_id}-reasoning",
-                    )
-                elif isinstance(event, ToolCallBegin):
-                    item_id = f"item-{event.tool_call_id}"
-                    self._emit(
-                        thread_id,
-                        "item/started",
-                        {
-                            "thread_id": thread_id,
-                            "run_id": run_id,
-                            "item_id": item_id,
-                            "kind": "tool",
-                            "tool_call_id": event.tool_call_id,
-                            "name": event.name,
-                            "arguments": event.arguments,
-                        },
-                        run_id=run_id,
-                        item_id=item_id,
-                    )
-                    if self._needs_approval(thread_id, event):
-                        await self._request_approval(thread_id, run_id, runner, event)
-                elif isinstance(event, ToolResult):
-                    item_id = f"item-{event.tool_call_id}"
-                    self._emit(
-                        thread_id,
-                        "item/completed",
-                        {
-                            "thread_id": thread_id,
-                            "run_id": run_id,
-                            "item_id": item_id,
-                            "kind": "tool",
-                            "tool_call_id": event.tool_call_id,
-                            "ok": bool(event.ok),
-                            "content": event.content or "",
-                        },
-                        run_id=run_id,
-                        item_id=item_id,
-                    )
-                elif isinstance(event, RunEnd):
-                    stop_reason = event.stop_reason
-                    cancelled = stop_reason == "cancelled"
-                    success = not cancelled
+            outcome = await self.engine.run_loop(
+                thread_id,
+                runner,
+                input_message.text,
+                emitter=_emit_event,
+                needs_permit=lambda ev: self._needs_approval(thread_id, ev),
+                on_approval=_on_approval,
+                before_finish=_before_finish,
+                on_finish=_on_finish,
+            )
+            success = outcome == "completed"
+            cancelled = outcome == "cancelled"
         except asyncio.CancelledError:
             cancelled = True
         except Exception:
             stop_reason = "error"
+        # 注意：异常路径的终态（run/completed failed）由 RunEngine 的
+        # try/finally 统一发出（on_finish 回调），此处不再重复。
 
-        await self._finish_run(
-            thread_id,
-            run_id,
-            success=success,
-            cancelled=cancelled,
-            stop_reason=stop_reason,
-        )
         if self.persist_meta:
             status = (
                 "cancelled" if cancelled else ("failed" if not success else "completed")
@@ -413,7 +460,8 @@ class EmbeddedAgentClient:
     async def _drain_immediate(self, thread_id: str, runner) -> None:
         messages = await self.manager.take_pending_immediate(thread_id)
         for message in messages:
-            runner.steer(message.text)
+            # M1: 立即输入经 RunEngine 注入语义检查点（message_id 随行）
+            self.engine.steer(thread_id, message.text, message_id=message.message_id)
             params = {
                 "thread_id": thread_id,
                 "message_id": message.message_id,
@@ -482,9 +530,11 @@ class EmbeddedAgentClient:
             return False
         if runner is not None and tool_call_id:
             if approved:
-                runner.inbound.permit(tool_call_id)
+                self.engine.permit_tool(thread_id, run_id, tool_call_id)
             else:
-                runner.inbound.deny(tool_call_id, reason="user denied")
+                self.engine.deny_tool(
+                    thread_id, run_id, tool_call_id, reason="user denied"
+                )
         status = str(getattr(resolved, "status", ""))
         self._emit(
             thread_id,
@@ -509,14 +559,8 @@ class EmbeddedAgentClient:
         """
         if not run_id:
             return False  # 无 run_id 的 Cancel 一律拒绝（显式绑定是契约）
-        runner = self._runners.get(thread_id)
-        if runner is None:
-            return False
-        session = self.manager.get_session(thread_id)
-        if session is None or session.active_run_id != run_id:
-            return False  # 绑定的 Run 已结束/不存在 → 迟到 Cancel 拒绝
-        runner.cancel_run()
-        return True
+        # M1: 经 RunEngine（run_id 绑定校验在内）
+        return self.engine.cancel_run(thread_id, run_id)
 
     # ------------------------------------------------------------------
     # 终态
@@ -534,31 +578,9 @@ class EmbeddedAgentClient:
         session = self.manager.get_session(thread_id)
         released_key: WorkspaceKey | None = None
         if session is not None and session.active_run_id == run_id:
-            # 五轮复验 P0：Run 终结（含异常）会把未应用的 immediate 输入移回队首
-            # （defer）。先在转换前取走并原位放回（保持下次 Run 消费的语义），
-            # 转换后为每条发 input/state(deferred, 原 request_id) + 清理映射。
-            deferred = await self.manager.take_pending_immediate(thread_id)
-            if deferred:
-                self.manager.restore_queued_at_head(thread_id, deferred)
-            if cancelled:
-                await self.manager.cancel_run(thread_id, run_id)
-            elif success:
-                await self.manager.complete_run(thread_id, run_id)
-            else:
-                await self.manager.fail_run(thread_id, run_id)
-            await self.manager.release_workspace(thread_id, run_id)
+            # M1: 终态转换 / workspace 释放 / deferred 处理由 RunEngine
+            # 统一完成（before_finish + _finish_run）；这里只负责事件与链。
             released_key = self._run_workspace.pop(run_id, None)
-            for message in deferred:
-                params = {
-                    "thread_id": thread_id,
-                    "message_id": message.message_id,
-                    "state": str(InputDeliveryState.DEFERRED),
-                    "detail": "Run ended before the message could be applied",
-                }
-                request_id = self._message_request.pop(message.message_id, "")
-                if request_id:
-                    params["request_id"] = request_id
-                self._emit(thread_id, "input/state", params)
 
         # 释放写租约后唤醒等待者（Gate 1：不得让排队写入永远等待）
         if released_key is not None:

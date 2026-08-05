@@ -33,12 +33,22 @@ class RunPhase(StrEnum):
     """Lifecycle phases of a Run.
 
     Transitions are governed by ``allowed_run_transitions()`` and must be
-    enforced by ``ThreadSessionManager`` — never by the Agent Loop itself.
+    enforced by ``ThreadSessionManager`` / ``RunEngine`` — never by the
+    Agent Loop or the App layer itself.
+
+    ``RUNNING`` 是旧版伞形相位（保留兼容）；``RUNNING_MODEL /
+    RUNNING_TOOL / WAITING_APPROVAL`` 是 RunEngine 声明的精细相位，
+    全部走同一张集中转换表。
     """
 
     DORMANT = "dormant"  # Run created but not yet started
+    QUEUED = "queued"  # 等待可写 Run 槽位
     PREPARING = "preparing"  # Acquiring resources (sandbox, SSH, workspace lease)
-    RUNNING = "running"  # Agent loop active
+    INITIALIZING = "initializing"  # 循环初始化（用户消息入栈）
+    RUNNING = "running"  # Agent loop active（旧版伞形相位，兼容）
+    RUNNING_MODEL = "running_model"  # 模型调用中
+    RUNNING_TOOL = "running_tool"  # 工具执行中
+    WAITING_APPROVAL = "waiting_approval"  # 等待审批
     FINALIZING = "finalizing"  # Loop ended, flushing state
     COMPLETED = "completed"  # Normal completion
     CANCELLED = "cancelled"  # User cancelled
@@ -48,12 +58,65 @@ class RunPhase(StrEnum):
 
 # Legal phase transition map
 _PHASE_TRANSITIONS: dict[RunPhase, frozenset[RunPhase]] = {
-    RunPhase.DORMANT: frozenset({RunPhase.PREPARING, RunPhase.CANCELLED}),
+    RunPhase.DORMANT: frozenset(
+        {RunPhase.QUEUED, RunPhase.PREPARING, RunPhase.CANCELLED}
+    ),
+    RunPhase.QUEUED: frozenset(
+        {RunPhase.INITIALIZING, RunPhase.CANCELLED, RunPhase.FAILED}
+    ),
     RunPhase.PREPARING: frozenset(
-        {RunPhase.RUNNING, RunPhase.FAILED, RunPhase.CANCELLED}
+        {RunPhase.RUNNING, RunPhase.INITIALIZING, RunPhase.FAILED, RunPhase.CANCELLED}
+    ),
+    RunPhase.INITIALIZING: frozenset(
+        {
+            RunPhase.RUNNING,
+            RunPhase.RUNNING_MODEL,
+            RunPhase.FAILED,
+            RunPhase.CANCELLED,
+        }
     ),
     RunPhase.RUNNING: frozenset(
-        {RunPhase.FINALIZING, RunPhase.CANCELLED, RunPhase.FAILED, RunPhase.INTERRUPTED}
+        {
+            RunPhase.RUNNING_MODEL,
+            RunPhase.RUNNING_TOOL,
+            RunPhase.WAITING_APPROVAL,
+            RunPhase.FINALIZING,
+            RunPhase.CANCELLED,
+            RunPhase.FAILED,
+            RunPhase.INTERRUPTED,
+        }
+    ),
+    RunPhase.RUNNING_MODEL: frozenset(
+        {
+            RunPhase.RUNNING_TOOL,
+            RunPhase.WAITING_APPROVAL,
+            RunPhase.RUNNING,
+            RunPhase.FINALIZING,
+            RunPhase.CANCELLED,
+            RunPhase.FAILED,
+            RunPhase.INTERRUPTED,
+        }
+    ),
+    RunPhase.RUNNING_TOOL: frozenset(
+        {
+            RunPhase.RUNNING_MODEL,
+            RunPhase.WAITING_APPROVAL,
+            RunPhase.RUNNING,
+            RunPhase.FINALIZING,
+            RunPhase.CANCELLED,
+            RunPhase.FAILED,
+            RunPhase.INTERRUPTED,
+        }
+    ),
+    RunPhase.WAITING_APPROVAL: frozenset(
+        {
+            RunPhase.RUNNING_TOOL,
+            RunPhase.RUNNING_MODEL,
+            RunPhase.RUNNING,
+            RunPhase.CANCELLED,
+            RunPhase.FAILED,
+            RunPhase.INTERRUPTED,
+        }
     ),
     RunPhase.FINALIZING: frozenset(
         {RunPhase.COMPLETED, RunPhase.FAILED, RunPhase.INTERRUPTED}

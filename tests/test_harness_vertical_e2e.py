@@ -143,7 +143,7 @@ async def test_approval_cannot_cross_threads():
             ReplConfig(),
             {"turn": None},
         )
-    runner_a.inbound.permit.assert_called_once_with("tc-A1")
+    runner_a.permit_tool.assert_called_once_with("tc-A1")
 
 
 # ── 7-9. Snapshot recovery + no duplicates ────────────────────────────

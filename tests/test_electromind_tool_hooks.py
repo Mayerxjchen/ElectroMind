@@ -238,7 +238,11 @@ async def test_wait_tool_permit_requeues_unrelated_inbound_events(
         runner.permit_tool("call_1")
 
     try:
-        runner.steer("keep this")
+        # M1: steer 走语义检查点；此测试直接推邮箱验证 wait_tool_permit
+        # 对无关事件的重排语义（旧控制面兼容路径）。
+        from electromind.runtime import Steer
+
+        runner.inbound.push(Steer("keep this"))
         task = asyncio.create_task(approve_later())
         result = await asyncio.wait_for(runner.wait_tool_permit("call_1"), timeout=0.2)
         await task

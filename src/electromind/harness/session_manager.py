@@ -356,6 +356,25 @@ class ThreadSessionManager:
             session.touch()
             return (run_id, queued)
 
+    async def update_run_phase(
+        self, thread_id: str, run_id: str, phase: RunPhase
+    ) -> bool:
+        """精细相位推进（RUNNING_MODEL/RUNNING_TOOL/WAITING_APPROVAL）。
+
+        走同一张集中转换表（``allowed_run_transitions``）；非法转换返回
+        False 且不修改状态。这是 RunEngine 声明循环内相位的唯一入口。
+        """
+        session = self._sessions.get(thread_id)
+        if session is None:
+            return False
+        async with session.lifecycle_lock:
+            if session.active_run_id != run_id:
+                return False
+            if not self._can_transition(session, phase):
+                return False
+            session.active_run_phase = phase
+            return True
+
     async def complete_run(self, thread_id: str, run_id: str) -> bool:
         """Mark a Run as completed.  Expires all pending approvals for the
         Run (old approvals must be invalid after Run end).  Returns True."""
@@ -682,11 +701,9 @@ class ThreadSessionManager:
                 # Stale: approval is for a different Run
                 return None
             # Run must be in an active phase — completed/cancelled/failed/
-            # interrupted runs cannot have approvals resolved.
-            if session.active_run_phase not in (
-                RunPhase.RUNNING,
-                RunPhase.FINALIZING,
-            ):
+            # interrupted runs cannot have approvals resolved.  M1: 精细相位
+            # （RUNNING_MODEL/RUNNING_TOOL/WAITING_APPROVAL）同样视为活动。
+            if is_terminal_run_phase(session.active_run_phase):
                 return None
             approval = session.pending_approvals.get(approval_id)  # peek
             if approval is None:

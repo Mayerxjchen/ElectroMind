@@ -209,6 +209,12 @@ class InboundCheckpoint:
         """True if there are immediate inputs waiting for a safe checkpoint."""
         return bool(self._pending_immediate)
 
+    def take_pending(self) -> list[InputMessage]:
+        """取出全部未应用立即输入（Run 结束后 settle 用）。"""
+        pending = list(self._pending_immediate)
+        self._pending_immediate.clear()
+        return pending
+
     def drain_after_run_end(self, queue: InputQueue) -> int:
         """Called after RunEnd: all unapplied immediate inputs are deferred
         and placed at the head of the input queue for the next Run.

@@ -181,12 +181,14 @@ async def test_runner_steer_during_tool_round_is_deferred(tmp_path, monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_runner_exposes_inbound_mailbox(tmp_path, monkeypatch):
+async def test_runner_steer_goes_to_semantic_checkpoint(tmp_path, monkeypatch):
+    """M1 契约：steer 进入语义检查点（而非旧 inbound 邮箱）。"""
     provider = FakeProvider([[FakeStreamChunk(content="ok")]])
     runner = await open_runner(tmp_path, monkeypatch, provider)
     try:
-        assert runner.inbound is not None
+        assert runner.inbound is not None  # 邮箱保留（permit/deny 用）
+        assert runner.inbound_checkpoint is not None
         runner.steer("queued")
-        assert runner.inbound.pending() == 1
+        assert runner.inbound_checkpoint.has_pending_immediate
     finally:
         await runner.close()

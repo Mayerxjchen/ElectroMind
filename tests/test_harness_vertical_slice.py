@@ -162,16 +162,38 @@ async def test_old_user_command_still_works():
 
 @pytest.mark.asyncio
 async def test_cancel_command_still_works():
-    """The existing 'cancel' command must not be broken."""
+    """M1 契约：cancel 经 RunEngine（run_id 绑定）；无活动 Run 时拒绝。"""
     runner = MagicMock()
     runner.cancel_run = MagicMock()
+    thread_id = "thread-test"
 
+    # 无活动 Run（manager 无该 thread 状态）→ 拒绝，不触碰 runner
     with patch.object(wire, "_turn_active_for_thread", lambda s, tid: True):
         result = await wire.handle_command(
             {"cmd": "cancel"},
             runner,
             ReplConfig(),
-            {"turn": object(), "thread_id": "thread-test", "_turns": {}},
+            {"turn": object(), "thread_id": thread_id, "_turns": {}},
+        )
+        assert result is runner
+        runner.cancel_run.assert_not_called()
+
+    # 有活动 Run → 经引擎调用 runner.cancel_run（绑定校验通过）
+    from electromind.harness import InputDelivery, InputMessage
+    from electromind.harness.identity import new_run_id
+
+    manager = wire._harness_manager
+    await manager.send_input(
+        InputMessage.create(thread_id, "x", delivery=InputDelivery.ENQUEUE)
+    )
+    run_id = new_run_id()
+    await manager.start_run(thread_id, runner, run_id=run_id)
+    with patch.object(wire, "_turn_active_for_thread", lambda s, tid: True):
+        result = await wire.handle_command(
+            {"cmd": "cancel", "run_id": run_id},
+            runner,
+            ReplConfig(),
+            {"turn": object(), "thread_id": thread_id, "_turns": {}},
         )
         assert result is runner
         runner.cancel_run.assert_called_once()

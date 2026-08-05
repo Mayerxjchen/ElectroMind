@@ -26,6 +26,7 @@ from ..core.agent import Agent
 from ..core.events import ToolCallBegin, ToolResult
 from ..core.message import Message, Messages, ToolCall
 from ..core.tool import FunctionTool, ToolOutput
+from ..harness.checkpoints import CheckpointDrain, CheckpointKind
 from .frame import RunFrame
 from .helper import (
     ArunReturnType,
@@ -153,6 +154,15 @@ class LoopAdapter:
     async def emit(self, event, *, turn_id: int, turn: int) -> AsyncGenerator:
         del turn_id, turn
         yield event
+
+    async def checkpoint(
+        self,
+        kind: CheckpointKind,
+        tool_call_ids: list[str] | None = None,
+    ) -> CheckpointDrain | None:
+        """语义检查点默认实现：无操作（VanillaRunner 等无控制面的 runner）。"""
+        del kind, tool_call_ids
+        return None
 
     async def stream_agent_events(
         self,

@@ -41,8 +41,8 @@ def _make_runner(thread_id: str = "thread-a"):
     runner.skill_runtime = None
     runner._execution = None
     runner.inbound = MagicMock()
-    runner.inbound.permit = MagicMock()
-    runner.inbound.deny = MagicMock()
+    runner.permit_tool = MagicMock()
+    runner.deny_tool = MagicMock()
     return runner
 
 
@@ -94,7 +94,7 @@ async def test_permit_passes_full_scope_to_inbound():
             {"turn": None},
         )
 
-    runner.inbound.permit.assert_called_once_with("tc-1")
+    runner.permit_tool.assert_called_once_with("tc-1")
     resolved = [e for e in events if e.get("method") == "approval/resolved"]
     assert len(resolved) == 1
     assert resolved[0]["params"]["status"] == "approved"
@@ -126,7 +126,7 @@ async def test_permit_unregistered_approval_rejected():
                 {"turn": None},
             )
 
-    runner.inbound.permit.assert_not_called()
+    runner.permit_tool.assert_not_called()
     resolved = [e for e in events if e.get("method") == "approval/resolved"]
     assert len(resolved) == 1
     assert resolved[0]["params"]["status"] == "expired"
@@ -157,7 +157,7 @@ async def test_permit_wrong_tool_call_id_rejected():
                 {"turn": None},
             )
 
-    runner.inbound.permit.assert_not_called()
+    runner.permit_tool.assert_not_called()
     resolved = [e for e in events if e.get("method") == "approval/resolved"]
     assert resolved[0]["params"]["status"] == "expired"
 
@@ -187,7 +187,7 @@ async def test_permit_wrong_thread_rejected():
                 {"turn": None},
             )
 
-    runner.inbound.permit.assert_not_called()
+    runner.permit_tool.assert_not_called()
     resolved = [e for e in events if e.get("method") == "approval/resolved"]
     assert len(resolved) == 1
     assert resolved[0]["params"]["status"] == "expired"
@@ -218,7 +218,7 @@ async def test_permit_wrong_run_rejected():
                 {"turn": None},
             )
 
-    runner.inbound.permit.assert_not_called()
+    runner.permit_tool.assert_not_called()
     resolved = [e for e in events if e.get("method") == "approval/resolved"]
     assert len(resolved) == 1
     assert resolved[0]["params"]["status"] == "expired"
@@ -249,7 +249,7 @@ async def test_deny_passes_full_scope():
             {"turn": None},
         )
 
-    runner.inbound.deny.assert_called_once_with("tc-2", reason="unsafe")
+    runner.deny_tool.assert_called_once_with("tc-2", reason="unsafe")
     resolved = [e for e in events if e.get("method") == "approval/resolved"]
     assert len(resolved) == 1
     assert resolved[0]["params"]["status"] == "denied"
@@ -294,7 +294,7 @@ async def test_approval_cannot_be_resolved_twice():
                 {"turn": None},
             )
 
-    assert runner.inbound.permit.call_count == 1  # Only first resolved
+    assert runner.permit_tool.call_count == 1  # Only first resolved
     resolved = [e for e in events if e.get("method") == "approval/resolved"]
     assert len(resolved) == 2
     assert resolved[0]["params"]["status"] == "approved"
@@ -319,7 +319,7 @@ async def test_permit_without_scope_rejected():
                 {"turn": None},
             )
 
-    runner.inbound.permit.assert_not_called()
+    runner.permit_tool.assert_not_called()
     resolved = [e for e in events if e.get("method") == "approval/resolved"]
     assert len(resolved) == 1
     assert resolved[0]["params"]["status"] == "expired"
@@ -336,7 +336,7 @@ async def test_permit_missing_tool_call_id_rejected():
             ReplConfig(),
             {"turn": None},
         )
-    runner.inbound.permit.assert_not_called()
+    runner.permit_tool.assert_not_called()
 
 
 # ── Cancel semantics: user cancel → CANCELLED, not FAILED ──────────────
@@ -771,7 +771,7 @@ async def test_wrong_tool_call_does_not_consume_approval():
             ReplConfig(),
             {"turn": None},
         )
-    runner.inbound.permit.assert_not_called()
+    runner.permit_tool.assert_not_called()
 
     # Approval must still be registered (not consumed)
     session = wire._harness_manager.get_session("thread-a")
@@ -790,7 +790,7 @@ async def test_wrong_tool_call_does_not_consume_approval():
         ReplConfig(),
         {"turn": None},
     )
-    runner.inbound.permit.assert_called_once_with("tc-A")
+    runner.permit_tool.assert_called_once_with("tc-A")
 
 
 # ── Gate 1, 八 — auto-start workspace lease & RunSnapshot creation flow ──
@@ -1002,12 +1002,11 @@ async def test_immediate_input_steered_to_runner_checkpoint():
             {"turn": None, "thread_id": "thread-a"},
         )
 
-    # The message went into the Runner's mailbox AND stays durably in
-    # pending_immediate (persisted) until the Run settles it — a crash
-    # between steer and checkpoint must not lose it.
-    # Steer carries the harness message_id for exact settle
+    # M1: 立即输入经 RunEngine 注入语义检查点（message_id 随行精确 settle），
+    # 同时保持在 pending_immediate（持久化）直到 Run settle——steer 与检查点
+    # 之间崩溃不丢失。
     mid = session.pending_immediate[0].message_id
-    runner.inbound.steer.assert_called_once_with("steer me", message_id=mid)
+    runner.steer.assert_called_once_with("steer me", message_id=mid)
     assert len(session.pending_immediate) == 1
 
 
@@ -1118,13 +1117,12 @@ async def test_unread_steer_deferred_with_original_identity():
 
     runner = _make_runner("thread-a")
 
-    def drain():
-        # Unread steers carry their harness message_id (exact identity)
-        mids = [m.message_id for m in session.pending_immediate]
-        texts = [m.text for m in session.pending_immediate]
-        return SimpleNamespace(steers=tuple(texts), steer_ids=tuple(mids))
+    def take_pending():
+        # M1: 未读立即输入从语义检查点取出（携带原始 message_id）；
+        # session.pending_immediate 保留给 settle 做精确分类。
+        return list(session.pending_immediate)
 
-    runner.inbound = SimpleNamespace(steer=lambda text, **kw: None, drain=drain)
+    runner.inbound_checkpoint = SimpleNamespace(take_pending=take_pending)
     session = wire._harness_manager._get_or_create("thread-a")
     session.active_run_id = "run-1"
     session.active_run_phase = "running"
