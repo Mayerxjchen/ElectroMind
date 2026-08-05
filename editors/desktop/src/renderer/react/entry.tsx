@@ -48,7 +48,12 @@ function mountReactShell(): void {
   }
 
   // ── Bottom: Composer ───────────────────────────────────────────
-  const composerEl = ensureContainer("react-composer-root");
+  // D3.4: mount into the dock's [data-composer-react] container when the
+  // main agent's shell has created it; otherwise fall back to a standalone
+  // root (pre-activation / non-desktop hosts).
+  const composerEl =
+    document.querySelector<HTMLElement>("[data-composer-react]") ??
+    ensureContainer("react-composer-root");
   if (composerEl) {
     createRoot(composerEl).render(
       <Composer
@@ -81,6 +86,17 @@ function mountReactShell(): void {
         }}
       />,
     );
+  }
+
+  // ── D3.4 activation signal (3-line contract from the main agent) ──
+  // The shell swaps the vanilla composer → React composer when the dock
+  // carries `data-composer-react="ready"`.  rAF lets React commit the root
+  // before we advertise readiness.
+  const dock = document.querySelector<HTMLElement>("[data-composer-dock]");
+  if (dock) {
+    requestAnimationFrame(() => {
+      dock.setAttribute("data-composer-react", "ready");
+    });
   }
 
   // ── Right sidebar: Inspector ───────────────────────────────────

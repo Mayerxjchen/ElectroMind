@@ -67,6 +67,11 @@ export function useActivityState(): AppState["activityState"] {
   return useAppStore((s) => s.activityState);
 }
 
+/** D3.4: bridge liveness — false ⇒ composer disabled + reconnect entry. */
+export function useBridgeActive(): boolean {
+  return useAppStore((s) => s.bridgeActive);
+}
+
 export function useSandboxStatus(): SandboxStatus | null {
   return useAppStore((s) => {
     const id = s.activeThreadId;

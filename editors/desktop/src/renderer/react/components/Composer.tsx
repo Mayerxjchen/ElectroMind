@@ -9,8 +9,22 @@
  * - Steer vs enqueue mode indicator
  */
 
-import React, { useCallback, useRef, useState } from "react";
-import { useActiveThread, useActivityState } from "../useStore";
+import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useActiveThread, useActivityState, useBridgeActive } from "../useStore";
+import {
+  autonomyIsRisky,
+  isRiskDismissed,
+  markRiskDismissed,
+  permissionText,
+  riskNoteText,
+} from "../composer-permissions.ts";
+import { lastErrorFromItems } from "../composer-status.ts";
+import {
+  attachmentEntries,
+  attachmentEntry,
+  attachmentRef,
+} from "../composer-attachments.ts";
+import type { AttachmentId } from "../composer-attachments.ts";
 
 // ── Props ────────────────────────────────────────────────────────────
 
@@ -58,6 +72,11 @@ export const Composer: React.FC<Props> = ({
   const activity = useActivityState();
   const [text, setText] = useState("");
   const [enqueueNext, setEnqueueNext] = useState(false);
+  // D3.4: one-time Auto risk-note dismissal (lazy init from localStorage).
+  const [riskDismissed, setRiskDismissed] = useState(isRiskDismissed);
+  // D3.4: thread-scoped error surfacing — dismissed per error message, so a
+  // NEW error re-appears even if the previous one was closed.
+  const [dismissedError, setDismissedError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isRunning = activity === "running";
 
@@ -66,6 +85,99 @@ export const Composer: React.FC<Props> = ({
     ? (thread.model as { kind: string; modelId?: string })
     : { kind: "auto" };
   const autonomy = thread?.autonomy ?? "prompt";
+  const risky = autonomyIsRisky(autonomy);
+  const showRiskNote = risky && !riskDismissed;
+
+  const lastError = lastErrorFromItems(thread?.items ?? []);
+  const showError = lastError !== null && dismissedError !== lastError;
+
+  const handleDismissRisk = useCallback(() => {
+    setRiskDismissed(true);
+    markRiskDismissed();
+  }, []);
+
+  const handleDismissError = useCallback(() => {
+    setDismissedError(lastError);
+  }, [lastError]);
+
+  // ── D3.4: attachment menu (first version, keyboard-accessible) ──────
+  const [attachOpen, setAttachOpen] = useState(false);
+  const attachBoxRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const pickerDirectoryRef = useRef(false);
+
+  // ── D3.4: disconnected → composer disabled + reconnect entry ────────
+  const bridgeActive = useBridgeActive();
+  const disconnected = !bridgeActive;
+
+  const toggleAttach = useCallback(() => {
+    setAttachOpen((v) => !v);
+  }, []);
+
+  const pickAttachment = useCallback((id: AttachmentId) => {
+    const entry = attachmentEntry(id);
+    if (!entry) return;
+    setAttachOpen(false);
+    if (entry.action === "event") {
+      if (entry.eventName) {
+        // Skills button: main agent listens for `electromind:skills-open`.
+        window.dispatchEvent(new CustomEvent(entry.eventName));
+      }
+      return;
+    }
+    const input = fileInputRef.current;
+    if (!input) return;
+    pickerDirectoryRef.current = entry.directory === true;
+    if (entry.directory) input.setAttribute("webkitdirectory", "");
+    else input.removeAttribute("webkitdirectory");
+    input.accept = entry.inputAccept ?? "";
+    input.value = "";
+    input.click();
+  }, []);
+
+  const onFilePicked = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    let refText: string;
+    if (pickerDirectoryRef.current && files[0]) {
+      // Folder picker: reference the top-level folder name.
+      const rel =
+        (files[0] as File & { webkitRelativePath?: string }).webkitRelativePath ?? "";
+      const folder = rel.split("/")[0];
+      refText = attachmentRef(folder || files[0].name);
+    } else {
+      refText = Array.from(files)
+        .map((f) => attachmentRef(f.name))
+        .filter(Boolean)
+        .join(" ");
+    }
+    if (refText) {
+      setText((prev) => (prev ? `${prev} ${refText}` : refText));
+    }
+  }, []);
+
+  // Close the attachment menu on outside click / Escape.
+  useEffect(() => {
+    if (!attachOpen) return;
+    const onDocClick = (e: MouseEvent) => {
+      if (attachBoxRef.current && !attachBoxRef.current.contains(e.target as Node)) {
+        setAttachOpen(false);
+      }
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAttachOpen(false);
+    };
+    document.addEventListener("mousedown", onDocClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocClick);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [attachOpen]);
+
+  const handleReconnect = useCallback(() => {
+    window.dispatchEvent(new CustomEvent("electromind:reconnect"));
+  }, []);
 
   const handleSend = useCallback(() => {
     const trimmed = text.trim();
@@ -104,7 +216,74 @@ export const Composer: React.FC<Props> = ({
 
   return (
     <div className="composer">
+      {/* D3.4: disconnected → disabled input + reconnect entry */}
+      {disconnected && (
+        <div className="composer-disconnected" role="alert" data-composer-disconnected>
+          <span className="composer-disconnected-text">连接已断开</span>
+          <button
+            type="button"
+            className="composer-reconnect-btn"
+            onClick={handleReconnect}
+          >
+            重新连接
+          </button>
+        </div>
+      )}
+
       <div className="composer-bar">
+        {/* D3.4: attachment menu (first version) — keyboard-accessible */}
+        <div className="composer-attach" ref={attachBoxRef}>
+          <button
+            type="button"
+            className="composer-attach-btn"
+            onClick={toggleAttach}
+            aria-haspopup="menu"
+            aria-expanded={attachOpen}
+            title="添加附件"
+            disabled={disconnected}
+          >
+            ⊕
+          </button>
+          {attachOpen && (
+            <div className="composer-attach-menu" role="menu" data-attach-menu>
+              {attachmentEntries().map((entry) =>
+                entry.supported ? (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    role="menuitem"
+                    className="composer-attach-item"
+                    onClick={() => pickAttachment(entry.id)}
+                  >
+                    {entry.label}
+                  </button>
+                ) : (
+                  <button
+                    key={entry.id}
+                    type="button"
+                    role="menuitem"
+                    className="composer-attach-item is-disabled"
+                    disabled
+                    title={entry.reason}
+                  >
+                    {entry.label}
+                    <span className="composer-attach-reason">{entry.reason}</span>
+                  </button>
+                ),
+              )}
+            </div>
+          )}
+          {/* Hidden native picker for file / image / folder */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            hidden
+            onChange={onFilePicked}
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        </div>
+
         {/* Mode selector */}
         <select
           className="composer-select"
@@ -147,6 +326,16 @@ export const Composer: React.FC<Props> = ({
           ))}
         </select>
 
+        {/* D3.4: explicit permission copy — never a bare "Auto" or an icon */}
+        <span
+          className="composer-permission"
+          data-permission-text
+          data-risky={risky ? "true" : "false"}
+          title={permissionText(autonomy)}
+        >
+          {permissionText(autonomy)}
+        </span>
+
         {/* Execution target (read-only display) */}
         <span className="composer-target" title="执行目标">
           {targetLabel}
@@ -173,6 +362,37 @@ export const Composer: React.FC<Props> = ({
         )}
       </div>
 
+      {/* D3.4: one-time risk note for auto-approved runs */}
+      {showRiskNote && (
+        <div className="composer-risk-note" role="note" data-risk-note>
+          <span className="composer-risk-note-text">{riskNoteText(autonomy)}</span>
+          <button
+            type="button"
+            className="composer-risk-note-dismiss"
+            onClick={handleDismissRisk}
+            aria-label="知道了"
+          >
+            知道了
+          </button>
+        </div>
+      )}
+
+      {/* D3.4: most recent thread error, shown near the input, dismissible */}
+      {showError && (
+        <div className="composer-error" role="alert" data-composer-error>
+          <span className="composer-error-icon" aria-hidden="true">⚠</span>
+          <span className="composer-error-text">{lastError}</span>
+          <button
+            type="button"
+            className="composer-error-dismiss"
+            onClick={handleDismissError}
+            aria-label="关闭错误提示"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       <div className="composer-input-row">
         <textarea
           ref={inputRef}
@@ -188,17 +408,22 @@ export const Composer: React.FC<Props> = ({
                 : "输入任务…"
           }
           rows={1}
-          disabled={false}
+          disabled={disconnected}
         />
         {isRunning ? (
-          <button className="composer-stop-btn" onClick={onStop} title="停止 (Esc)">
+          <button
+            className="composer-stop-btn"
+            onClick={onStop}
+            title="停止 (Esc)"
+            disabled={disconnected}
+          >
             ■
           </button>
         ) : (
           <button
             className="composer-send-btn"
             onClick={handleSend}
-            disabled={!text.trim()}
+            disabled={!text.trim() || disconnected}
             title="发送 (Enter)"
           >
             ↑
