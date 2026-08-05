@@ -175,7 +175,9 @@ class TestInstallFromGit:
         result = await installer.install_from_git(str(repo))
         assert result.name == "git-skill"
         assert result.record.source_type == "git"
-        assert result.record.source.endswith("#HEAD")
+        # SKILL-8: the install is pinned to the RESOLVED commit SHA, not #HEAD.
+        assert result.record.resolved_commit
+        assert result.record.source.endswith(f"#{result.record.resolved_commit}")
         assert (tmp_path / "skills" / "git-skill" / "SKILL.md").is_file()
 
     async def test_git_bad_repo_fails(self, tmp_path):

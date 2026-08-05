@@ -33,7 +33,13 @@ class InstallError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class InstallRecord:
-    """Provenance of one installed skill."""
+    """Provenance of one installed skill (SKILL-8 manifest).
+
+    New fields carry the full supply-chain record: scope, the fixed commit
+    SHA for git sources, the requested ref/path, whether trust was granted,
+    and any adaptations (name/filename normalization) applied at install time.
+    Backward compatible — legacy installs fill the defaults.
+    """
 
     name: str
     source: str
@@ -41,6 +47,12 @@ class InstallRecord:
     installed_at: float
     digest: str = ""
     previous_digest: str = ""
+    scope: str = "user"  # "user" | "project"
+    resolved_commit: str = ""  # fixed commit SHA (git sources)
+    requested_ref: str = ""  # branch/tag/commit as requested
+    source_path: str = ""  # --path within the repo (monorepo)
+    trust_granted: bool = False  # install != trust; default untrusted
+    adaptations: tuple[str, ...] = ()  # e.g. ("name_adapted:my-skill-v2",)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,18 +146,47 @@ class SkillInstaller:
                 source_type="archive",
             )
 
-    async def install_from_git(self, repo: str, *, ref: str = "HEAD") -> InstallResult:
-        """Install a skill from a git repository (clone → validate → install).
+    async def install_from_git(
+        self,
+        repo: str,
+        *,
+        ref: str = "HEAD",
+        path: str | None = None,
+    ) -> InstallResult:
+        """Install a skill from a git repository (safe clone → identify → install).
 
-        Requires ``git`` on PATH.  The repo is cloned into a temporary
-        directory; the skill directory is located and installed atomically.
+        Requires ``git`` on PATH.  Safety (SKILL-8):
+
+        - shallow partial clone (``--depth 1 --filter=blob:none``);
+        - submodules NOT initialized; repo hooks disabled
+          (``-c core.hooksPath=/dev/null``);
+        - no repository script runs, nothing is loaded or executed;
+        - the requested ref is resolved to a FIXED commit SHA recorded in the
+          manifest (``resolved_commit``), never just ``main``.
+
+        ``path`` selects a Skill or Skill root inside the repo (monorepo);
+        when absent the repo is identified with bounded recursive discovery
+        (max 6 levels, atomic Skill boundary).  Multiple candidates are NOT
+        guessed — the caller presents the list.
         """
         import subprocess
 
         with _TemporaryDir() as tmp:
             clone = tmp.path / "repo"
             proc = subprocess.run(
-                ["git", "clone", "--quiet", repo, str(clone)],
+                [
+                    "git",
+                    "clone",
+                    "--quiet",
+                    "--depth",
+                    "1",
+                    "--filter=blob:none",
+                    "--no-recurse-submodules",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    repo,
+                    str(clone),
+                ],
                 capture_output=True,
                 text=True,
                 timeout=120,
@@ -165,20 +206,45 @@ class SkillInstaller:
                     raise InstallError(
                         f"git checkout {ref!r} failed: {checkout.stderr.strip()}"
                     )
-            candidates = _find_skill_dirs(clone)
+            sha = subprocess.run(
+                ["git", "-C", str(clone), "rev-parse", "HEAD"],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            commit_sha = sha.stdout.strip() if sha.returncode == 0 else ""
+
+            if path:
+                skill_root = clone / path
+                candidates = (
+                    [skill_root]
+                    if (skill_root / "SKILL.md").is_file()
+                    else []
+                )
+            else:
+                from .discovery import discover_skill_dirs
+
+                candidates = discover_skill_dirs(clone)
             if not candidates:
                 raise InstallError(f"no SKILL.md found in repo {repo}")
             if len(candidates) > 1:
+                listing = ", ".join(
+                    str(c.relative_to(clone)) for c in sorted(candidates)
+                )
                 raise InstallError(
-                    "repo contains multiple skills; install one directory at a time"
+                    "repo contains multiple skills; install one at a time "
+                    f"(use path=): {listing}"
                 )
             skill_dir = candidates[0]
             name = validate_skill_dir(skill_dir)
             return await self._install_staged(
                 name,
                 skill_dir,
-                source=f"{repo}#{ref}",
+                source=f"{repo}#{commit_sha or ref}",
                 source_type="git",
+                resolved_commit=commit_sha,
+                requested_ref=ref,
+                source_path=path or "",
             )
 
     # -- update / uninstall / list ----------------------------------------
@@ -215,6 +281,8 @@ class SkillInstaller:
             if manifest.is_file():
                 try:
                     data = json.loads(manifest.read_text(encoding="utf-8"))
+                    if "adaptations" in data:
+                        data["adaptations"] = tuple(data["adaptations"])
                     records.append(InstallRecord(**data))
                 except (OSError, ValueError, TypeError):
                     continue
@@ -229,6 +297,12 @@ class SkillInstaller:
         *,
         source: str,
         source_type: str,
+        scope: str = "user",
+        resolved_commit: str = "",
+        requested_ref: str = "",
+        source_path: str = "",
+        trust_granted: bool = False,
+        adaptations: tuple[str, ...] = (),
     ) -> InstallResult:
         """Stage + validate + atomic rename into place.
 
@@ -272,6 +346,12 @@ class SkillInstaller:
                 installed_at=time.time(),
                 digest=digest,
                 previous_digest=previous_digest,
+                scope=scope,
+                resolved_commit=resolved_commit,
+                requested_ref=requested_ref,
+                source_path=source_path,
+                trust_granted=trust_granted,
+                adaptations=adaptations,
             )
             (target / MANIFEST_NAME).write_text(
                 json.dumps(
@@ -282,6 +362,12 @@ class SkillInstaller:
                         "installed_at": record.installed_at,
                         "digest": record.digest,
                         "previous_digest": record.previous_digest,
+                        "scope": record.scope,
+                        "resolved_commit": record.resolved_commit,
+                        "requested_ref": record.requested_ref,
+                        "source_path": record.source_path,
+                        "trust_granted": record.trust_granted,
+                        "adaptations": list(record.adaptations),
                     },
                     indent=2,
                 ),

@@ -27,6 +27,7 @@ RFC: docs/superpowers/specs/2026-08-03-skill-runtime-phase2-rfc.md
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 from dataclasses import replace
 from pathlib import Path
@@ -633,6 +634,19 @@ def _load_one_candidate(
         kind=kind,
     )
     trusted = evaluator(source.project_root) if source.scope == "project" else True
+    # SKILL-8: install != trust.  An installer-managed skill is untrusted until
+    # the user explicitly grants trust (`.electromind-install.json` carries
+    # ``trust_granted``).  This applies to user/project scopes — builtin/admin
+    # roots never carry install manifests.
+    if trusted and source.scope in ("user", "project"):
+        manifest = skill_dir / ".electromind-install.json"
+        if manifest.is_file():
+            try:
+                data = json.loads(manifest.read_text(encoding="utf-8"))
+                if data.get("trust_granted") is False:
+                    trusted = False
+            except (OSError, ValueError):
+                pass
     return SkillCandidate(
         skill_id=skill_id,
         descriptor=descriptor,
