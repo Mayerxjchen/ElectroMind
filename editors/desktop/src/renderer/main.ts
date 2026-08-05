@@ -1,7 +1,7 @@
 import { getThreadStore } from "./store/ThreadStore";
 import { SessionManager } from "./store/SessionManager";
 import { MessageRenderer } from "./MessageRenderer";
-import { ContextUsageRing } from "../../../vscode/src/webview/context-usage";
+import { ContextUsageRing } from "./context-usage";
 import { INSTALL_COMMANDS, bindHealthPanel, renderHealthPanel } from "./environment-health";
 import { mountOnboarding } from "./onboarding";
 import DOMPurify from "dompurify";

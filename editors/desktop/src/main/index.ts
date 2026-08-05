@@ -48,6 +48,7 @@ import type {
   WireEvent,
 } from "../shared/protocol";
 import { parseWireLine } from "../shared/wire";
+import { createReconnectScheduler } from "../shared/reconnect";
 import {
   completeOnboarding,
   getEnvironmentCheck,
@@ -968,6 +969,9 @@ function handleWireLine(line: string): void {
     postDesktopEvent({ type: "log", text: `[wire] skip invalid line: ${line}` });
     return;
   }
+  // D3: 收到任何有效事件 = wire 进程存活并握手成功 → 重置退避；若刚经历
+  // 断线重连，触发状态重建（会话列表 + 当前 thread 快照）。
+  onWireConnected();
   if (event.method === "ThreadList") {
     const payload = normalizeThreadList(event.params);
     const waiters = threadListWaiters.splice(0);
@@ -1037,6 +1041,46 @@ function disposeBridge(): void {
   bridgeStatus = "idle";
   recentStderr = "";
   sandboxStatus = { thread_id: "", backend: "", alive: false, workdir: "" };
+  reconnectScheduler.cancel();
+}
+
+// ── D3: wire 自动重连（指数退避，有上限；不无限循环） ────────────
+let reconnectedOnce = false; // 本次连接是否经历过断线（首个事件时触发重建）
+
+const reconnectScheduler = createReconnectScheduler({
+  onReconnect: () => {
+    // bridge 已被 reportBridgeFailure 清空；重新 ensureBridge（wire 新进程
+    // 启动时自行从磁盘恢复线程状态）。
+    const revived = ensureBridge();
+    if (revived) {
+      console.log("[main] D3: wire 已自动重连");
+    }
+  },
+});
+
+function onWireDisconnected(): void {
+  reconnectedOnce = true;
+  if (!reconnectScheduler.schedule()) {
+    console.log("[main] D3: 自动重连达到上限，等待手动重试");
+  }
+}
+
+function onWireConnected(): void {
+  reconnectScheduler.onConnected();
+  if (reconnectedOnce) {
+    reconnectedOnce = false;
+    // 重建：广播运行状态（renderer 刷新会话列表）+ 当前 thread 全量快照
+    // （wire 新进程已从磁盘恢复线程状态；snapshot 经事件流回 renderer）。
+    notifyRuntimeState();
+    if (currentThreadId) {
+      bridge?.send({
+        cmd: "thread/snapshot",
+        thread_id: currentThreadId,
+        after_seq: -1,
+      });
+    }
+    console.log(`[main] D3: wire 已重连，重建 thread ${currentThreadId || "(none)"} 状态`);
+  }
 }
 
 function ensureBridge(): AgentTransport | undefined {
@@ -1104,9 +1148,11 @@ function bridgeCallbacks(mode: "wire" | "http") {
             : `子进程已退出，code=${code}。`;
       const extra = recentStderr.trim();
       reportBridgeFailure(extra ? `${base}\n${extra}` : base, "bridge");
+      onWireDisconnected();
     },
     onError: (error: Error) => {
       reportBridgeFailure(error.message, mode === "http" ? "bridge" : "spawn");
+      onWireDisconnected();
     },
   };
 }
