@@ -1,0 +1,642 @@
+{
+  "schema_version": 1,
+  "tested_commit": "cfd05ad1e25af16853590ed7bbb644807702e2e6",
+  "generated_at": "2026-08-04T21:38:23.742591+00:00",
+  "results": [
+    {
+      "id": "ctx-001",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-002",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-003",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-004",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-005",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-006",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-007",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-008",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-009",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "ctx-010",
+      "category": "context",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-001",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "plan 生命周期完整",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-002",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "revision 语义正确",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-003",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "依赖图完整",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-004",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "PlanStore round-trip 完整",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-005",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "完整流程通过",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-006",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "序列化完整",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-007",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "状态与指纹矩阵正确",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-008",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "指纹稳定",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-009",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "审批门语义正确",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-010",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "step 状态矩阵正确",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "plan-011",
+      "category": "planning",
+      "passed": true,
+      "failure": null,
+      "details": "证据门强制生效",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-001",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "输入幂等成立",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-002",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "状态机转换表正确",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-003",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "lease 生命周期正确",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-004",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-005",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": "c391b6b3919deb1dcacafe9f02dfd7621040b68971ae22acc76ae80e2beb867b"
+    },
+    {
+      "id": "rec-006",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "重开恢复完整",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-007",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "副作用仅执行一次",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-008",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "排队输入按序消费",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-009",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "run_id 唯一且输入对应",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-010",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-011",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "幂等契约完整",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "rec-012",
+      "category": "recovery",
+      "passed": true,
+      "failure": null,
+      "details": "子 agent 治理契约成立",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-001",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-002",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-003",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-004",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "跨 Run 重放被拒绝",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-005",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-006",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-007",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-008",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-009",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "活动可解析、结束后过期",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-010",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "立即输入 defer 到队列头",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "safety-011",
+      "category": "safety",
+      "passed": true,
+      "failure": null,
+      "details": "审批作用域全部拒绝",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-001",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "单位与来源保留",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-002",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "配对完整",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-003",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "结果往返无损",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-004",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "状态语义分离",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-005",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-006",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-007",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-008",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-009",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-010",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "sci-011",
+      "category": "scientific",
+      "passed": true,
+      "failure": null,
+      "details": "artifact 生命周期完整",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-001",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-002",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-003",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-004",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-005",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-006",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-007",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-008",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-009",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-010",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "",
+      "runs": 1,
+      "side_effect_digest": ""
+    },
+    {
+      "id": "tool-011",
+      "category": "tool_use",
+      "passed": true,
+      "failure": null,
+      "details": "调度器契约成立",
+      "runs": 1,
+      "side_effect_digest": ""
+    }
+  ],
+  "summary": {
+    "total": 66,
+    "passed": 66,
+    "success_rate": 1.0,
+    "by_category": {
+      "context": {
+        "total": 10,
+        "passed": 10
+      },
+      "planning": {
+        "total": 11,
+        "passed": 11
+      },
+      "recovery": {
+        "total": 12,
+        "passed": 12
+      },
+      "safety": {
+        "total": 11,
+        "passed": 11
+      },
+      "scientific": {
+        "total": 11,
+        "passed": 11
+      },
+      "tool_use": {
+        "total": 11,
+        "passed": 11
+      }
+    },
+    "by_failure": {}
+  },
+  "category_counts": {
+    "context": 10,
+    "planning": 11,
+    "recovery": 12,
+    "safety": 11,
+    "scientific": 11,
+    "tool_use": 11
+  },
+  "work_root": "/var/folders/_j/2n02v6_s7sl1lfdc53qvqmxr0000gn/T/evals-cm1u0b24"
+}

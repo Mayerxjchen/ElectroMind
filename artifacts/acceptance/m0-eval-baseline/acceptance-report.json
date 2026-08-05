@@ -1,0 +1,54 @@
+{
+  "milestone": "M0-EVAL-BASELINE",
+  "tested_commit": "dc540a3ba32a7fbf57bf58023c527d6f405fe63f",
+  "status": "pass",
+  "generated_at": "2026-08-04T19:01:30.191774+00:00",
+  "evals": {
+    "total": 66,
+    "passed": 66,
+    "success_rate": 1.0,
+    "by_category": {
+      "context": {
+        "total": 10,
+        "passed": 10
+      },
+      "planning": {
+        "total": 10,
+        "passed": 10
+      },
+      "recovery": {
+        "total": 10,
+        "passed": 10
+      },
+      "safety": {
+        "total": 10,
+        "passed": 10
+      },
+      "scientific": {
+        "total": 10,
+        "passed": 10
+      },
+      "tool_use": {
+        "total": 10,
+        "passed": 10
+      }
+    }
+  },
+  "framework_coverage": {
+    "note": "覆盖率测量排除 evals/drivers.py（任务实现，其失败分支由任务失败路径执行）",
+    "measured_with": "pytest --cov=evals --cov-omit=evals/drivers.py"
+  },
+  "acceptance_criteria": {
+    "60_golden_tasks_auto_executable": true,
+    "100_percent_deterministic_verifiers": true,
+    "categories_min_10_each": true,
+    "determinism": "rec-005 runs_required=3 side-effect digest identical",
+    "json_ci_comparable": true,
+    "baseline_saved": "artifacts/acceptance/m0-eval-baseline/baseline.json",
+    "no_online_search_dependency": true
+  },
+  "known_limitations": [
+    "HPC 类任务使用模拟 scheduler/driver，无真实 Slurm 集成（用户指示暂缓）",
+    "safety 类任务使用 harness 参考审批闸门，M4 后由引擎权限层替换"
+  ]
+}

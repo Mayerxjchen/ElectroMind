@@ -58,6 +58,9 @@ debug
 artifacts/*
 !artifacts/skill-migration/
 !artifacts/skill-migration/*.json
+# 执行内核验收证据（M0/M1-M7）随仓库跟踪，指向实际 tested_commit
+!artifacts/acceptance/
+!artifacts/acceptance/**
 benchmarks/
 .trae
 

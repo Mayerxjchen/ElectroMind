@@ -1,0 +1,129 @@
+{
+  "milestone": "RUNENGINE-UNIFICATION-M1..M7",
+  "tested_commit": "dc540a3ba32a7fbf57bf58023c527d6f405fe63f",
+  "status": "pass",
+  "generated_at": "2026-08-04T21:39:00.708001+00:00",
+  "environment": {
+    "python": "3.11.15",
+    "platform": "darwin"
+  },
+  "tests": {
+    "passed": 1672,
+    "failed": 0,
+    "skipped": 4,
+    "note": "全量 0 失败（修复 evals ELECTROMIND_HOME env 泄漏导致的顺序 flaky）"
+  },
+  "coverage": {
+    "total": 79.7053,
+    "baseline": 78.2094,
+    "critical_modules": {
+      "engine/run_engine": "99% 分支（20 测试）",
+      "execution/plan": "98% 分支",
+      "execution/permissions": "修复 2 个真实策略缺陷（external_side_effect 优先级、allow_execute）",
+      "execution/idempotency": "93% 分支",
+      "context": "budget 100% / compactor 95% / manager 97%",
+      "artifacts": "manifest 98% / registry 92%",
+      "critical_modules_total": "96% 分支（关键模块合计）"
+    },
+    "evals_framework": "93.7%（排除任务实现 drivers.py；drivers 73% 由 66 个 golden 任务执行覆盖）"
+  },
+  "evals": {
+    "total": 66,
+    "passed": 66,
+    "success_rate": 1.0,
+    "by_category": {
+      "context": {
+        "total": 10,
+        "passed": 10
+      },
+      "planning": {
+        "total": 11,
+        "passed": 11
+      },
+      "recovery": {
+        "total": 12,
+        "passed": 12
+      },
+      "safety": {
+        "total": 11,
+        "passed": 11
+      },
+      "scientific": {
+        "total": 11,
+        "passed": 11
+      },
+      "tool_use": {
+        "total": 11,
+        "passed": 11
+      }
+    }
+  },
+  "safety": {
+    "unauthorized_actions": 0,
+    "duplicate_side_effects": 0,
+    "evidence": "safety 11/11 + recovery 12/12 golden tasks 全过；审批作用域/重放/过期驱动测试全过"
+  },
+  "milestones": {
+    "M1-RUN-ENGINE": {
+      "unified_run_lifecycle": "RunEngine 单一实现；wire/EmbeddedClient/HTTP 共用（HTTP 经 wire handle_command）",
+      "app_no_direct_inbound": "wire/client/tool_permit 全部经 RunEngine；runner.inbound 仅保留 permit/deny 邮箱",
+      "semantic_checkpoints": "loop_core 六命名检查点（RUN_STARTED/BEFORE_MODEL/AFTER_MODEL/BEFORE_TOOL_BATCH/AFTER_TOOL_BATCH/BEFORE_FINALIZE）接入 Runner",
+      "state_machine": "RunPhase 扩展（QUEUED/INITIALIZING/RUNNING_MODEL/RUNNING_TOOL/WAITING_APPROVAL），集中转换表唯一",
+      "one_run_per_thread": "ThreadSessionManager.start_run 单活动 Run 约束（测试锁定）",
+      "event_seq": "engine.run_loop 每事件分配 manager.next_seq 单调递增",
+      "no_orphan_toolcall": "检查点取消路径 + complete_orphan_tool_results",
+      "consistency": "test_run_engine_consistency（Wire/Embedded 相同输入 → 相同终态/工具序列/审批序列）"
+    },
+    "M2-PLAN-RECOVERY": {
+      "plan_store": "PlanStore 磁盘持久化（原子写、版本历史、防篡改覆盖）",
+      "approved_immutable": "PlanTracker 版本守卫 + PlanStore 指纹校验",
+      "evidence_gate": "StepVerifier：无 Evidence 不得 COMPLETED、无验证器不得 VERIFIED",
+      "fingerprint": "内容字段（含 expected_artifacts/effects/verification）进指纹；状态字段不污染",
+      "idempotency": "IdempotencyKey/Store：同 key 重放原结果、未知→RECONCILING 不盲重试"
+    },
+    "M3-CONTEXT": {
+      "budget": "Token 估算 + 85% 阈值 + reserve 空间 + 保守默认窗口",
+      "compaction": "约束 100% 保留、配对完整、摘要元数据（range/digest/version）",
+      "memory": "Thread/Project/Artifact 三层记忆 + 检索",
+      "200_turn_stress": "200 轮 + 50 工具调用 + 3 恢复轮压力测试通过",
+      "agentcore_integration": "AgentCore 可选 context_manager/budget/retry 注入"
+    },
+    "M4-TOOL-SAFETY": {
+      "tool_effect": "FunctionTool.effect 声明 + 注册门 + 内置表 + 风险映射",
+      "tool_scheduler": "冲突感知并行（只读并行/写串行/外部提交串行/未判定串行）",
+      "permissions": "RiskPolicy（deny/ask/allow_once/allow_for_run/allow_for_workspace）+ risk_of_action",
+      "approval_scope": "ApprovalScope 绑定 thread/run/tool_call/action/过期；跨域与重放全部拒绝"
+    },
+    "M5-SUBAGENT": {
+      "structured_result": "SubAgentResult（status/summary/artifacts/evidence/assumptions/unresolved/verification/usage）",
+      "depth_limit": "max_depth 默认 1、系统最大 2，循环委派硬阻断",
+      "budgets": "max_tokens（Agent.budget 硬检查）/max_tool_calls/timeout 结构化终止",
+      "whitelist_paths": "allowed_tools 过滤 + read/write 路径边界包裹"
+    },
+    "M6-ARTIFACT": {
+      "manifest": "ArtifactManifest 全字段 + 状态机（CREATED→COMPLETED→VALIDATED→ACCEPTED）",
+      "strict_status": "程序结束=COMPLETED、Parser 通过=VALIDATED、独立确认=ACCEPTED；创建者不能自 ACCEPTED",
+      "registry": "SHA-256 完整性、依赖图、删除/替换事件、JSONL 持久化"
+    },
+    "M7-PROVIDER": {
+      "capabilities": "ModelCapabilities + 保守默认 + fingerprint + tool-runner 门",
+      "retry": "RetryPolicy 指数退避+抖动、429/5xx/超时分类、不可重试立即失败、流中断恢复",
+      "budget": "RunBudget（token/model_calls/tool_calls/wall_time/external_cost）+ 子 Agent merge + 保守估算"
+    }
+  },
+  "known_limitations": [
+    "HPC Job 状态机 / scheduler 对账 / Slurm 集成按用户指示未实现（schema 预留）",
+    "CP2K→DeepMD / VASP Golden Workflow 未实现（用户自行验收）",
+    "wire/http 物理迁移到 engine/ 目录未执行（先统一概念与接口，符合规范 §2）",
+    "RunState.phase 字符串（generating/calling）在引擎路径仍存在但不再参与状态权威（终态由 RunPhase 表决定）"
+  ],
+  "ci_gates": {
+    "ruff_check": "pass",
+    "ruff_format": "pass",
+    "skill_isolation": "pass (17 skills)",
+    "pytest": "1672 passed / 0 failed",
+    "coverage_gate": "79.7053% >= 78%",
+    "artifact_integrity": "pass (wheel + sdist 含 default-config.toml)",
+    "wheel_install": "pass（新模块 engine/context/artifacts/execution 全部可导入）"
+  }
+}
