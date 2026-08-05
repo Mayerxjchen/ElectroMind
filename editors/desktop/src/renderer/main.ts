@@ -10,7 +10,6 @@ import { InspectorController } from "./InspectorController";
 (window as unknown as Record<string, unknown>).__electromindStore =
   getThreadStore();
 import { isInspectorTab, type InspectorTab } from "./inspector-model";
-import { timelineProjectionEnabled } from "./timeline-projection";
 import { MessageRenderer } from "./MessageRenderer";
 import { ContextUsageRing } from "./context-usage";
 import { INSTALL_COMMANDS, bindHealthPanel, renderHealthPanel } from "./environment-health";
@@ -1765,13 +1764,8 @@ async function start(): Promise<void> {
       lastRenderedThreadId = currentId;
     }
     // D3.3/D3.4: the renderer consumes the PROJECTED task timeline
-    // (single source of truth).  v1 stays as a diagnostic fallback only
-    // (removed in D3.5).
-    if (timelineProjectionEnabled()) {
-      chatRenderer.syncTimeline(thread.timeline);
-    } else {
-      chatRenderer.syncItems(thread.items);
-    }
+    // (single source of truth — the v1 raw-items path was removed).
+    chatRenderer.syncTimeline(thread.timeline);
     // Activity state is a pure projection of the store (single source).
     if (uiState.activityState !== state.activityState) {
       uiState.activityState = state.activityState;

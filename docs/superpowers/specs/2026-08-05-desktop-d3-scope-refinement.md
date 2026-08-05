@@ -293,7 +293,13 @@ Codex-style info hierarchy: `＋  Local▾  Plan▾  Ask▾  Model▾  ↑/■`.
 
 ---
 
-## D3.5 — Visual unification (tokens, not re-theming) — DONE (commit after 2026-08-05 D3.4-1)
+## D3.5 — Visual unification (tokens, not re-theming) — DONE
+
+> v1 projection path removed post-freeze (branch d3-remove-v1-projection):
+> syncItems/buildItemElement/NON_RENDERED_KINDS/dual-mode routing and the
+> TIMELINE_PROJECTION_V2 localStorage gate are gone — the renderer consumes
+> the projected TimelineItem[] only.  Dead handleEvent streaming renderers
+> and the v1 virtual-render test were removed with them.
 
 Freeze tokens:
 

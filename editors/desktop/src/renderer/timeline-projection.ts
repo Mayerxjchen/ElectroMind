@@ -26,28 +26,6 @@ import type {
   TimelineItem,
 } from "./timeline-types";
 
-// ── Feature gate ──────────────────────────────────────────────────────
-//
-// D3.3: v1 fallback kept.  D3.4: v2 is the only path (v1 diagnostic
-// only).  D3.5: delete the v1 projection path and this switch — two
-// interpretation rules must never ship.
-
-export const TIMELINE_PROJECTION_V2 = true;
-
-/** v2 by default; localStorage "desktop.timelineProjection" = "v1"
- *  opts out for diagnostics. */
-export function timelineProjectionEnabled(): boolean {
-  try {
-    const v = window.localStorage.getItem("desktop.timelineProjection");
-    if (v === "v1" || v === "v2") {
-      return v === "v2";
-    }
-  } catch {
-    /* storage unavailable — keep the default */
-  }
-  return TIMELINE_PROJECTION_V2;
-}
-
 // ── Input ─────────────────────────────────────────────────────────────
 
 /** Kinds the projection understands.  ThreadItemKind plus synthesized

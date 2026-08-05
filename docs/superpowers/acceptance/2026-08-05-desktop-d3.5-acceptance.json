@@ -46,7 +46,7 @@
   ],
   "deferred": [
     "composer-floating shadow reduction — composer lane owned by the other agent",
-    "codicon -> lucide in v1 tool cards (v1 is diagnostic-only, removed next milestone)"
+    "codicon -> lucide in v1 tool cards — MOOT: v1 path removed post-freeze (d3-remove-v1-projection)"
   ],
   "d3_final": {
     "milestone": "D3",
@@ -74,5 +74,20 @@
       "work_area_clamp": "pass"
     },
     "known_blockers": []
+  },
+  "v1_removal": {
+    "branch": "d3-remove-v1-projection",
+    "removed": [
+      "TIMELINE_PROJECTION_V2 + timelineProjectionEnabled localStorage gate",
+      "MessageRenderer.syncItems / buildItemElement / NON_RENDERED_KINDS / timelineMode dual routing",
+      "dead handleEvent streaming renderers (renderAssistant/renderPermitRequest/renderPlanProposed/renderArtifact/...)",
+      "scripts/message-renderer-virtual.test.mjs (v1-path tests)"
+    ],
+    "verified": {
+      "unit": 150,
+      "composer_cdp": "14/14",
+      "inspector_cdp": "22/22",
+      "typescript": "pass"
+    }
   }
 }
