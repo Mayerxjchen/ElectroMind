@@ -212,8 +212,7 @@ class SkillInstaller:
                     "is_git": True,
                     "commit_sha": commit_sha,
                     "candidates": sorted(
-                        str(c.relative_to(clone))
-                        for c in _find_skill_dirs(clone)
+                        str(c.relative_to(clone)) for c in _find_skill_dirs(clone)
                     ),
                 }
         src = Path(source).expanduser().resolve()
@@ -279,9 +278,7 @@ class SkillInstaller:
         if not candidates:
             raise InstallError(f"no SKILL.md found in repo {repo}")
         if len(candidates) > 1:
-            listing = ", ".join(
-                str(c.relative_to(clone)) for c in sorted(candidates)
-            )
+            listing = ", ".join(str(c.relative_to(clone)) for c in sorted(candidates))
             raise InstallError(
                 "repo contains multiple skills; install one at a time "
                 f"(use path=): {listing}"
@@ -628,7 +625,9 @@ def snapshot_files(directory: Path) -> dict[str, str]:
     return files
 
 
-def diff_snapshots(old: dict[str, str], new: dict[str, str]) -> tuple[list[str], list[str], list[str]]:
+def diff_snapshots(
+    old: dict[str, str], new: dict[str, str]
+) -> tuple[list[str], list[str], list[str]]:
     """(changed, added, removed) relative paths between two snapshots."""
     changed = sorted(f for f in old if f in new and old[f] != new[f])
     added = sorted(f for f in new if f not in old)

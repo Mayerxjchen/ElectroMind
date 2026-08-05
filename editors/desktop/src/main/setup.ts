@@ -3,6 +3,7 @@ import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, statSync, 
 import { homedir } from "node:os";
 import path from "node:path";
 
+import { atomicWriteJsonFile } from "./atomicfile";
 import { enrichedPath, resolveBackendAvailability, resolveCliCommand } from "../shared/agent";
 import {
   DEFAULT_MODEL,
@@ -110,14 +111,9 @@ function readDesktopJson(): Record<string, unknown> {
 }
 
 function writeDesktopJson(patch: Record<string, unknown>): void {
-  const filePath = desktopSettingsPath();
-  mkdirSync(path.dirname(filePath), { recursive: true });
   const existing = readDesktopJson();
-  writeFileSync(
-    filePath,
-    `${JSON.stringify({ ...existing, ...patch }, null, 2)}\n`,
-    "utf8",
-  );
+  // P1.2: 原子写（临时文件 + rename），崩溃不留下半写 desktop.json。
+  atomicWriteJsonFile(desktopSettingsPath(), { ...existing, ...patch });
 }
 
 function cliOnPath(command: string): boolean {

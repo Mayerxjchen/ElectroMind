@@ -10,10 +10,18 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import time
+from dataclasses import replace
 from pathlib import Path
 
+from ..atomicfile import atomic_write_text, load_jsonl_recover
 from .manifest import ArtifactManifest, ArtifactStatus
+
+# 历史版本键：`{id}@v{n}`（n 从 1 递增，越大越新）。仅当该键的 manifest
+# 处于 SUPERSEDED 终态时才算历史版本——防止与真实 basename（如 data@v2.txt）
+# 撞键误判。
+_VERSION_RE = re.compile(r"^(?P<base>.*)@v(?P<n>\d+)$")
 
 
 class ArtifactIntegrityError(ValueError):
@@ -59,23 +67,72 @@ class ArtifactRegistry:
                     "at": time.time(),
                 }
             )
-            self._manifests[manifest.artifact_id] = manifest.supersede(by="registry")
-            self._manifests[f"{manifest.artifact_id}@old"] = manifest
+            # P1.1：旧版本保留在 `{id}@v{n}` 版本链（逐次递增，全部 SUPERSEDED），
+            # 新版本成为当前版本。所有旧版本都必须持久化。
+            # （早期实现用单一 @old 槽——第二次替换会覆盖第一次的旧版本；
+            #   再早的实现把 supersede 打在新版本上、@old 键存新内容。）
+            # 历史版本以槽键为 artifact_id，保证序列化/重载后仍落在同一槽位，
+            # 不会因 to_dict 里的 base id 而覆盖当前版本。
+            slot_key = self._next_version_key(manifest.artifact_id)
+            old_version = existing
+            if existing.acceptance_status is not ArtifactStatus.SUPERSEDED:
+                old_version = existing.supersede(by="registry")
+            if old_version.artifact_id != slot_key:
+                old_version = replace(old_version, artifact_id=slot_key)
+            self._manifests[slot_key] = old_version
+            self._manifests[manifest.artifact_id] = manifest
+            self._flush()
             return manifest
         self._manifests[manifest.artifact_id] = manifest
         self._flush()
         return manifest
 
+    # ── 版本历史 ──────────────────────────────────────────────────────
+
+    def _next_version_key(self, artifact_id: str) -> str:
+        """`{id}@v{n}` 中下一个未使用的 n（>= 当前最大 + 1）。"""
+        n = 0
+        for key in self._manifests:
+            m = _VERSION_RE.match(key)
+            if m and m.group("base") == artifact_id:
+                n = max(n, int(m.group("n")))
+        return f"{artifact_id}@v{n + 1}"
+
+    def _is_historical(self, key: str) -> bool:
+        """键是否为历史版本槽（`{id}@v{n}` 且 manifest 已 SUPERSEDED）。"""
+        manifest = self._manifests.get(key)
+        return (
+            manifest is not None
+            and manifest.acceptance_status is ArtifactStatus.SUPERSEDED
+            and _VERSION_RE.match(key) is not None
+        )
+
+    def _current_manifests(self) -> dict[str, ArtifactManifest]:
+        """仅当前版本（排除历史 `{id}@v{n}` 槽）。"""
+        return {k: v for k, v in self._manifests.items() if not self._is_historical(k)}
+
+    def history(self, artifact_id: str) -> list[ArtifactManifest]:
+        """该 id 的所有历史版本（按版本号升序；不含当前版本）。"""
+        versions: list[tuple[int, ArtifactManifest]] = []
+        for key, manifest in self._manifests.items():
+            m = _VERSION_RE.match(key)
+            if m and m.group("base") == artifact_id and self._is_historical(key):
+                versions.append((int(m.group("n")), manifest))
+        versions.sort(key=lambda t: t[0])
+        return [manifest for _, manifest in versions]
+
     def get(self, artifact_id: str) -> ArtifactManifest | None:
         return self._manifests.get(artifact_id)
 
     def all(self) -> list[ArtifactManifest]:
-        return list(self._manifests.values())
+        """当前版本（不含历史 `{id}@v{n}` 槽）。"""
+        return list(self._current_manifests().values())
 
     def for_run(self, run_id: str) -> list[ArtifactManifest]:
-        return [m for m in self._manifests.values() if m.run_id == run_id]
+        return [m for m in self.all() if m.run_id == run_id]
 
     def by_status(self, status: ArtifactStatus) -> list[ArtifactManifest]:
+        # 含历史版本：SUPERSEDED 查询应返回所有被替代的旧版本。
         return [m for m in self._manifests.values() if m.acceptance_status == status]
 
     def inputs_of(self, artifact_id: str) -> list[ArtifactManifest]:
@@ -130,7 +187,7 @@ class ArtifactRegistry:
         P0-7: 输入 Artifact 缺失同样作为错误报告（不静默忽略）。
         """
         errors: list[str] = []
-        for manifest in self._manifests.values():
+        for manifest in self.all():
             try:
                 self.verify_integrity(manifest, root)
             except ArtifactIntegrityError as exc:
@@ -168,8 +225,6 @@ class ArtifactRegistry:
     def _flush(self) -> None:
         if self.path is None:
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
         lines = [
             json.dumps({**m.to_dict(), "type": "manifest"}, ensure_ascii=False)
             for m in self._manifests.values()
@@ -177,19 +232,17 @@ class ArtifactRegistry:
         lines.extend(
             json.dumps({**e, "type": "event"}, ensure_ascii=False) for e in self._events
         )
-        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        tmp.replace(self.path)
+        # P1.2/P1.3: 原子写 + .bak 备份（损坏恢复用）。
+        atomic_write_text(
+            self.path, "\n".join(lines) + "\n", encoding="utf-8", backup=True
+        )
 
     def _load(self) -> None:
         if self.path is None or not self.path.exists():
             return
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
-            try:
-                d = json.loads(line)
-            except (ValueError, KeyError):
-                continue
+        # P1.3: 整份损坏 → 自动尝试 .bak（load_jsonl_recover）；单条损坏
+        # fail-soft 跳过，不阻塞恢复。
+        for d in load_jsonl_recover(self.path, parse_line=json.loads):
             if d.get("type") == "manifest":
                 m = ArtifactManifest.from_dict(d)
                 self._manifests[m.artifact_id] = m
@@ -197,7 +250,7 @@ class ArtifactRegistry:
                 self._events.append(d)
 
     def __len__(self) -> int:
-        return len(self._manifests)
+        return len(self._current_manifests())
 
 
 def sha256_file(path: Path) -> str:

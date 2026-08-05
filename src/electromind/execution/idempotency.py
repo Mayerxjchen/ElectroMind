@@ -18,6 +18,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
+from ..atomicfile import atomic_write_text, load_jsonl_recover
+
 
 class IdempotencyStatus(StrEnum):
     UNKNOWN = "unknown"  # 记录已建立但结果未知（需要对账）
@@ -165,22 +167,24 @@ class IdempotencyStore:
     def _flush(self) -> None:
         if self.path is None:
             return
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        tmp = self.path.with_suffix(".tmp")
-        lines = [
-            json.dumps(r.to_dict(), ensure_ascii=False) for r in self._records.values()
-        ]
-        tmp.write_text("\n".join(lines) + "\n", encoding="utf-8")
-        tmp.replace(self.path)
+        # P1.2/P1.3: 原子写 + .bak 备份（损坏恢复用）。
+        atomic_write_text(
+            self.path,
+            "".join(
+                json.dumps(r.to_dict(), ensure_ascii=False) + "\n"
+                for r in self._records.values()
+            ),
+            encoding="utf-8",
+            backup=True,
+        )
 
     def _load(self) -> None:
         if self.path is None or not self.path.exists():
             return
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
+        # P1.3: 整份损坏 → 尝试 .bak；单条损坏 fail-soft 跳过。
+        for d in load_jsonl_recover(self.path, parse_line=json.loads):
             try:
-                record = IdempotencyRecord.from_dict(json.loads(line))
+                record = IdempotencyRecord.from_dict(d)
             except (ValueError, KeyError):
                 continue  # 单条损坏不阻塞恢复（fail-soft 读取）
             self._records[record.key] = record

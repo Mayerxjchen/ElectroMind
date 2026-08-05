@@ -25,10 +25,14 @@ from __future__ import annotations
 
 import json
 import os
-import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..atomicfile import (
+    atomic_write_text,
+    load_json_recover,
+    load_toml_recover,
+)
 from ..conversation import JsonlConversationStore, SqliteConversationStore
 from ..core.message import Messages
 from ..paths import default_electromind_home
@@ -44,9 +48,23 @@ from . import (
 )
 
 
+class ThreadCorruptError(RuntimeError):
+    """thread 关键状态文件损坏且无法从 .bak 恢复。"""
+
+
 def load_thread_toml(path: Path) -> dict:
-    with path.open("rb") as fp:
-        return tomllib.load(fp)
+    """读 thread.toml。
+
+    P1.3: 主文件损坏 → 自动尝试 .bak；均失败抛错（绝不静默回退成空配置，
+    否则会把 thread 重置成默认值导致配置丢失）。
+    """
+    data = load_toml_recover(path)
+    if data is None:
+        raise ThreadCorruptError(
+            f"thread.toml 损坏且无可用 .bak 备份: {path}（原始文件已改名 "
+            f"{path}.corrupt 留存）"
+        )
+    return data
 
 
 def format_toml_value(value: str | int | bool) -> str:
@@ -137,17 +155,22 @@ class Thread:
         return self.root / METAINFO_FILENAME
 
     def load_metainfo(self) -> dict:
-        """读面向用户的元信息（标题、时间戳、摘要）；文件不存在返回空 dict。"""
-        if not self.metainfo_path.exists():
-            return {}
-        with self.metainfo_path.open("r", encoding="utf-8") as fp:
-            return json.load(fp)
+        """读面向用户的元信息（标题、时间戳、摘要）；文件不存在返回空 dict。
+
+        P1.3: 主文件损坏 → 自动尝试 .bak；均失败返回空 dict 并留存 .corrupt。
+        """
+        return load_json_recover(self.metainfo_path, default={})
 
     def save_metainfo(self, metainfo: dict) -> None:
-        """写面向用户的元信息到 metainfo.json（覆盖式，缩进便于人读）。"""
-        self.metainfo_path.write_text(
+        """写面向用户的元信息到 metainfo.json（覆盖式，缩进便于人读）。
+
+        P1.2: 原子写 + 保留 .bak，避免崩溃留下半写 JSON。
+        """
+        atomic_write_text(
+            self.metainfo_path,
             json.dumps(metainfo, ensure_ascii=False, indent=2) + "\n",
             encoding="utf-8",
+            backup=True,
         )
 
     @property
@@ -250,9 +273,11 @@ class Thread:
                 existing.file_self_fs_pos = str(spec_path.resolve())
                 backfilled = True
             if backfilled:
-                spec_path.write_text(
+                atomic_write_text(
+                    spec_path,
                     dump_thread_toml(existing.to_dict()),
                     encoding="utf-8",
+                    backup=True,
                 )
             ignored = cls.diff_overrides(existing, provided)
             thread_dir.mkdir(parents=True, exist_ok=True)
@@ -275,9 +300,11 @@ class Thread:
         (thread_dir / WORKSPACES_DIRNAME / MAIN_WORKSPACE_NAME).mkdir(
             parents=True, exist_ok=True
         )
-        spec_path.write_text(
+        atomic_write_text(
+            spec_path,
             dump_thread_toml(spec.to_dict()),
             encoding="utf-8",
+            backup=True,
         )
         return cls(
             id=thread_id, root=thread_dir, spec_path=spec_path, spec=spec, created=True

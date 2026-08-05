@@ -9,7 +9,6 @@ This module is the single source of truth for session scanning and formatting.
 
 from __future__ import annotations
 
-import json
 import os
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -69,29 +68,35 @@ def _iter_thread_dirs(root: Path) -> list[Path]:
 
 
 def _load_metainfo(thread_dir: Path) -> dict:
-    """Read metainfo.json; return empty dict on any failure."""
+    """Read metainfo.json; return empty dict on any failure.
+
+    P1.3: 主文件损坏 → 尝试 .bak 恢复。
+    """
     meta_path = thread_dir / "metainfo.json"
     if not meta_path.is_file():
         return {}
-    try:
-        loaded = json.loads(meta_path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
-        return {}
+    from electromind.atomicfile import load_json_recover
+
+    loaded = load_json_recover(meta_path, default={})
     return loaded if isinstance(loaded, dict) else {}
 
 
 def _load_thread_spec(thread_dir: Path) -> ThreadSpec | None:
-    """Read thread.toml into a ThreadSpec; return None on failure."""
+    """Read thread.toml into a ThreadSpec; return None on failure.
+
+    P1.3: 主文件损坏 → 尝试 .bak 恢复。
+    """
     spec_path = thread_dir / SPEC_FILENAME
     if not spec_path.is_file():
         return None
-    try:
-        # Use a quick inline TOML load to avoid heavy imports
-        import tomllib
+    from electromind.atomicfile import load_toml_recover
 
-        with spec_path.open("rb") as fp:
-            return ThreadSpec.from_dict(tomllib.load(fp))
-    except (OSError, ValueError):
+    data = load_toml_recover(spec_path)
+    if not isinstance(data, dict):
+        return None
+    try:
+        return ThreadSpec.from_dict(data)
+    except (OSError, ValueError, TypeError):
         return None
 
 

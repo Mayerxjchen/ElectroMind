@@ -439,6 +439,7 @@ def _source_priority_for(skill: Skill, sources: tuple[SkillSource, ...]) -> int:
 # Bounded recursive discovery (SKILL-2 RFC revision)
 # ---------------------------------------------------------------------------
 
+
 @dataclass(frozen=True, slots=True)
 class DiscoveryPolicy:
     """Safety/semantics knobs for root-internal skill discovery.

@@ -38,6 +38,8 @@ from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from ..atomicfile import atomic_write_text, load_json_recover
+
 if TYPE_CHECKING:
     pass
 
@@ -615,26 +617,31 @@ class PlanStore:
                     f"plan {plan.plan_id}@{plan.version} 已存在且状态为 "
                     f"{existing.status}，禁止以 {plan.status} 覆盖（仅允许前向推进）"
                 )
-        tmp = path.with_suffix(".tmp")
-        tmp.write_text(
+        atomic_write_text(
+            path,
             json.dumps(plan.to_dict(), ensure_ascii=False, indent=2),
             encoding="utf-8",
+            backup=True,
         )
-        tmp.replace(path)
         return path
 
     def load(self, plan_id: str, version: int) -> PlanState | None:
         path = self._path_for(self.root, plan_id, version)
         if not path.exists():
             return None
-        d = json.loads(path.read_text(encoding="utf-8"))
+        # P1.3: 主文件损坏 → 尝试 .bak 恢复。
+        d = load_json_recover(path)
+        if not isinstance(d, dict):
+            return None
         return PlanState.from_dict(d)
 
     def load_all(self, plan_id: str) -> list[PlanState]:
         """按版本升序返回该 plan_id 的全部历史版本。"""
         plans: list[PlanState] = []
         for path in sorted(self.root.glob(f"{plan_id.replace('/', '_')}@*.json")):
-            d = json.loads(path.read_text(encoding="utf-8"))
+            d = load_json_recover(path)
+            if not isinstance(d, dict):
+                continue  # 单个版本损坏不阻塞整组恢复
             plans.append(PlanState.from_dict(d))
         return sorted(plans, key=lambda p: p.version)
 

@@ -404,20 +404,28 @@ class Messages(BaseModel):
         return "\n".join(lines)
 
     def save_to_jsonl(self, path):
-        with open(path, "w", encoding="utf-8") as f:
-            for message in self.data:
-                f.write(message.model_dump_json())
-                f.write("\n")
+        # P1.2: 原子写——崩溃 / 断电不留下半写的 messages.jsonl。
+        from ..atomicfile import atomic_write_text
+
+        atomic_write_text(
+            path,
+            "".join(f"{message.model_dump_json()}\n" for message in self.data),
+            encoding="utf-8",
+            backup=True,
+        )
 
     @classmethod
     def load_from_jsonl(cls, path):
+        # P1.3: 主文件损坏 → 尝试 .bak；单条损坏 fail-soft 跳过。
+        from ..atomicfile import load_jsonl_recover
+
+        parsed = load_jsonl_recover(
+            path,
+            parse_line=lambda raw: Message.model_validate_json(raw),
+        )
         messages = cls()
-        with open(path, encoding="utf-8") as f:
-            for line in f:
-                raw = line.strip()
-                if not raw:
-                    continue
-                messages += Message.model_validate_json(raw)
+        for message in parsed:
+            messages += message
         return messages
 
     def to_openai(self) -> list[dict]:

@@ -15,6 +15,8 @@ import time
 from enum import StrEnum
 from pathlib import Path
 
+from ..atomicfile import atomic_write_text, load_jsonl_recover
+
 
 class IntentStatus(StrEnum):
     INTENT = "intent"  # 已声明，未执行完成
@@ -153,20 +155,24 @@ class IntentLog:
     # ── 持久化 ──────────────────────────────────────────────────────
 
     def _flush(self) -> None:
-        tmp = self.path.with_suffix(".tmp")
-        with tmp.open("w", encoding="utf-8") as fh:
-            for intent in self._intents.values():
-                fh.write(json.dumps(intent.to_dict(), ensure_ascii=False) + "\n")
-        tmp.replace(self.path)
+        # P1.2/P1.3: 原子写 + .bak 备份（损坏恢复用）。
+        atomic_write_text(
+            self.path,
+            "".join(
+                json.dumps(intent.to_dict(), ensure_ascii=False) + "\n"
+                for intent in self._intents.values()
+            ),
+            encoding="utf-8",
+            backup=True,
+        )
 
     def _load(self) -> None:
         if not self.path.exists():
             return
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            if not line.strip():
-                continue
+        # P1.3: 整份损坏 → 尝试 .bak；单条损坏 fail-soft 跳过。
+        for d in load_jsonl_recover(self.path, parse_line=json.loads):
             try:
-                intent = ToolIntent.from_dict(json.loads(line))
+                intent = ToolIntent.from_dict(d)
             except (ValueError, KeyError):
                 continue  # 单条损坏不阻塞恢复
             self._intents[intent.intent_id] = intent

@@ -150,6 +150,21 @@ def collect_checks() -> Report:
     writable = os.access(home, os.W_OK) if home.is_dir() else False
     report.add("数据目录", writable, str(home))
 
+    # P1.5: 数据完整性诊断——Thread 配置 / 消息文件 / Artifact SHA / 写权限。
+    try:
+        from app.commands.data_doctor import collect_data_checks
+
+        data_checks = collect_data_checks()
+        bad = [c for c in data_checks if not c.ok]
+        detail = (
+            f"{len(data_checks)} 个 Thread"
+            + (f"，{len(bad)} 个异常" if bad else "")
+            + "（doctor --data 查看明细）"
+        )
+        report.add("数据完整性", not bad, detail)
+    except Exception as exc:
+        report.add("数据完整性", False, f"{type(exc).__name__}: {exc}")
+
     # Service / Harness 协议（wire/http 与 CLI 客户端共用同一协议层）
     try:
         from electromind.harness.protocol_v2 import EventEnvelope
@@ -202,7 +217,29 @@ def collect_checks() -> Report:
 
 
 def run(argv: list[str]) -> int:
-    del argv
+    # P1.5: ``electromind doctor --data`` 单独跑数据完整性诊断。
+    if any(a == "--data" for a in argv):
+        from app.commands.data_doctor import collect_data_checks
+
+        checks = collect_data_checks()
+        if not checks:
+            print("数据诊断：没有找到任何 Thread。")
+            return 0
+        failed = 0
+        for c in checks:
+            mark = "ok " if c.ok else "FAIL"
+            print(f"[{mark}] {c.thread_id}")
+            for issue in c.issues:
+                print(f"      {issue}", file=sys.stderr)
+                failed += 1
+        if failed:
+            print(
+                f"发现问题：{failed} 条异常，请根据上方 FAIL 项处理。", file=sys.stderr
+            )
+            return 1
+        print("所有 Thread 数据完整。")
+        return 0
+
     report = collect_checks()
     for check in report.checks:
         mark = "ok " if check.ok else "FAIL"

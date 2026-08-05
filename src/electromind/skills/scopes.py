@@ -237,7 +237,11 @@ def discover_candidate_sources(
     topmost = ancestor_levels[-1] if ancestor_levels else None
     # Adopted-root trusted targets for PROJECT scope: the repo/project root
     # plus any explicitly configured external skill roots.
-    project_adopted = tuple([proj or topmost] + list(ext_roots)) if (proj or topmost) else tuple(ext_roots)
+    project_adopted = (
+        tuple([proj or topmost] + list(ext_roots))
+        if (proj or topmost)
+        else tuple(ext_roots)
+    )
     for distance, level in enumerate(ancestor_levels):
         trust_domain = str(level)
         # Plain grouped root (RFC revision): the REPO/PROJECT root's
@@ -358,9 +362,7 @@ def _source_skill_dirs(source: SkillSource) -> list[Path]:
 
     return discover_skill_dirs(
         source.root,
-        policy=DiscoveryPolicy(
-            adopted_root_targets=frozenset(source.adopted_targets)
-        ),
+        policy=DiscoveryPolicy(adopted_root_targets=frozenset(source.adopted_targets)),
     )
 
 
@@ -446,9 +448,9 @@ def load_candidates(
     # 3. Same-scope duplicate names (different physical files) — index.
     by_scope_name: dict[tuple[str, str], list[int]] = {}
     for idx, (_src, _dir, cand) in enumerate(merged):
-        by_scope_name.setdefault(
-            (cand.source.scope, cand.descriptor.name), []
-        ).append(idx)
+        by_scope_name.setdefault((cand.source.scope, cand.descriptor.name), []).append(
+            idx
+        )
 
     # 4. Build final candidates: conflict/warning diagnostics + unique ids.
     candidates: list[SkillCandidate] = []

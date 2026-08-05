@@ -17,7 +17,6 @@ import {
   readdirSync,
   readFileSync,
   statSync,
-  writeFileSync,
 } from "node:fs";
 import * as fs from "node:fs";
 import type { Dirent } from "node:fs";
@@ -58,6 +57,7 @@ import {
   listSandboxImages,
   saveProviderSetup,
 } from "./setup";
+import { atomicWriteJsonFile } from "./atomicfile";
 
 type ThreadListEntry = {
   id: string;
@@ -159,7 +159,6 @@ function loadYoloMode(): boolean {
 
 function saveYoloMode(enabled: boolean): void {
   const filePath = desktopSettingsPath();
-  mkdirSync(path.dirname(filePath), { recursive: true });
   let existing: Record<string, unknown> = {};
   try {
     existing = JSON.parse(readFileSync(filePath, "utf8")) as Record<string, unknown>;
@@ -167,7 +166,8 @@ function saveYoloMode(enabled: boolean): void {
     // keep empty
   }
   existing.yoloMode = enabled;
-  writeFileSync(filePath, `${JSON.stringify(existing, null, 2)}\n`, "utf8");
+  // P1.2: 原子写（临时文件 + rename），崩溃不留下半写 desktop.json。
+  atomicWriteJsonFile(filePath, existing);
 }
 
 /**
@@ -1347,6 +1347,23 @@ function hideAppDuringQuit(): void {
   if (process.platform === "darwin") {
     app.dock?.hide();
   }
+}
+
+// P1.4: 单实例锁。第二个实例启动时聚焦既有窗口并退出，避免两个 Desktop
+// 同时管理同一批 thread / Agent 进程。
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) {
+        mainWindow.restore();
+      }
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  });
 }
 
 app.whenReady().then(() => {

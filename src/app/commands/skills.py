@@ -467,6 +467,7 @@ def _installed() -> int:
 
 # ── SKILL-8: managed install CLI ──────────────────────────────────────
 
+
 def _confirm(prompt: str) -> bool:
     try:
         return input(prompt).strip().lower() in ("y", "yes")

@@ -27,6 +27,7 @@ def _write_skill(root: Path, name: str) -> Path:
 
 # ── traversal engine ─────────────────────────────────────────────────
 
+
 def test_discovers_direct_child_skill(tmp_path):
     d = _write_skill(tmp_path / "skills", "direct")
     assert discover_skill_dirs(tmp_path / "skills") == [d]
@@ -76,7 +77,8 @@ def test_respects_max_depth(tmp_path):
     deep = _write_skill(root / "a" / "b" / "c", "deep-skill")  # depth 3 ≤ 6
     assert deep in discover_skill_dirs(root)
     too_deep = _write_skill(
-        root / "a" / "b" / "c" / "d" / "e" / "f" / "g", "too-deep"  # depth 7
+        root / "a" / "b" / "c" / "d" / "e" / "f" / "g",
+        "too-deep",  # depth 7
     )
     found = discover_skill_dirs(root)
     assert too_deep not in found
@@ -125,6 +127,7 @@ def test_breaks_symlink_cycle_when_follow_enabled(tmp_path):
 
 
 # ── scoped discovery + candidates ────────────────────────────────────
+
 
 def _make_project(tmp_path: Path, name: str = "proj") -> Path:
     proj = tmp_path / name
@@ -212,9 +215,7 @@ def test_name_parent_mismatch_warns_but_registers(tmp_path):
     assert "other-name" in names, "mismatched skill still registered"
     warned = [c for c in candidates if c.descriptor.name == "other-name"]
     assert any(
-        d.code == "skill_name_directory_mismatch"
-        for c in warned
-        for d in c.diagnostics
+        d.code == "skill_name_directory_mismatch" for c in warned for d in c.diagnostics
     )
 
 
@@ -228,9 +229,7 @@ def test_missing_description_is_reported(tmp_path):
     nodesc = [c for c in candidates if c.descriptor.name == "nodesc"]
     assert nodesc  # still a candidate
     assert any(
-        d.code == "skill_missing_description"
-        for c in nodesc
-        for d in c.diagnostics
+        d.code == "skill_missing_description" for c in nodesc for d in c.diagnostics
     )
 
 
@@ -251,13 +250,16 @@ def test_deduplication_precedes_name_conflict_resolution(tmp_path):
 
 # ── acceptance gates (PR1 plan) ───────────────────────────────────────
 
+
 def test_matches_exact_skill_md_filename(tmp_path):
     root = tmp_path / "skills"
     good = _write_skill(root, "alpha")
     for idx, bad_name in enumerate(("SKILL.MD", "skill.md", "Skill.md")):
         d = root / f"bad-{idx}"
         d.mkdir(parents=True)
-        (d / bad_name).write_text("---\nname: x\ndescription: d\n---\n", encoding="utf-8")
+        (d / bad_name).write_text(
+            "---\nname: x\ndescription: d\n---\n", encoding="utf-8"
+        )
     found = discover_skill_dirs(root)
     assert found == [good]
 
@@ -359,6 +361,7 @@ def test_no_unexpected_repository_skills(tmp_path):
 
 # ── C3: adopted root (entry symlink) policy ───────────────────────────
 
+
 def test_trusted_entry_symlink_is_discovered(tmp_path):
     proj = _make_project(tmp_path)
     ext = tmp_path / "external-aicc"
@@ -420,6 +423,7 @@ def test_nested_symlink_is_skipped_even_when_adopted(tmp_path):
 
 
 # ── trust: dedup merges provenance, never elevates trust ─────────────
+
 
 def test_project_builtin_same_file_uses_project_scope(tmp_path):
     proj = _make_project(tmp_path)

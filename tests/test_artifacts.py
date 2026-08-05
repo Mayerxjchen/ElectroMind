@@ -128,8 +128,72 @@ def test_registry_replace_records_event(tmp_path):
     registry.register(_manifest(sha256="new"))
     events = registry.events()
     assert any(e["event"] == "replace" and e["old_sha256"] == "old" for e in events)
-    # 原 manifest 被 SUPERSEDED
-    assert registry.get("art-1").acceptance_status == ArtifactStatus.SUPERSEDED
+    # P1.1：新版本成为当前版本（不再被标 SUPERSEDED）；旧版本保留在 @v1 槽
+    current = registry.get("art-1")
+    assert current.sha256 == "new"
+    assert current.acceptance_status == ArtifactStatus.CREATED
+    old = registry.get("art-1@v1")
+    assert old.sha256 == "old"
+    assert old.acceptance_status == ArtifactStatus.SUPERSEDED
+    # 历史版本仅来自槽位查询；all()/len 只看当前版本
+    assert len(registry) == 1
+    assert [m.artifact_id for m in registry.all()] == ["art-1"]
+
+
+def test_registry_replace_persists_both_versions(tmp_path):
+    # P1.1：替换路径必须落盘——旧版本（SUPERSEDED）与新版本都要持久化，
+    # 重新加载后一致（旧实现替换路径不 flush，新版本丢失）。
+    path = tmp_path / "artifacts.jsonl"
+    registry = ArtifactRegistry(path)
+    registry.register(_manifest(sha256="old"))
+    registry.register(_manifest(sha256="new"))
+    reloaded = ArtifactRegistry(path)
+    assert reloaded.get("art-1").sha256 == "new"
+    assert reloaded.get("art-1").acceptance_status == ArtifactStatus.CREATED
+    assert reloaded.get("art-1@v1").sha256 == "old"
+    assert reloaded.get("art-1@v1").acceptance_status == ArtifactStatus.SUPERSEDED
+
+
+def test_registry_replace_keeps_version_chain(tmp_path):
+    # P1.1：连续多次替换必须保留全部历史版本，不能覆盖（旧 @old 单槽会丢 v1）。
+    registry = ArtifactRegistry()
+    registry.register(_manifest(sha256="v1"))
+    registry.register(_manifest(sha256="v2"))
+    registry.register(_manifest(sha256="v3"))
+    assert registry.get("art-1").sha256 == "v3"
+    assert registry.get("art-1@v1").sha256 == "v1"
+    assert registry.get("art-1@v2").sha256 == "v2"
+    assert [m.sha256 for m in registry.history("art-1")] == ["v1", "v2"]
+    assert all(
+        m.acceptance_status == ArtifactStatus.SUPERSEDED
+        for m in registry.history("art-1")
+    )
+    # 持久化后版本链一致
+    path = tmp_path / "artifacts.jsonl"
+    registry2 = ArtifactRegistry(path)
+    registry2.register(_manifest(sha256="v1"))
+    registry2.register(_manifest(sha256="v2"))
+    registry2.register(_manifest(sha256="v3"))
+    reloaded = ArtifactRegistry(path)
+    assert [m.sha256 for m in reloaded.history("art-1")] == ["v1", "v2"]
+    assert reloaded.get("art-1@v2").sha256 == "v2"
+    assert reloaded.get("art-1").sha256 == "v3"
+
+
+def test_registry_recover_from_backup(tmp_path):
+    """P1.3: artifacts.jsonl 整体损坏 → 从 .bak 自动恢复。"""
+
+    path = tmp_path / "artifacts.jsonl"
+    registry = ArtifactRegistry(path)
+    registry.register(_manifest(sha256="v1"))  # 首写：无 .bak
+    registry.register(_manifest(sha256="v2"))  # 二写：产生 .bak（含 v1）
+    # 主文件损坏（截断的半写文件）
+    path.write_text(
+        '{"type": "manifest", "artifact_id": "art-1", "sha256": "v', encoding="utf-8"
+    )
+    reloaded = ArtifactRegistry(path)
+    assert reloaded.get("art-1").sha256 == "v1"
+    assert (tmp_path / "artifacts.jsonl.corrupt").exists()
 
 
 def test_registry_delete_records_event(tmp_path):
