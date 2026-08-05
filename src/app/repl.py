@@ -265,6 +265,8 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
     ("doctor", "环境诊断"),
     ("tasks", "当前 Run 状态与排队输入"),
     ("files", "浏览项目文件（Enter 插入路径）"),
+    ("plan", "查看/提议/批准/修订/取消计划（G1）"),
+    ("artifacts", "查看/登记/确认/驳回产物（G1）"),
     ("exit", "退出"),
 ]
 
@@ -272,6 +274,49 @@ SLASH_COMMANDS: list[tuple[str, str]] = [
 def format_slash_help() -> str:
     width = max(len(name) for name, _ in SLASH_COMMANDS)
     return "\n".join(f"/{name:<{width}}  {summary}" for name, summary in SLASH_COMMANDS)
+
+
+def _format_plan(plan) -> str:
+    """G1: Plan 摘要（目标/状态/步骤/证据），无计划时提示。"""
+    if plan is None:
+        return "(无计划；/plan propose <目标> 提议)"
+    lines = [
+        f"plan:      {plan.plan_id}@{plan.version}",
+        f"status:    {plan.status.value}",
+        f"objective: {plan.objective}",
+    ]
+    if plan.assumptions:
+        lines.append(f"assumptions: {' | '.join(plan.assumptions)}")
+    if plan.risks:
+        lines.append(f"risks:     {' | '.join(plan.risks)}")
+    if plan.verification:
+        lines.append(f"verify:    {' | '.join(plan.verification)}")
+    if plan.steps:
+        lines.append("steps:")
+        for s in plan.steps:
+            evidence = (
+                "；".join(f"{e.kind.value}:{e.detail}" for e in s.evidence) or "—"
+            )
+            deps = f"（依赖: {', '.join(s.depends_on)}）" if s.depends_on else ""
+            error = f"（{s.error}）" if s.error else ""
+            lines.append(
+                f"  [{s.status.value}] {s.id} {s.title}{deps}{error}\n"
+                f"      evidence: {evidence}"
+            )
+    return "\n".join(lines)
+
+
+def _format_artifacts(manifests) -> str:
+    """G1: Artifact 清单（id/type/状态/路径/摘要）。"""
+    if not manifests:
+        return "(无产物)"
+    rows = ["  id · type · status · path · sha256"]
+    for m in sorted(manifests, key=lambda x: x.artifact_id):
+        rows.append(
+            f"  {m.artifact_id} · {m.type} · {m.acceptance_status.value} · "
+            f"{m.path} · {m.sha256[:8]}"
+        )
+    return "\n".join(rows)
 
 
 def _spec_session_mode(runner: Runner) -> str:
@@ -286,6 +331,7 @@ async def handle_command(
     color: bool,
     app=None,
     config=None,
+    client=None,
 ) -> bool:
     global _pending_thread_switch
     del color
@@ -387,6 +433,18 @@ async def handle_command(
             f" · 排队输入: {app_pending}"
         )
         return False
+    if cmd == "/plan" or cmd.startswith("/plan "):
+        return await _handle_plan_command(
+            cmd,
+            runner,
+            client=client if client is not None else getattr(app, "client", None),
+        )
+    if cmd == "/artifacts" or cmd.startswith("/artifacts "):
+        return await _handle_artifacts_command(
+            cmd,
+            runner,
+            client=client if client is not None else getattr(app, "client", None),
+        )
     if cmd == "/doctor":
         from .commands.doctor import collect_checks
 
@@ -472,6 +530,113 @@ async def handle_command(
         emit(f"正在切换到: {chosen_id}")
         return True  # signal REPL loop to restart with new thread
     emit(f"unknown command: {cmd}")
+    return False
+
+
+async def _handle_plan_command(cmd: str, runner: Runner, *, client=None) -> bool:
+    """G1: /plan —— 查看 / 提议 / 批准 / 修订 / 取消计划。
+
+    与 Desktop 的 plan/* 命令共用 RunEngine 状态源；非法转换（版本门、
+    Evidence 门）以 ValueError 转述。
+    """
+    if client is None:
+        emit("plan 命令需要会话客户端")
+        return False
+    parts = cmd.split(maxsplit=1)
+    action = parts[1].strip() if len(parts) > 1 else ""
+    thread_id = runner.thread.id
+    try:
+        if action == "":
+            emit(_format_plan(client.plan_state(thread_id)))
+        elif action == "approve":
+            plan = client.plan_approve(thread_id)
+            emit(
+                f"已批准: {plan.plan_id}@{plan.version}"
+                if plan
+                else "没有可批准的 READY 计划"
+            )
+        elif action == "revise":
+            plan = client.plan_revise(thread_id)
+            emit(f"已开始修订: v{plan.version}" if plan else "没有可修订的计划")
+        elif action == "cancel":
+            plan = client.plan_cancel(thread_id)
+            emit("已取消计划" if plan else "没有可取消的计划")
+        elif action.startswith("propose "):
+            objective = action[len("propose ") :].strip()
+            if not objective:
+                emit("用法: /plan propose <目标>")
+            else:
+                from electromind.execution.plan import PlanState, PlanStatus
+
+                plan = PlanState(
+                    plan_id="default",
+                    version=1,
+                    status=PlanStatus.DRAFT,
+                    objective=objective,
+                )
+                proposed = client.plan_propose(thread_id, plan)
+                emit(f"已提议: v{proposed.version}（/plan approve 批准）")
+        else:
+            emit("用法: /plan [propose <目标>|approve|revise|cancel]")
+    except ValueError as exc:
+        emit(f"计划操作失败: {exc}")
+    return False
+
+
+async def _handle_artifacts_command(cmd: str, runner: Runner, *, client=None) -> bool:
+    """G1: /artifacts —— 查看 / 登记 / 确认 / 驳回产物。
+
+    登记时经 sandbox.files 读取文件并计算 SHA-256（local/container/ssh
+    通用）；accept 由用户确认（创建者不能自证）。
+    """
+    if client is None:
+        emit("artifacts 命令需要会话客户端")
+        return False
+    parts = cmd.split(maxsplit=1)
+    action = parts[1].strip() if len(parts) > 1 else ""
+    thread_id = runner.thread.id
+    try:
+        if action == "":
+            emit(_format_artifacts(client.artifact_list(thread_id)))
+        elif action.startswith("register "):
+            rest = action[len("register ") :].strip().split()
+            if not rest:
+                emit("用法: /artifacts register <path> [type]")
+                return False
+            path = rest[0]
+            art_type = rest[1] if len(rest) > 1 else "data"
+            import hashlib
+
+            from electromind.artifacts.manifest import ArtifactManifest
+
+            content = await runner.sandbox.files.read(path)
+            sha256 = hashlib.sha256(content).hexdigest()
+            manifest = ArtifactManifest(
+                artifact_id=path.rsplit("/", 1)[-1] or path,
+                type=art_type,
+                path=path,
+                sha256=sha256,
+                created_by="user",
+            )
+            client.artifact_register(thread_id, manifest)
+            emit(f"已登记: {manifest.artifact_id}（{sha256[:8]}）")
+        elif action.startswith("accept "):
+            artifact_id = action[len("accept ") :].strip()
+            client.artifact_accept(thread_id, artifact_id)
+            emit(f"已确认: {artifact_id}")
+        elif action.startswith("reject "):
+            rest = action[len("reject ") :].strip().split(maxsplit=1)
+            if not rest:
+                emit("用法: /artifacts reject <id> <原因>")
+                return False
+            client.artifact_reject(thread_id, rest[0], rest[1] if len(rest) > 1 else "")
+            emit(f"已驳回: {rest[0]}")
+        else:
+            emit(
+                "用法: /artifacts [register <path> [type]|accept <id>|reject <id> <原因>]"
+            )
+    except ValueError as exc:
+        emit(f"产物操作失败: {exc}")
     return False
 
 
@@ -601,7 +766,7 @@ async def run_blocking_repl(
                 is_known = cmd_name in known or cmd_name.startswith("/resume")
                 if is_known:
                     exit_requested = await handle_command(
-                        line, runner, color=use_color, config=config
+                        line, runner, color=use_color, config=config, client=client
                     )
                     if _pending_thread_switch:
                         new_thread_id = _pending_thread_switch

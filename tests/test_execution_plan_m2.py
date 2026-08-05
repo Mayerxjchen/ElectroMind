@@ -290,3 +290,141 @@ def test_idempotency_store_persistence(tmp_path):
     path.write_text("not-json\n" + path.read_text(encoding="utf-8"), encoding="utf-8")
     store3 = IdempotencyStore(path)
     assert store3.get_result(key) == "uploaded"
+
+
+# ── P0-8 分支补足 ───────────────────────────────────────────────────────
+
+
+def test_intent_log_branches(tmp_path):
+    from electromind.execution.intent_log import IntentLog, IntentStatus
+
+    log = IntentLog(tmp_path / "intent.jsonl")
+    intent = log.record(
+        run_id="r1", tool_call_id="c1", tool="write_file", arguments_digest="d"
+    )
+    # 未知 id 的 commit/reconcile/get → None
+    assert log.commit("nope", "x") is None
+    assert log.reconcile("nope") is None
+    assert log.get("nope") is None
+    # 正常 commit + 状态查询
+    assert log.commit(intent.intent_id, "ref") is not None
+    assert log.get(intent.intent_id).status == IntentStatus.COMMITTED
+    assert log.committed_for("r1")[0].intent_id == intent.intent_id
+    assert log.pending_for("r1") == []
+    # reconcile
+    i2 = log.record(run_id="r1", tool_call_id="c2", tool="rm", arguments_digest="d2")
+    log.reconcile(i2.intent_id)
+    assert log.pending_for("r1")[0].status == IntentStatus.RECONCILING
+    # 持久化恢复 + 损坏行 fail-soft
+    log2 = IntentLog(tmp_path / "intent.jsonl")
+    assert len(log2) == 2
+    path = tmp_path / "intent.jsonl"
+    path.write_text("not-json\n" + path.read_text(encoding="utf-8"), encoding="utf-8")
+    log3 = IntentLog(path)
+    assert len(log3) == 2
+
+
+def test_idempotency_branches(tmp_path):
+    from electromind.execution.idempotency import IdempotencyKey, IdempotencyStore
+
+    store = IdempotencyStore(tmp_path / "idem.jsonl")
+    key = IdempotencyKey.derive(run_id="r", tool_name="t")
+    # record_unknown 覆盖已有 UNKNOWN
+    store.record_unknown(key)
+    store.record_unknown(key)
+    assert not store.is_duplicate(key)
+    assert not store.is_reconciling(key)
+    # 未知 key 查询
+    other = IdempotencyKey.derive(run_id="r2", tool_name="t2")
+    assert store.get(other) is None
+    assert not store.is_duplicate(other)
+    assert not store.is_reconciling(other)
+    assert store.get_result(other) is None
+    # record_completed 覆盖 UNKNOWN
+    store.record_completed(key, "ok")
+    assert store.is_duplicate(key)
+    assert store.get_result(key) == "ok"
+
+
+def test_memory_branches():
+    from electromind.context import ProjectMemory, ThreadMemory
+
+    tm = ThreadMemory()
+    tm.add_constraint("")
+    tm.add_unresolved("")
+    tm.add_decision("d1")
+    for i in range(25):
+        tm.add_decision(f"d{i}")
+    assert len(tm.recent_decisions) == 20  # 裁剪
+    pm = ProjectMemory()
+    pm.set_convention("k", "v")
+    assert pm.to_dict()["directory_conventions"] == {"k": "v"}
+
+
+def test_tool_scheduler_branches():
+    from electromind.execution.effects import ToolEffect
+    from electromind.execution.tool_scheduler import ToolCallInfo, ToolScheduler
+
+    scheduler = ToolScheduler()
+    # resources() 无 path / 无 effect
+    assert ToolCallInfo("a", "run_command", {}, None).resources() == set()
+    assert ToolCallInfo(
+        "b", "list_dir", {"path": "."}, ToolEffect.READ_WORKSPACE
+    ).resources() == {"read_workspace:."}
+    submit = ToolCallInfo("s", "sbatch", {}, ToolEffect.SUBMIT_EXTERNAL)
+    assert "external:submit" in submit.resources()
+    # serialize_all
+    assert scheduler.serialize_all([submit]) == [[submit]]
+    # effects_conflict 反向检查
+    from electromind.execution.tool_scheduler import effects_conflict
+
+    assert effects_conflict(ToolEffect.READ_HOST, ToolEffect.READ_WORKSPACE) is False
+    assert effects_conflict(ToolEffect.READ_HOST, ToolEffect.WRITE_WORKSPACE) is True
+
+
+def test_compactor_branches():
+    from electromind.context import Compactor
+
+    compactor = Compactor()
+    assert compactor.compact([]) == ([], None)
+    assert compactor.pairing_intact([]) is True
+    # make_summary + to_dict
+    c2 = Compactor(keep_recent_turns=1, make_summary=lambda t: "S")
+    c2.compact([{"role": "user", "content": "a"}, {"role": "user", "content": "b"}])
+    assert c2.to_dict()["keep_recent_turns"] == 1
+
+
+def test_manifest_branches():
+    from electromind.artifacts import ArtifactManifest
+    from electromind.artifacts.manifest import ArtifactTransitionError
+
+    m = ArtifactManifest(artifact_id="x", type="t", path="p", sha256="s")
+    with pytest.raises(ArtifactTransitionError, match="替代者"):
+        m.supersede(by="")
+    with pytest.raises(ArtifactTransitionError, match="角色"):
+        m.complete().accept(who="alice", role="robot")
+    # from_dict 默认
+    d = ArtifactManifest.from_dict(
+        {"artifact_id": "y", "type": "t", "path": "p", "sha256": "s"}
+    )
+    assert d.accepted_by == "" and d.created_by_role == "agent"
+    # accepted_by 保留 round-trip
+    m2 = m.complete().validate(parser="p").accept(who="user")
+    restored = ArtifactManifest.from_dict(m2.to_dict())
+    assert restored.accepted_by == "user"
+    assert restored.validation_status == "validated"
+    assert restored.acceptance_status == "accepted"
+
+
+def test_idempotency_no_path_branches(tmp_path):
+    from electromind.execution.idempotency import IdempotencyKey, IdempotencyStore
+
+    mem = IdempotencyStore()  # 无 path → 不落盘
+    key = IdempotencyKey.derive(run_id="r", tool_name="t")
+    mem.record_completed(key, "ok")
+    assert mem.get_result(key) == "ok"
+    # 损坏行 fail-soft
+    path = tmp_path / "idem.jsonl"
+    path.write_text("bad\n", encoding="utf-8")
+    store = IdempotencyStore(path)
+    assert len(store) == 0

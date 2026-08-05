@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from electromind.core.message import Message, Messages
 from electromind.core.tool import FunctionTool
 from electromind.ithread import SubAgentSpec
@@ -216,3 +218,105 @@ async def test_run_sub_agent_tool_call_limit():
     )
     assert result2.status == "budget_exceeded"
     assert result2.usage["tool_calls"] == 2
+
+
+# ── P0-6 验收：路径穿越 / 事前预算 / Reviewer 角色 ─────────────────────
+
+
+async def test_path_traversal_normalized_blocked():
+    """P0-6: ``data/../../secret`` 归一后必须被边界拒绝。"""
+    tools = [_tool("read_file"), _tool("write_file")]
+    bounded = bound_paths(tools, read_paths=("data/",), write_paths=("data/",))
+    blocked = await bounded[0].acall('{"path": "data/../../secret.txt"}', context=None)
+    assert not blocked.ok
+    assert "路径越界" in blocked.content
+    # 归一后仍在边界内 → 放行
+    ok = await bounded[0].acall('{"path": "data/sub/../a.txt"}', context=None)
+    assert ok.ok
+    # 绝对路径拒绝
+    abs_blocked = await bounded[0].acall('{"path": "/etc/passwd"}', context=None)
+    assert not abs_blocked.ok
+
+
+async def test_frame_tool_budget_pre_enforced(tmp_path, monkeypatch):
+    """P0-6: 工具调用预算在执行前硬限（真实 Runner 双调用验证）。"""
+    from evals.provider import ProviderStep, ScriptedProvider
+
+    from electromind.runtime import Runner
+
+    monkeypatch.chdir(tmp_path)
+    provider = ScriptedProvider(
+        [
+            ProviderStep.tools(
+                {"name": "read_file", "arguments": {"path": "a.txt"}},
+                {"name": "read_file", "arguments": {"path": "b.txt"}},
+            ),
+            ProviderStep.text("ok"),
+        ]
+    )
+    ws = tmp_path / ".electromind" / "threads" / "t-budget" / "workspaces" / "main"
+    ws.mkdir(parents=True, exist_ok=True)
+    (ws / "a.txt").write_text("a", encoding="utf-8")
+    (ws / "b.txt").write_text("b", encoding="utf-8")
+    runner = await Runner.create("t-budget", provider, overrides={"backend": "local"})
+    try:
+        # 预算 1：第一次允许，第二次执行前拒绝
+        runner.frame.max_tool_calls = 1
+        results = []
+        async for event in runner.run("读两个文件"):
+            from electromind.core.events import ToolResult
+
+            if isinstance(event, ToolResult):
+                results.append(event)
+        assert len(results) == 2
+        assert results[0].ok is True
+        assert results[1].ok is False
+        assert "预算已超限" in results[1].content
+        assert runner.frame.tool_calls_executed == 1
+    finally:
+        await runner.close()
+
+
+def test_reviewer_role_cannot_accept_own_artifact():
+    """P0-6: Reviewer 角色不能批准自己创建的产物。"""
+    from electromind.artifacts import ArtifactManifest
+    from electromind.artifacts.manifest import ArtifactTransitionError
+
+    m = (
+        ArtifactManifest(
+            artifact_id="r1",
+            type="report",
+            path="review.md",
+            sha256="b" * 64,
+            created_by="reviewer-bob",
+            created_by_role="reviewer",
+        )
+        .complete()
+        .validate(parser="checker")
+    )
+    # 同名 → 身份门拒绝
+    with pytest.raises(ArtifactTransitionError, match="创建者"):
+        m.accept(who="reviewer-bob", role="reviewer")
+    # 异名同角色 → 角色门拒绝（Reviewer 不能批准同角色产物）
+    with pytest.raises(ArtifactTransitionError, match="创建者角色"):
+        m.accept(who="reviewer-carol", role="reviewer")
+    # 跨角色评审：reviewer 接受 agent 角色创建的产物 ✓
+    from electromind.artifacts import ArtifactManifest as _AM
+
+    m2 = (
+        _AM(
+            artifact_id="r2",
+            type="report",
+            path="analysis.md",
+            sha256="c" * 64,
+            created_by="analysis-1",
+            created_by_role="agent",
+        )
+        .complete()
+        .validate(parser="checker")
+    )
+    accepted = m2.accept(who="reviewer-alice", role="reviewer")
+    assert accepted.acceptance_status == "accepted"
+    # 同角色不能互批（reviewer 不能接受 reviewer 的产物）
+    with pytest.raises(ArtifactTransitionError, match="创建者角色"):
+        m.accept(who="reviewer-carol", role="reviewer")

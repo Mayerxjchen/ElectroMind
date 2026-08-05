@@ -1,8 +1,17 @@
 # electromind — instructions for coding agents
 
 You are working with **electromind**（ElectroMind）：面向科学计算与机器学习势函数（MLIP）工作流的
-AI Agent —— async Python 库（Agent + Runner + Sandbox + Skills）+ 终端 REPL + Desktop / VS Code / Web 编辑器。
+AI Agent —— async Python 库（Agent + Runner + Sandbox + Skills）+ 终端 REPL + Desktop 编辑器。
 用下面的布局与约定定位代码，别猜 API。
+
+## 接口支持级别（2026-08-05 起，详见 docs/superpowers/specs/2026-08-05-scope-contraction-cli-desktop.md）
+
+- **正式支持**：CLI（`src/app/cli*` `src/app/repl*`）与 Desktop（`editors/desktop/`）。
+  CLI 是完整功能入口与参考实现；Desktop 是 CLI 能力的图形化呈现。
+- **Wire（--wire）**：Desktop 的**内部传输层**，不做公开 API 兼容承诺，仅服务 Desktop。
+- **Experimental / maintenance-only**：`src/app/http_server.py`、`editors/web/`、`editors/vscode/`。
+  不删除、不新适配功能、不承诺兼容；既有测试保留以防腐化。
+- 新功能改动核心时只要求 CLI + Desktop + Wire 保持一致；不验收 HTTP/Web/VS Code 一致性。
 
 ## 仓库布局
 
@@ -29,11 +38,11 @@ src/app/                    CLI / REPL 应用层（`uv run electromind` 入口�
   cli.py cli_parser.py      CLI 入口与参数
   config.py                 ReplConfig / Settings 多 scope 加载与合并
   repl.py                   TUI REPL；concurrent_repl.py 并发模型
-  wire.py                   --wire stdio NDJSON 后端（供 VS Code / Desktop）
-  http_server.py            --http SSE 后端（供 Web UI）
+  wire.py                   --wire stdio NDJSON 后端（Desktop 内部传输层）
+  http_server.py            --http SSE 后端（experimental / maintenance-only）
   sessions.py setup.py     会话管理 / 首次 API Key 引导
   commands/ output/ tui/   子命令、输出渲染、TUI 组件
-editors/                    desktop（Electron）/ vscode / web（React）
+editors/                    desktop（Electron，正式支持）/ vscode、web（experimental）
 skills/                     内建科学计算技能包（CP2K / VASP / LAMMPS / DeepMD / MCMC），
                             经 uv_build data 打进安装产物
 tests/                      pytest（应用 / 库 / sandbox / 协议）

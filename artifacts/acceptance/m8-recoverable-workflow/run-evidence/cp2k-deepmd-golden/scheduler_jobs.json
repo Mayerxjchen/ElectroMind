@@ -1,0 +1,10 @@
+[
+  {
+    "job_id": "job-0001",
+    "job_key": "idem:run-1:s3:submit:ff6dbaffde10816872be131bd51cbf55",
+    "script": "cp2k.pbs",
+    "status": "completed",
+    "submitted_at": 1785908789.591064,
+    "updated_at": 1785908789.591648
+  }
+]

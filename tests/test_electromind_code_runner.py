@@ -40,13 +40,13 @@ def agent_tool() -> str:
     return "agent"
 
 
-@tool()
+@tool(effect="pure")
 def sandbox_tool() -> str:
     """Sandbox 工具。"""
     return "sandbox"
 
 
-@tool()
+@tool(effect="pure")
 def extra_tool() -> str:
     """额外注入工具。"""
     return "extra"

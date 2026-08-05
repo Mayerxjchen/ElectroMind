@@ -10,6 +10,7 @@ from .manifest import (
     ArtifactTransitionError,
     allowed_artifact_transitions,
 )
+from .provenance import ProvenanceStore, ValueProvenance
 from .registry import (
     ArtifactIntegrityError,
     ArtifactRegistry,
@@ -23,5 +24,7 @@ __all__ = [
     "ArtifactStatus",
     "ArtifactTransitionError",
     "allowed_artifact_transitions",
+    "ProvenanceStore",
+    "ValueProvenance",
     "sha256_file",
 ]

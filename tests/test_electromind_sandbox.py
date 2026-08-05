@@ -762,7 +762,7 @@ async def test_runner_open_merges_extra_tools(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     from electromind import tool
 
-    @tool()
+    @tool(effect="pure")
     def add(a: int, b: int) -> int:
         """add two ints"""
         return a + b

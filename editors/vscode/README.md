@@ -1,5 +1,10 @@
 # electromind VS Code 插件
 
+> **Status: EXPERIMENTAL / MAINTENANCE-ONLY**（2026-08-05 范围收缩决议，
+> 见 `docs/superpowers/specs/2026-08-05-scope-contraction-cli-desktop.md`）
+> 暂停开发：不删除、不承诺兼容、不新适配功能；仅保留既有测试防腐化。
+> 正式入口为 **CLI** 与 **Desktop**（`editors/desktop/`）。
+
 把 electromind Agent 接进 VS Code 的插件，按 20 课渐进式实现，最终对齐 Cursor Agent 模式。
 课程大纲见 [ROADMAP.md](https://github.com/Mayerxjchen/ElectroMind/blob/main/editors/vscode/ROADMAP.md)。
 

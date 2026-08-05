@@ -105,6 +105,7 @@ async def test_before_tool_deny_skips_execution(tmp_path, monkeypatch):
                     "required": ["x"],
                 },
                 echo,
+                effect="execute",
             )
         ],
         tool_hooks=ToolHooks(before=[deny_shell]),
@@ -153,6 +154,7 @@ async def test_after_tool_rewrites_result(tmp_path, monkeypatch):
                     "required": ["x"],
                 },
                 echo,
+                effect="execute",
             )
         ],
         tool_hooks=ToolHooks(after=[redact]),
@@ -201,6 +203,7 @@ async def test_wait_tool_permit_blocks_until_approved(tmp_path, monkeypatch):
                     "required": ["x"],
                 },
                 echo,
+                effect="execute",
             )
         ],
         tool_hooks=ToolHooks(before=[require_permit]),
@@ -279,6 +282,7 @@ async def test_no_hooks_preserves_existing_behavior(tmp_path, monkeypatch):
                     "required": ["x"],
                 },
                 echo,
+                effect="execute",
             )
         ],
     )

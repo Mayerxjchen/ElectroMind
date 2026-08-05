@@ -39,7 +39,29 @@ from electromind.harness.state import (
     SessionMode,
 )
 
-from .tool_permit import requires_permit_prompt, risk_hint, summarize_tool_args
+from .tool_permit import requires_permit_prompt, summarize_tool_args
+
+
+def _approval_digest(arguments: str) -> str:
+    """审批时的参数摘要（与 wire 一致：sha256 of sorted JSON）。"""
+    import hashlib
+    import json
+
+    try:
+        normalized = json.dumps(
+            json.loads(arguments), ensure_ascii=False, sort_keys=True
+        )
+    except (json.JSONDecodeError, TypeError):
+        normalized = str(arguments)
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def _approval_expires_at(*, ttl_seconds: int = 300) -> str:
+    """审批 TTL 过期时间（ISO 8601 UTC）。"""
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
+
 
 _MODE_TO_SESSION = {
     "ask": SessionMode.ASK,
@@ -69,8 +91,11 @@ class EmbeddedAgentClient:
         self.idempotency = IdempotencyStore()
         # M1: 唯一 Run 生命周期（与 manager 同源）
         from electromind.engine import RunEngine
+        from electromind.engine.accessor import set_engine
 
         self.engine = RunEngine(manager=self.manager)
+        # G1b: 模型工具经 accessor 取引擎（进程内单 UI，最后注册者生效）
+        set_engine(self.engine)
         self._runners: dict[str, object] = {}
         self._run_tasks: dict[str, asyncio.Task] = {}
         self._run_workspace: dict[str, WorkspaceKey] = {}  # run_id → 写租约键
@@ -481,6 +506,17 @@ class EmbeddedAgentClient:
         sandbox = getattr(runner, "sandbox", None)
         workdir = getattr(sandbox, "workdir", "") or ""
         command = summarize_tool_args(event.name, event.arguments)
+        # P0-4: 风险由静态表计算；审批带参数摘要与 TTL
+        from electromind.execution.permissions import ActionSpec, risk_of_action
+
+        arguments_text = (
+            event.arguments
+            if isinstance(event.arguments, str)
+            else str(event.arguments)
+        )
+        action_risk = risk_of_action(
+            ActionSpec(tool=event.name, command=arguments_text[:500])
+        )
         approval = ApprovalRequest(
             approval_id=new_approval_id(),
             thread_id=thread_id,
@@ -489,8 +525,10 @@ class EmbeddedAgentClient:
             action_id=f"action:{event.tool_call_id}",
             target=self._execution_target(runner, thread_id).kind,
             workdir=workdir,
-            risk=risk_hint(command),
+            risk=str(action_risk),
             summary=command,
+            expires_at=_approval_expires_at(),
+            arguments_digest=_approval_digest(arguments_text),
         )
         registered = await self.manager.add_approval(thread_id, approval)
         if registered:
@@ -561,6 +599,50 @@ class EmbeddedAgentClient:
             return False  # 无 run_id 的 Cancel 一律拒绝（显式绑定是契约）
         # M1: 经 RunEngine（run_id 绑定校验在内）
         return self.engine.cancel_run(thread_id, run_id)
+
+    # ------------------------------------------------------------------
+    # G1: Plan / Artifact 领域状态（引擎是唯一状态源；CLI 直连引擎，
+    # Desktop 走 wire 命令——两端语义一致）
+    # ------------------------------------------------------------------
+
+    def plan_state(self, thread_id: str):
+        """当前计划（无则 None）。"""
+        return self.engine.plan_state(thread_id)
+
+    def plan_propose(self, thread_id: str, plan):
+        """提议新计划（冻结 READY；已批准版本不可覆盖）。"""
+        return self.engine.plan_propose(thread_id, plan)
+
+    def plan_approve(self, thread_id: str):
+        return self.engine.plan_approve(thread_id)
+
+    def plan_revise(self, thread_id: str):
+        return self.engine.plan_revise(thread_id)
+
+    def plan_cancel(self, thread_id: str):
+        return self.engine.plan_cancel(thread_id)
+
+    def plan_update_step(self, thread_id: str, step_id: str, status) -> None:
+        """推进步骤状态；非法转换（缺 Evidence 等）抛 ValueError。"""
+        from electromind.execution.plan import StepStatus
+
+        self.engine.plan_update_step(thread_id, step_id, StepStatus(status))
+
+    def artifact_list(self, thread_id: str) -> list:
+        """全部 Artifact Manifest（含状态）。"""
+        return self.engine.artifacts(thread_id)
+
+    def artifact_register(self, thread_id: str, manifest) -> None:
+        """登记产物（CREATED；sha256 由调用方计算）。"""
+        self.engine.artifact_register(thread_id, manifest)
+
+    def artifact_accept(self, thread_id: str, artifact_id: str) -> None:
+        """用户确认 ACCEPTED（创建者不能自证）。"""
+        self.engine.artifact_accept(thread_id, artifact_id, who="user")
+
+    def artifact_reject(self, thread_id: str, artifact_id: str, reason: str) -> None:
+        """检查失败 → REJECTED（必须记录原因）。"""
+        self.engine.artifact_reject(thread_id, artifact_id, reason=reason)
 
     # ------------------------------------------------------------------
     # 终态

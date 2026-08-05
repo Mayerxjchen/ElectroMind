@@ -43,15 +43,15 @@ class ToolCallInfo:
         return res
 
 
-# 可并行组合矩阵：False = 必须串行
+# 可并行组合矩阵：False = 必须串行。
+# PURE 保守串行（纯计算工具也可能带副作用，测试工具尤甚）；只有
+# 明确只读的 READ_* 之间才并行。
 _PARALLEL: dict[ToolEffect, frozenset[ToolEffect]] = {
-    ToolEffect.PURE: frozenset(ToolEffect),  # 与一切并行
+    ToolEffect.PURE: frozenset(),
     ToolEffect.READ_WORKSPACE: frozenset(
-        {ToolEffect.PURE, ToolEffect.READ_WORKSPACE, ToolEffect.READ_HOST}
+        {ToolEffect.READ_WORKSPACE, ToolEffect.READ_HOST}
     ),
-    ToolEffect.READ_HOST: frozenset(
-        {ToolEffect.PURE, ToolEffect.READ_WORKSPACE, ToolEffect.READ_HOST}
-    ),
+    ToolEffect.READ_HOST: frozenset({ToolEffect.READ_WORKSPACE, ToolEffect.READ_HOST}),
     # 其余（WRITE/EXECUTE/NETWORK/SUBMIT/DESTRUCTIVE/None）默认串行
 }
 
@@ -60,8 +60,6 @@ def effects_conflict(a: ToolEffect | None, b: ToolEffect | None) -> bool:
     """两 effect 是否冲突（None = 无法判定 → 冲突，保守串行）。"""
     if a is None or b is None:
         return True
-    if a == ToolEffect.PURE or b == ToolEffect.PURE:
-        return False
     allowed = _PARALLEL.get(a, frozenset())
     if b not in allowed:
         return True

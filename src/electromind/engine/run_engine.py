@@ -18,8 +18,12 @@ from __future__ import annotations
 import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
+from pathlib import Path
 
+from ..artifacts.manifest import ArtifactManifest
+from ..artifacts.registry import ArtifactRegistry
 from ..core.events import RunEnd, ToolCallBegin, TurnResult
+from ..execution.plan import PlanState, PlanStep, PlanStore, PlanTracker, StepStatus
 from ..harness import InputMessage, InputReceipt, ThreadSessionManager
 from ..harness.state import RunPhase
 
@@ -29,6 +33,9 @@ Emitter = Callable[[str, str | None, object, int], "None | Awaitable[None]"]
 ApprovalHook = Callable[[str, str, ToolCallBegin], Awaitable[None]]
 # 结束后回调：on_finish(thread_id, run_id, outcome) -> Awaitable
 FinishHook = Callable[[str, str, str], Awaitable[None]]
+# 领域状态变更回调（G1）：emit(thread_id, "plan"|"artifact", payload)。
+# 同步契约：App 层（wire _emit_jsonrpc / CLI client）挂接时不得返回协程。
+StateEmitter = Callable[[str, str, dict], None]
 
 
 class RunEngineError(RuntimeError):
@@ -46,6 +53,15 @@ class RunEngine:
     manager: ThreadSessionManager = field(default_factory=ThreadSessionManager)
     _runners: dict[str, object] = field(default_factory=dict)
     _tasks: dict[str, asyncio.Task] = field(default_factory=dict)
+
+    # ── G1: per-thread Plan / Artifact 领域状态 ──────────────────────
+    # PlanTracker（内存当前态）+ PlanStore（<thread>/plans/ 磁盘，含版本历史）；
+    # ArtifactRegistry（<thread>/artifacts.jsonl 磁盘）。惰性初始化并按需恢复。
+    _plan_trackers: dict[str, PlanTracker] = field(default_factory=dict)
+    _artifact_registries: dict[str, ArtifactRegistry] = field(default_factory=dict)
+    # 领域状态变更回调：emit(thread_id, "plan"|"artifact", payload)。
+    # 由 App 层（wire / CLI client）挂接，把变更推送为 plan/state、artifact/state。
+    state_emitter: StateEmitter | None = None
 
     # ── Runner 注册 ──────────────────────────────────────────────────
 
@@ -144,6 +160,167 @@ class RunEngine:
         """输入路由（幂等 message_id 重放由 manager 保证）。"""
         return await self.manager.send_input(message)
 
+    # ── Plan 领域状态（G1） ───────────────────────────────────────────
+    # 状态事实源：PlanTracker（进程内）+ PlanStore（磁盘，含版本历史）。
+    # 所有变更经 state_emitter 推送为 plan/state；非法转换直接抛
+    # ValueError（StepTransitionError / 版本门），由 App 层转述。
+
+    def plan_state(self, thread_id: str) -> PlanState | None:
+        """当前计划（无则 None）；首次访问按磁盘最新版本恢复。"""
+        return self._ensure_plan(thread_id).current
+
+    def plan_propose(self, thread_id: str, plan: PlanState) -> PlanState:
+        """提议新计划：冻结为 READY、落盘、推送 plan/state。
+
+        已批准版本不可原地覆盖（PlanTracker 版本门）；需 revise 提版本。
+        """
+        tracker = self._ensure_plan(thread_id)
+        proposed = tracker.propose(plan)
+        self._plan_store(thread_id).save(proposed)
+        self._emit_state(thread_id, "plan", {"plan": proposed.to_dict()})
+        return proposed
+
+    def plan_approve(self, thread_id: str) -> PlanState | None:
+        """批准当前 READY 计划（冻结为 APPROVED；非 READY 无操作）。"""
+        tracker = self._ensure_plan(thread_id)
+        approved = tracker.approve()
+        if approved is not None:
+            self._plan_store(thread_id).save(approved)
+            self._emit_state(thread_id, "plan", {"plan": approved.to_dict()})
+        return approved
+
+    def plan_revise(self, thread_id: str) -> PlanState | None:
+        """开始新修订（version+1 → REVISING）；批准版本不被修改。"""
+        tracker = self._ensure_plan(thread_id)
+        revised = tracker.revise()
+        if revised is not None:
+            self._plan_store(thread_id).save(revised)
+            self._emit_state(thread_id, "plan", {"plan": revised.to_dict()})
+        return revised
+
+    def plan_cancel(self, thread_id: str) -> PlanState | None:
+        """取消当前计划（CANCELLED，保留在磁盘）。"""
+        tracker = self._ensure_plan(thread_id)
+        cancelled = tracker.cancel()
+        if cancelled is not None:
+            self._plan_store(thread_id).save(cancelled)
+            self._emit_state(thread_id, "plan", {"plan": cancelled.to_dict()})
+        return cancelled
+
+    def plan_update_step(
+        self,
+        thread_id: str,
+        step_id: str,
+        status: StepStatus,
+        *,
+        step: PlanStep | None = None,
+    ) -> PlanState | None:
+        """推进步骤状态；COMPLETED 缺 Evidence / VERIFIED 缺验证器记录拒绝。"""
+        tracker = self._ensure_plan(thread_id)
+        updated = tracker.update_step(step_id, status, step=step)
+        if updated is not None:
+            self._plan_store(thread_id).save(updated)
+            self._emit_state(thread_id, "plan", {"plan": updated.to_dict()})
+        return updated
+
+    # ── Artifact 领域状态（G1） ───────────────────────────────────────
+
+    def artifacts(self, thread_id: str) -> list[ArtifactManifest]:
+        """全部 Artifact Manifest（含状态，按 id 索引）。"""
+        return self._ensure_artifacts(thread_id).all()
+
+    def artifact_register(
+        self, thread_id: str, manifest: ArtifactManifest
+    ) -> ArtifactManifest:
+        """登记新产物（CREATED）；同 id 内容变化记录 replace 事件。"""
+        registry = self._ensure_artifacts(thread_id)
+        stored = registry.register(manifest)
+        self._emit_state(thread_id, "artifact", {"artifact": stored.to_dict()})
+        return stored
+
+    def artifact_complete(
+        self, thread_id: str, artifact_id: str, *, who: str = "runner"
+    ) -> ArtifactManifest | None:
+        """程序正常结束 → COMPLETED（绝不自动 VALIDATED）。"""
+        return self._artifact_transition(thread_id, artifact_id, "complete", who=who)
+
+    def artifact_validate(
+        self,
+        thread_id: str,
+        artifact_id: str,
+        *,
+        parser: str,
+        who: str = "",
+    ) -> ArtifactManifest | None:
+        """确定性 Parser 通过 → VALIDATED（必须记录解析器名）。"""
+        return self._artifact_transition(
+            thread_id, artifact_id, "validate", parser=parser, who=who
+        )
+
+    def artifact_accept(
+        self, thread_id: str, artifact_id: str, *, who: str, role: str = "user"
+    ) -> ArtifactManifest | None:
+        """用户/独立 Reviewer 确认 → ACCEPTED（创建者不能自证；P0-6 角色门）。"""
+        return self._artifact_transition(
+            thread_id, artifact_id, "accept", who=who, role=role
+        )
+
+    def artifact_reject(
+        self, thread_id: str, artifact_id: str, *, reason: str
+    ) -> ArtifactManifest | None:
+        """检查失败 → REJECTED（必须记录原因）。"""
+        return self._artifact_transition(
+            thread_id, artifact_id, "reject", reason=reason
+        )
+
+    # ── 内部：Plan / Artifact 惰性初始化与推送 ───────────────────────
+
+    def _thread_root(self, thread_id: str) -> Path:
+        """thread 数据目录（与 Thread.open / session show 同源）。"""
+        from ..paths import default_electromind_home
+
+        return default_electromind_home() / "threads" / thread_id
+
+    def _plan_store(self, thread_id: str) -> PlanStore:
+        return PlanStore(self._thread_root(thread_id))
+
+    def _ensure_plan(self, thread_id: str) -> PlanTracker:
+        tracker = self._plan_trackers.get(thread_id)
+        if tracker is None:
+            tracker = PlanTracker()
+            latest = self._plan_store(thread_id).latest("default")
+            if latest is not None:
+                tracker.restore(latest)
+            self._plan_trackers[thread_id] = tracker
+        return tracker
+
+    def _ensure_artifacts(self, thread_id: str) -> ArtifactRegistry:
+        registry = self._artifact_registries.get(thread_id)
+        if registry is None:
+            registry = ArtifactRegistry(
+                self._thread_root(thread_id) / "artifacts.jsonl"
+            )
+            self._artifact_registries[thread_id] = registry
+        return registry
+
+    def _artifact_transition(
+        self, thread_id: str, artifact_id: str, action: str, **kwargs
+    ) -> ArtifactManifest | None:
+        registry = self._ensure_artifacts(thread_id)
+        manifest = registry.get(artifact_id)
+        if manifest is None:
+            return None
+        updated = getattr(manifest, action)(**kwargs)
+        registry.register(updated)  # 同 sha256 → 原地覆盖 + flush
+        self._emit_state(thread_id, "artifact", {"artifact": updated.to_dict()})
+        return updated
+
+    def _emit_state(self, thread_id: str, kind: str, payload: dict) -> None:
+        """领域状态变更推送（App 层经 state_emitter 编码为事件）。"""
+        if self.state_emitter is None:
+            return
+        self.state_emitter(thread_id, kind, payload)
+
     # ── 统一 Run 循环 ────────────────────────────────────────────────
 
     async def run_loop(
@@ -180,6 +357,8 @@ class RunEngine:
             async for event in runner.run(text):
                 session = self.manager.get_session(thread_id)
                 run_id = session.active_run_id if session is not None else ""
+                # P0-5: 副作用 intent 需要 run_id（恢复锚点）
+                setattr(runner, "current_run_id", run_id)
                 seq = session.next_seq() if session is not None else 0
 
                 if isinstance(event, TurnResult):

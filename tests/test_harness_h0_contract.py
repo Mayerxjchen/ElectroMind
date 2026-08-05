@@ -84,19 +84,19 @@ class FakeProvider:
 # ---------------------------------------------------------------------------
 
 
-@tool()
+@tool(effect="pure")
 def echo(msg: str) -> str:
     """Echo back."""
     return msg
 
 
-@tool()
+@tool(effect="pure")
 def add(a: int, b: int) -> int:
     """Add two numbers."""
     return a + b
 
 
-@tool()
+@tool(effect="pure")
 def slow_tool(seconds: float = 0.1) -> str:
     """A slow tool for testing concurrency."""
     return f"slept {seconds}s"

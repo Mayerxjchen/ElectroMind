@@ -88,9 +88,10 @@ roots = ["{electromind_home}/skills"]
 # ── [agent] 主 agent 进程内工具 ───────────────────────
 [agent]
 # harness 工具白名单，冻结进新建 thread.toml 的 [agent] tools（运行时唯一事实来源）。
-# 可选：web_search、fetch_url、delegate_to_subagent（后者还需至少配一个 [sub.*]）。
+# 可选：web_search、fetch_url、delegate_to_subagent（后者还需至少配一个 [sub.*]）、
+#       plan_propose、plan_step_update、artifact_register（G1b Plan/Artifact 工具桥）。
 # 删去不想启用的即可；给空表 = 不挂任何进程内工具。
-tools = ["web_search", "fetch_url"]
+tools = ["web_search", "fetch_url", "plan_propose", "plan_step_update", "artifact_register"]
 
 # ── [sub.<name>] 子 agent（新建对话时冻结进 thread.toml）──
 # 主 agent 通过 delegate_to_subagent 委派；name 出现在工具的 type 枚举里。

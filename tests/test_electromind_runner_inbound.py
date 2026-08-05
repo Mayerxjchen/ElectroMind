@@ -113,6 +113,7 @@ async def test_runner_steer_appends_user_message(tmp_path, monkeypatch):
                     "required": ["x"],
                 },
                 echo_tool,
+                effect="execute",
             )
         ],
         max_turns=4,
@@ -156,6 +157,7 @@ async def test_runner_steer_during_tool_round_is_deferred(tmp_path, monkeypatch)
                     "required": ["x"],
                 },
                 echo_tool,
+                effect="execute",
             )
         ],
         max_turns=4,

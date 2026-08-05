@@ -150,7 +150,7 @@ async def test_runner_flushes_each_turn(tmp_path, monkeypatch):
 
     from electromind import tool
 
-    @tool()
+    @tool(effect="pure")
     def noop() -> str:
         """no op"""
         return "ok"

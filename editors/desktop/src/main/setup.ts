@@ -246,7 +246,10 @@ export function getEnvironmentCheck(options?: {
   const includeDisk = options?.includeDisk === true;
   const projectRoot = options?.projectRoot;
   const uvInstalled = cliOnPath("uv");
-  const backend = resolveBackendAvailability(projectRoot ?? "");
+  // F3: 生产包不认可"uv run --project 源码回退"，自检与启动同一口径。
+  // 打包态判断用 process.defaultApp === false（app.isPackaged 的等价物，
+  // 避免 setup.ts 依赖 electron 模块；node 环境下 undefined ≠ false）。
+  const backend = resolveBackendAvailability(projectRoot ?? "", process.defaultApp === false);
   const electromindInstalled = backend.available;
   const dockerInstalled = cliOnPath("docker");
   const podmanInstalled = cliOnPath("podman");

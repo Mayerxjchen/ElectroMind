@@ -1,13 +1,14 @@
 from collections.abc import AsyncIterator
 from typing import TYPE_CHECKING
 
+from ..context.manager import ContextInput
 from .message import Message, Messages, ToolCall
 from .provider import ProviderProtocol
 from .tool import FunctionTool, to_openai_tools
 from .usage import usage_to_dict
 
 if TYPE_CHECKING:
-    from ..context.manager import ContextInput, ContextManager
+    from ..context.manager import ContextManager
     from .budget import RunBudget
     from .capabilities import ModelCapabilities
     from .retry import RetryPolicy
@@ -86,7 +87,8 @@ class AgentCore:
         if self.budget is not None:
             self.budget.check()  # 超预算 → BudgetExceededError（结构化终止）
 
-        # M3：上下文构造（预算检查 + 压缩）在发送前完成
+        # M3：上下文构造（预算检查 + 压缩）在发送前完成。
+        # 预算 ok 时原样发送（消息零变化）；超阈值才用压缩后的消息。
         outbound = messages.to_openai()
         if self.context_manager is not None:
             prepared = self.context_manager.prepare(
@@ -98,7 +100,8 @@ class AgentCore:
                     ),
                 )
             )
-            outbound = prepared.messages
+            if prepared.budget.decision != "ok":
+                outbound = prepared.messages
             self.last_context_budget = prepared.budget
 
         if self.retry_policy is not None:

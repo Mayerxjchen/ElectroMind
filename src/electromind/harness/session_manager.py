@@ -720,6 +720,10 @@ class ThreadSessionManager:
             status = getattr(approval, "status", None)
             if status is not None and str(status) != "pending":
                 return None
+            # P0-4: 过期审批拒绝（is_resolvable 含 expires_at 判定）
+            resolvable = getattr(approval, "is_resolvable", None)
+            if callable(resolvable) and not resolvable():
+                return None
             if tool_call_id is not None:
                 bound = getattr(approval, "tool_call_id", "")
                 if bound and bound != tool_call_id:

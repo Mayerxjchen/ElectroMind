@@ -29,6 +29,7 @@ from ..core.budget import BudgetExceededError, RunBudget
 from ..core.message import Messages, reply_text
 from ..core.provider import ProviderProtocol
 from ..core.tool import FunctionTool, ToolOutput, normalize_tool_output
+from ..execution.effects import ToolEffect
 from ..ithread import SubAgentSpec
 from ..runtime.frame import RunFrame
 from ..runtime.resource import ConversationResource, ResourceSlot
@@ -136,7 +137,18 @@ def bound_paths(
     write_prefixes = tuple(p.rstrip("/") + "/" for p in write_paths)
 
     def _within(prefixes: tuple[str, ...], path: str) -> bool:
-        return any(path.startswith(p) for p in prefixes)
+        """规范化后判定：``data/../../secret`` 归一到 ../secret → 拒绝；
+        绝对路径或上级引用一律拒绝（P0-6 路径穿越修复）。"""
+        import posixpath
+
+        normalized = posixpath.normpath(str(path))
+        if normalized.startswith("../") or normalized == "..":
+            return False
+        if normalized.startswith("/"):
+            return False
+        return any(
+            normalized == p.rstrip("/") or normalized.startswith(p) for p in prefixes
+        )
 
     def wrap(tool: FunctionTool) -> FunctionTool:
         orig = tool.func
@@ -284,6 +296,8 @@ async def build_sub_frame(context, name: str, sub_spec: SubAgentSpec) -> RunFram
         store=store,
         skills=SkillRegistry(),
         slots=slots,
+        # P0-6: 帧级工具预算（执行前硬限）
+        max_tool_calls=sub_spec.max_tool_calls,
     )
 
 
@@ -419,6 +433,7 @@ def make_delegate_tool(
             "additionalProperties": False,
         },
         func=delegate,
+        effect=ToolEffect.EXECUTE,
     )
 
 
@@ -476,6 +491,7 @@ def make_subagent_tool(subs: dict[str, SubAgentSpec]) -> FunctionTool:
             "把一段可隔离的子任务委派给一个子 agent 独立完成，并拿回它的最终答复。"
             "子 agent 有自己的对话上下文。按 type 选择子 agent，可用：\n" + catalog
         ),
+        effect=ToolEffect.EXECUTE,
         parameters={
             "type": "object",
             "properties": {

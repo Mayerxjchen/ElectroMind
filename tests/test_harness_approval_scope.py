@@ -1240,3 +1240,59 @@ async def test_snapshot_read_failure_still_records_inexact(tmp_path):
     net = tracker.net_change("sandbox", "f.txt", "")
     assert net is not None, "snapshot-failed mutation must still be recorded"
     assert net["exact"] is False  # Cannot verify — never silently dropped
+
+
+# ── P0-4 验收：过期 / 参数篡改 ──────────────────────────────────────────
+
+
+async def test_expired_approval_cannot_resolve():
+    """P0-4: 过期审批在 resolve 时被拒绝（fail-closed）。"""
+    from electromind.harness.workspace import ApprovalRequest
+
+    _ = _make_runner("thread-a")
+    session = wire._harness_manager._get_or_create("thread-a")
+    session.active_run_id = "run-1"
+    session.active_run_phase = "running"
+    approval = ApprovalRequest(
+        approval_id="apr-expired",
+        thread_id="thread-a",
+        run_id="run-1",
+        tool_call_id="tc-1",
+        expires_at="2000-01-01T00:00:00+00:00",  # 已过期
+    )
+    await wire._harness_manager.add_approval("thread-a", approval)
+    assert not approval.is_resolvable()
+    resolved = await wire._harness_manager.resolve_approval(
+        "thread-a", "run-1", "apr-expired", True, tool_call_id="tc-1"
+    )
+    assert resolved is None
+
+
+async def test_tampered_arguments_denied_at_execution():
+    """P0-4: 审批后参数被修改 → 执行前拒绝。"""
+    from electromind.runtime import Runner as _RealRunner
+
+    # MagicMock 会自动生成属性，无法承载真实方法——用真实 Runner 的
+    # approved-arguments 语义（未初始化 thread 的轻量对象）。
+    runner = object.__new__(_RealRunner)
+    runner.approved_arguments = {}
+    runner.record_approved_arguments = _RealRunner.record_approved_arguments.__get__(
+        runner
+    )
+    runner.check_approved_arguments = _RealRunner.check_approved_arguments.__get__(
+        runner
+    )
+    from app.tool_permit import _arguments_digest
+
+    digest = _arguments_digest('{"command": "rm -rf /safe"}')
+    runner.record_approved_arguments("call-1", digest)
+    # 原参数 → 通过
+    assert runner.check_approved_arguments(
+        "call-1", _arguments_digest('{"command": "rm -rf /safe"}')
+    )
+    # 篡改参数 → 拒绝
+    assert not runner.check_approved_arguments(
+        "call-1", _arguments_digest('{"command": "rm -rf /etc"}')
+    )
+    # 未审批路径 → 不校验
+    assert runner.check_approved_arguments("call-9", "whatever")

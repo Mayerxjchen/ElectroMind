@@ -8,13 +8,12 @@
     "platform": "darwin"
   },
   "tests": {
-    "passed": 1672,
+    "passed": 1717,
     "failed": 0,
-    "skipped": 4,
-    "note": "全量 0 失败（修复 evals ELECTROMIND_HOME env 泄漏导致的顺序 flaky）"
+    "skipped": 4
   },
   "coverage": {
-    "total": 79.7053,
+    "total": 79.2214,
     "baseline": 78.2094,
     "critical_modules": {
       "engine/run_engine": "99% 分支（20 测试）",
@@ -25,7 +24,8 @@
       "artifacts": "manifest 98% / registry 92%",
       "critical_modules_total": "96% 分支（关键模块合计）"
     },
-    "evals_framework": "93.7%（排除任务实现 drivers.py；drivers 73% 由 66 个 golden 任务执行覆盖）"
+    "evals_framework": "93.7%（排除任务实现 drivers.py；drivers 73% 由 66 个 golden 任务执行覆盖）",
+    "critical_modules_branch": "94.84% 纯分支（全部 ≥90%；含 intent_log/provenance/registry/memory）"
   },
   "evals": {
     "total": 66,
@@ -125,5 +125,17 @@
     "coverage_gate": "79.7053% >= 78%",
     "artifact_integrity": "pass (wheel + sdist 含 default-config.toml)",
     "wheel_install": "pass（新模块 engine/context/artifacts/execution 全部可导入）"
-  }
+  },
+  "p0_fixes": {
+    "P0-1": "Plan 进入正式引擎（plan_propose/approve/revise/cancel/update_step + 磁盘恢复）；PlanStore 同指纹仅前向推进、已批准版本禁删",
+    "P0-2": "ContextManager 注入正式 Runner（预算 ok 零变化；85% 阈值成为生产门禁）",
+    "P0-3": "Effect 注册门接入 assemble_run_resources（未声明拒绝）；ToolScheduler 接入 Runner.emit_tool_events（只读并行、事件顺序保持）",
+    "P0-4": "生产审批使用 risk_of_action + arguments_digest（执行时防篡改）+ TTL 过期（is_resolvable 含过期）",
+    "P0-5": "ToolIntent intent→commit→reconcile 日志（thread 目录 JSONL）；SUBMIT_EXTERNAL 幂等重放",
+    "P0-6": "子 Agent 路径 normpath 归一（封 data/../../secret）；帧级工具预算执行前硬限；Reviewer 角色隔离（同角色不可互批）",
+    "P0-7": "Artifact 双状态分离（validation/acceptance 互不覆盖）+ accepted_by 持久化 + 输入缺失事件/校验 + ValueProvenance 数值级溯源",
+    "P0-8": "release.sh 绑定 4 重门禁（完整 CI + 66 Golden Tasks + 关键模块分支 ≥90% + 验收报告存在）",
+    "P0-9": "CP2K→DeepMD 12 步可恢复工作流证据（evals/workflows + 模拟 scheduler + 真实引擎机制）"
+  },
+  "release_gates": "ci-check 全绿（1717 passed / 0 failed，coverage 79.2%，skill 隔离 17 clean，wheel+sdist 完整性）；66/66 Golden Tasks"
 }

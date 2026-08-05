@@ -94,6 +94,8 @@ class SubAgentSpec:
     allowed_tools: tuple[str, ...] = ()
     read_paths: tuple[str, ...] = ()
     write_paths: tuple[str, ...] = ()
+    # P0-6: 子 agent 角色（agent/reviewer/...）；Reviewer 不能批准自己产物
+    role: str = "agent"
 
     def to_dict(self) -> dict:
         data: dict = {
@@ -110,6 +112,7 @@ class SubAgentSpec:
             "allowed_tools": list(self.allowed_tools),
             "read_paths": list(self.read_paths),
             "write_paths": list(self.write_paths),
+            "role": self.role,
         }
         return {
             key: value for key, value in data.items() if value not in ("", [], 0, 0.0)
@@ -132,6 +135,7 @@ class SubAgentSpec:
             allowed_tools=tuple(payload.get("allowed_tools", ())),
             read_paths=tuple(payload.get("read_paths", ())),
             write_paths=tuple(payload.get("write_paths", ())),
+            role=payload.get("role", "agent"),
         )
 
 

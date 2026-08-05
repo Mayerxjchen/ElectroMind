@@ -60,15 +60,19 @@ def assemble_harness_tools(spec: ThreadSpec) -> list[FunctionTool]:
 
     - ``web_search`` / ``fetch_url``：网页检索工具。
     - ``delegate_to_subagent``：子 agent 委派工具；还需配了 ``[sub.*]`` 才真正挂上。
+    - ``plan_propose`` / ``plan_step_update`` / ``artifact_register``：G1b
+      Plan/Artifact 模型工具桥（引擎经 ``engine.accessor`` 访问）。
 
     未识别的名字直接报错（显式报错胜过静默吞掉写错的配置）。列了
     ``delegate_to_subagent`` 却没配 ``[sub.*]`` 同样报错——一个空 enum 的委派工具
     对模型毫无意义。
     """
     from ..tools.delegate import SUBAGENT_TOOL_NAME, make_subagent_tool
+    from ..tools.plan_artifacts import PLAN_TOOL_NAMES, make_plan_tools
     from ..tools.web import fetch_url, web_search
 
     resolved: list[FunctionTool] = []
+    plan_tools: dict[str, FunctionTool] | None = None
     for name in spec.agent_tools:
         if name == "web_search":
             resolved.append(web_search)
@@ -81,10 +85,15 @@ def assemble_harness_tools(spec: ThreadSpec) -> list[FunctionTool]:
                     "[sub.<name>]；请在 thread.toml 里补上子 agent 定义，或去掉该项"
                 )
             resolved.append(make_subagent_tool(spec.subs))
+        elif name in PLAN_TOOL_NAMES:
+            if plan_tools is None:
+                plan_tools = {t.name: t for t in make_plan_tools()}
+            resolved.append(plan_tools[name])
         else:
             raise ValueError(
-                f"[agent] tools 里的 {name!r} 不是已知的 harness 工具；"
-                "可用：web_search、fetch_url、delegate_to_subagent"
+                f"[agent] tools 里的 {name!r} 不是已知的 harness 工具；可用："
+                "web_search、fetch_url、delegate_to_subagent、plan_propose、"
+                "plan_step_update、artifact_register"
             )
     return resolved
 
@@ -140,6 +149,15 @@ async def assemble_run_resources(
         computer_desc = await sandbox.describe()
     combined_tools.extend(tools)
     combined_tools.extend(assemble_harness_tools(thread.spec))
+    # P0-3: Effect 注册门 —— 内置工具按名补全声明；仍未声明的（自定义工具
+    # 未显式声明）拒绝注册到正式 Runner（M4 §9.1 验收）。
+    from ..execution.effects import (
+        apply_builtin_effects,
+        assert_effects_declared,
+    )
+
+    combined_tools = apply_builtin_effects(combined_tools)
+    assert_effects_declared(combined_tools)
 
     # Phase-2: discovery runs through the shared catalog service (candidates).
     # No full install at open — skills mount lazily at activation time
@@ -196,6 +214,26 @@ async def assemble_run_resources(
         catalog_service=service,
         catalog=catalog,
     )
+
+
+def build_context_manager(spec: ThreadSpec):
+    """P0-2: 按 thread 模型构造生产 ContextManager（85% 预算门禁）。
+
+    未注入时（旧路径）返回 None——正式 Runner 现在总是注入。
+    """
+    from ..context.manager import ContextManager
+    from ..core.capabilities import resolve_model_capabilities
+
+    model = getattr(spec, "model", "") or "deepseek-v4-flash"
+    capabilities = resolve_model_capabilities(model)
+    return ContextManager(capabilities)
+
+
+def _with_context_manager(agent_kwargs: dict, spec: ThreadSpec) -> dict:
+    """向 Agent 构造 kwargs 注入 context_manager（若未显式提供）。"""
+    if "context_manager" not in agent_kwargs:
+        agent_kwargs["context_manager"] = build_context_manager(spec)
+    return agent_kwargs
 
 
 class BaseRunner(LoopAdapter):
@@ -341,6 +379,7 @@ class BaseRunner(LoopAdapter):
                 system=resources.system_prompt,
                 tools=resources.tools,
                 max_turns=max_turns,
+                **_with_context_manager({}, thread.spec),
             ),
             thread,
             sandbox=resources.sandbox,

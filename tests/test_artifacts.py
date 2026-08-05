@@ -61,11 +61,13 @@ def test_completed_is_not_validated():
 def test_validate_requires_parser():
     m = _manifest().complete()
     validated = m.validate(parser="energy_parser")
-    assert validated.acceptance_status == ArtifactStatus.VALIDATED
+    # P0-7 双状态分离：validate 只动 validation_status
+    assert validated.validation_status == ArtifactStatus.VALIDATED
+    assert validated.acceptance_status == ArtifactStatus.COMPLETED
     assert validated.parser == "energy_parser"
     with pytest.raises(ArtifactTransitionError, match="解析器名"):
         m.validate(parser="")
-    # 未 COMPLETED 不能直接 VALIDATED
+    # 未 COMPLETED 不能直接 VALIDATED（acceptance 未完成时 validation 不可跳级）
     with pytest.raises(ArtifactTransitionError):
         _manifest().validate(parser="p")
 
@@ -74,6 +76,8 @@ def test_accept_requires_independent_who():
     m = _manifest().complete().validate(parser="p")
     accepted = m.accept(who="user-alice")
     assert accepted.acceptance_status == ArtifactStatus.ACCEPTED
+    assert accepted.validation_status == ArtifactStatus.VALIDATED  # 双状态保留
+    assert accepted.accepted_by == "user-alice"  # P0-7: 确认者持久化
     # 无确认者 → 拒绝
     with pytest.raises(ArtifactTransitionError, match="确认者"):
         m.accept(who="")
@@ -88,9 +92,10 @@ def test_reject_and_supersede():
         m.reject(reason="")
     rejected = m.reject(reason="能量为正值，物理不可信")
     assert rejected.acceptance_status == ArtifactStatus.REJECTED
-    # 修复后重新解析可恢复
+    # 修复后重新完成可恢复（P0-7 双状态：reject 只动 acceptance）
     recovered = rejected.complete().validate(parser="p2")
-    assert recovered.acceptance_status == ArtifactStatus.VALIDATED
+    assert recovered.acceptance_status == ArtifactStatus.COMPLETED
+    assert recovered.validation_status == ArtifactStatus.VALIDATED
     superseded = recovered.accept(who="reviewer-bob").supersede(by="art-2")
     assert superseded.acceptance_status == ArtifactStatus.SUPERSEDED
     with pytest.raises(ArtifactTransitionError):
@@ -191,3 +196,107 @@ def test_registry_persistence(tmp_path):
     registry2 = ArtifactRegistry(path)
     assert registry2.get("art-1") is None
     assert registry2.events()[-1]["event"] == "delete"
+
+
+# ── P0-7 验收：输入缺失 / 数值溯源 ──────────────────────────────────────
+
+
+def test_registry_missing_input_recorded_and_verified(tmp_path):
+    """P0-7: 输入 Artifact 缺失 → 注册事件 + verify_all 错误（不静默）。"""
+    registry = ArtifactRegistry()
+    registry.register(
+        _manifest(artifact_id="out", input_artifacts=("in-1",), type="report")
+    )
+    assert any(e["event"] == "missing_input" for e in registry.events())
+    errors = registry.verify_all(tmp_path)
+    assert any("输入 in-1 缺失" in e for e in errors)
+    # 补齐输入后不再报缺失
+    registry.register(
+        _manifest(artifact_id="in-1", type="data", path="in.txt", sha256="x")
+    )
+    errors2 = registry.verify_all(tmp_path)
+    assert not any("输入" in e for e in errors2)
+
+
+def test_value_provenance_roundtrip(tmp_path):
+    """P0-7: 数值级溯源（值→文件→行→解析规则→单位）持久化。"""
+    from electromind.artifacts import ProvenanceStore, ValueProvenance
+
+    store = ProvenanceStore(str(tmp_path / "provenance.jsonl"))
+    store.record(
+        ValueProvenance(
+            value="-76.4",
+            unit="Hartree",
+            source_file="energy.out",
+            source_line=3,
+            source_snippet="ENERGY| Total FORCE_EVAL ( QS ) energy [Hartree] -76.4",
+            parser="cp2k_energy_parser",
+            artifact_id="energy-1",
+        )
+    )
+    assert len(store) == 1
+    assert store.for_artifact("energy-1")[0].unit == "Hartree"
+    assert store.for_file("energy.out")[0].source_line == 3
+    assert len(store.with_unit("eV")) == 0
+    # 跨实例恢复
+    store2 = ProvenanceStore(str(tmp_path / "provenance.jsonl"))
+    assert store2.for_artifact("energy-1")[0].parser == "cp2k_energy_parser"
+
+
+def test_provenance_no_path_no_flush(tmp_path):
+    """P0-8: 无路径 ProvenanceStore 不落盘；损坏行 fail-soft。"""
+    from electromind.artifacts import ProvenanceStore, ValueProvenance
+
+    mem = ProvenanceStore()  # 无 path
+    mem.record(ValueProvenance(value="1", unit="eV", source_file="f"))
+    assert len(mem) == 1
+    path = tmp_path / "p.jsonl"
+    path.write_text("garbage\n", encoding="utf-8")
+    store = ProvenanceStore(str(path))
+    assert len(store) == 0
+
+
+def test_artifact_memory_search_branches(tmp_path):
+    import time
+
+    from electromind.context import ArtifactMemory, ArtifactMemoryEntry
+
+    memory = ArtifactMemory()
+    e1 = ArtifactMemoryEntry(
+        artifact_id="a",
+        type="data",
+        path="x",
+        step_id="s1",
+        run_id="r1",
+        validation_status="created",
+        created_at=time.time(),
+    )
+    memory.add(e1)
+    assert memory.search(step_id="s2") == []
+    assert memory.search(run_id="r2") == []
+    assert memory.search(created_after=time.time() + 100) == []
+    assert memory.search(step_id="s1")[0].artifact_id == "a"
+    assert memory.search(created_after=0)[0].artifact_id == "a"
+
+
+def test_registry_trace_and_cycle_branches(tmp_path):
+    """P0-8: trace 去环 + 缺失输入节点 + 事件恢复。"""
+    registry = ArtifactRegistry()
+    registry.register(_manifest(artifact_id="a", type="data"))
+    registry.register(
+        _manifest(artifact_id="b", input_artifacts=("a", "missing"), type="mid")
+    )
+    registry.register(_manifest(artifact_id="b2", input_artifacts=("b",), type="out"))
+    # trace 包含存在链；缺失输入不崩溃
+    chain = registry.trace("b2")
+    assert "b2" in chain and "b" in chain and "a" in chain
+    # inputs_of 缺失 → 空（有 warning 事件）
+    assert registry.inputs_of("nope") == []
+    # 事件恢复：JSONL 含 event 行
+    path = tmp_path / "r.jsonl"
+    r2 = ArtifactRegistry(path)
+    r2.register(_manifest(artifact_id="x", type="data"))
+    r2.delete("x", reason="cleanup")
+    r3 = ArtifactRegistry(path)
+    assert r3.get("x") is None
+    assert any(e["event"] == "delete" for e in r3.events())

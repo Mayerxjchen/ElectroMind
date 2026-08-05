@@ -462,3 +462,160 @@ async def test_engine_control_plane_session_without_runner():
     assert not engine.cancel_run("t-solo", "run-solo")
     assert not engine.permit_tool("t-solo", "run-solo", "c1")
     assert not engine.deny_tool("t-solo", "run-solo", "c1")
+
+
+# ── P0-3 生产接线验证 ────────────────────────────────────────────────────
+
+
+async def test_production_effect_gate_rejects_undeclared(tmp_path, monkeypatch):
+    """P0-3: 正式 Runner 拒绝未声明 effect 的自定义工具。"""
+    from electromind.core.tool import FunctionTool
+    from electromind.execution.effects import ToolRegistrationError
+    from electromind.runtime import Runner
+
+    monkeypatch.chdir(tmp_path)
+    undeclared = FunctionTool("mystery", "d", {"type": "object", "properties": {}})
+
+    class P:
+        async def complete(self, messages, tools=None, **kw):
+            async def stream():
+                yield type("C", (), {"choices": [], "usage": None})()
+
+            return stream()
+
+    with pytest.raises(ToolRegistrationError, match="mystery"):
+        await Runner.create(
+            "t-gate", P(), overrides={"backend": "none"}, tools=[undeclared]
+        )
+
+
+async def test_production_context_manager_injected(tmp_path, monkeypatch):
+    """P0-2: 正式 Runner 的 Agent 携带 ContextManager。"""
+    from electromind.runtime import Runner
+
+    monkeypatch.chdir(tmp_path)
+
+    class P:
+        async def complete(self, messages, tools=None, **kw):
+            async def stream():
+                yield type("C", (), {"choices": [], "usage": None})()
+
+            return stream()
+
+    runner = await Runner.create("t-ctx", P(), overrides={"backend": "none"})
+    try:
+        assert runner.agent.context_manager is not None
+        assert runner.agent.context_manager.capabilities is not None
+    finally:
+        await runner.close()
+
+
+# ── P0-5 验收：intent→commit→reconcile + 幂等提交 ───────────────────────
+
+
+async def test_side_effect_intent_committed_on_success(tmp_path, monkeypatch):
+    """P0-5: 副作用工具成功执行 → intent 提交 + 幂等记录。"""
+    from evals.provider import ProviderStep, ScriptedProvider
+
+    from electromind.core.tool import FunctionTool
+    from electromind.execution.effects import ToolEffect
+    from electromind.runtime import Runner
+
+    monkeypatch.chdir(tmp_path)
+
+    async def write_tool(path: str, content: str) -> str:
+        (tmp_path / path).write_text(content, encoding="utf-8")
+        return f"wrote {path}"
+
+    tool = FunctionTool(
+        "write_file",
+        "write_file",
+        {
+            "type": "object",
+            "properties": {"path": {"type": "string"}, "content": {"type": "string"}},
+            "required": ["path", "content"],
+        },
+        write_tool,
+        effect=ToolEffect.WRITE_WORKSPACE,
+    )
+    provider = ScriptedProvider(
+        [
+            ProviderStep.tools(
+                {
+                    "name": "write_file",
+                    "arguments": {"path": "out.txt", "content": "hi"},
+                }
+            ),
+            ProviderStep.text("done"),
+        ]
+    )
+    runner = await Runner.create(
+        "t-intent", provider, overrides={"backend": "none"}, tools=[tool]
+    )
+    try:
+        async for _ in runner.run("写文件"):
+            pass
+        committed = runner.intent_log.committed_for(runner.current_run_id)
+        assert len(committed) == 1
+        assert committed[0].tool == "write_file"
+        assert runner.intent_log.pending_for(runner.current_run_id) == []
+        assert (tmp_path / "out.txt").exists()
+    finally:
+        await runner.close()
+
+
+async def test_submit_external_replays_idempotent_result(tmp_path, monkeypatch):
+    """P0-5: 外部提交同 key 重放原结果（不二次执行）。"""
+    from evals.provider import ProviderStep, ScriptedProvider
+
+    from electromind.core.tool import FunctionTool
+    from electromind.execution.effects import ToolEffect
+    from electromind.execution.idempotency import IdempotencyKey
+    from electromind.runtime import Runner
+
+    monkeypatch.chdir(tmp_path)
+    calls = {"n": 0}
+
+    async def submit(script: str) -> str:
+        calls["n"] += 1
+        return f"job-{calls['n']}"
+
+    tool = FunctionTool(
+        "submit_external",
+        "submit_external",
+        {
+            "type": "object",
+            "properties": {"script": {"type": "string"}},
+            "required": ["script"],
+        },
+        submit,
+        effect=ToolEffect.SUBMIT_EXTERNAL,
+    )
+    provider = ScriptedProvider(
+        [
+            ProviderStep.tools(
+                {"name": "submit_external", "arguments": {"script": "run.sh"}}
+            ),
+            ProviderStep.text("ok"),
+        ]
+    )
+    runner = await Runner.create(
+        "t-submit", provider, overrides={"backend": "none"}, tools=[tool]
+    )
+    try:
+        async for _ in runner.run("提交"):
+            pass
+        assert calls["n"] == 1
+        key = IdempotencyKey.derive(
+            run_id=runner.current_run_id,
+            tool_name="submit_external",
+            args={"script": "run.sh"},
+        )
+        assert runner.idempotency_store.is_duplicate(key)
+        assert runner.idempotency_store.get_result(key) == "job-1"
+        # 同 key 重放 → 不二次执行
+        replay = runner.idempotency_store.record_completed(key, "job-X")
+        assert replay == "job-1"
+        assert calls["n"] == 1
+    finally:
+        await runner.close()

@@ -89,7 +89,20 @@ def _get_engine():
         from .service import get_application_service
 
         _wire_engine = get_application_service(manager=_harness_manager).engine
+        # G1: 引擎领域状态变更（plan/artifact）→ plan/state、artifact/state 通知。
+        # 挂接一次（同步契约）；CLI client 挂的是自己的 emitter。
+        _wire_engine.state_emitter = _emit_plan_artifact_state
+        # G1b: 模型工具（plan_propose 等）经 accessor 取引擎。
+        from electromind.engine.accessor import set_engine
+
+        set_engine(_wire_engine)
     return _wire_engine
+
+
+def _emit_plan_artifact_state(thread_id: str, kind: str, payload: dict) -> None:
+    """G1: RunEngine 领域状态变更回调 → JSON-RPC 通知（同步）。"""
+    method = "plan/state" if kind == "plan" else "artifact/state"
+    _emit_jsonrpc(method, {"thread_id": thread_id, **payload})
 
 
 def _get_broker():
@@ -189,6 +202,37 @@ def parse_command(line: str) -> dict | None:
     return command
 
 
+def _command_from_arguments(name: str, arguments: str) -> str:
+    """从工具参数提取 command（run_command 的审批风险需要）。"""
+    if name != "run_command":
+        return ""
+    try:
+        parsed = json.loads(arguments)
+        return str(parsed.get("command", "")) if isinstance(parsed, dict) else ""
+    except (json.JSONDecodeError, TypeError):
+        return ""
+
+
+def _arguments_digest(arguments: str) -> str:
+    """审批时的参数摘要（sha256 of sorted JSON）。"""
+    import hashlib
+
+    try:
+        normalized = json.dumps(
+            json.loads(arguments), ensure_ascii=False, sort_keys=True
+        )
+    except (json.JSONDecodeError, TypeError):
+        normalized = str(arguments)
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
+def _approval_expires_at(*, ttl_seconds: int = 300) -> str:
+    """审批 TTL 过期时间（ISO 8601 UTC）。"""
+    from datetime import datetime, timedelta, timezone
+
+    return (datetime.now(timezone.utc) + timedelta(seconds=ttl_seconds)).isoformat()
+
+
 async def emit_permit_request(
     event: ToolCallBegin,
     *,
@@ -234,7 +278,28 @@ async def emit_permit_request(
             from electromind.sandbox import backend_type_name
 
             target = backend_type_name(backend) or ""
-    risk = "high" if event.name in {"run_command", "delete_file"} else "medium"
+    # P0-4: 风险由 RiskPolicy 静态表计算（不再硬编码两个工具名）；
+    # 审批带参数摘要（执行时校验参数未被篡改）与 TTL 过期时间。
+    from electromind.execution.permissions import ActionSpec, risk_of_action
+
+    arguments_text = (
+        event.arguments if isinstance(event.arguments, str) else str(event.arguments)
+    )
+    action = ActionSpec(
+        tool=event.name,
+        command=_command_from_arguments(event.name, arguments_text),
+        target=target,
+        workdir=workdir,
+        risk=risk_of_action(
+            ActionSpec(
+                tool=event.name,
+                command=_command_from_arguments(event.name, arguments_text),
+            )
+        ),
+    )
+    risk = str(action.risk)
+    arguments_digest = _arguments_digest(arguments_text)
+    expires_at = _approval_expires_at()
     # action_id identifies the concrete action within the tool call.
     # Stable per tool_call_id, distinct from the approval identity.
     action_id = f"action:{event.tool_call_id}"
@@ -248,6 +313,8 @@ async def emit_permit_request(
         workdir=workdir,
         risk=risk,
         summary=summarize_tool_args(event.name, event.arguments),
+        expires_at=expires_at,
+        arguments_digest=arguments_digest,
     )
     registered = await _harness_manager.add_approval(thread_id, approval)
     if not registered:
@@ -295,15 +362,15 @@ async def _approval_scope_valid(
     approvals cannot be replayed.
     """
     if not (isinstance(approval_id, str) and approval_id):
-        return False  # Fail-closed: scope is mandatory
+        return False, None  # Fail-closed: scope is mandatory
     if not isinstance(thread_id, str) or not thread_id:
-        return False
+        return False, None
     if not isinstance(run_id, str) or not run_id:
-        return False
+        return False, None
     # Current thread must match
     runner_thread = getattr(getattr(runner, "thread", None), "id", "")
     if runner_thread and runner_thread != thread_id:
-        return False
+        return False, None
     # Resolve through the harness — verifies approval exists, is pending,
     # belongs to the active run, and binds the same tool_call_id, then
     # atomically consumes it (validate-then-consume inside the lock).
@@ -316,7 +383,7 @@ async def _approval_scope_valid(
     )
     if resolved is not None:
         _persist_thread_state(thread_id)  # Gate 2: consumed approval
-    return resolved is not None
+    return resolved is not None, resolved
 
 
 class MutationSnapshotError(Exception):
@@ -2981,7 +3048,121 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
         request_id = command.get("request_id", "")
         if isinstance(request_id, str) and request_id:
             snap["request_id"] = request_id
+        # G1: 快照携带 Plan / Artifact 领域状态（Desktop 重启后完整恢复：
+        # Thread / Run / Plan / Approval / Artifact 状态可重建）
+        try:
+            engine = _get_engine()
+            plan = engine.plan_state(thread_id)
+            snap["plan"] = plan.to_dict() if plan else None
+            snap["artifacts"] = [m.to_dict() for m in engine.artifacts(thread_id)]
+        except Exception as exc:  # 快照不因领域状态失败而整体失败
+            log(f"[wire] snapshot plan/artifacts failed: {exc}")
         _emit_jsonrpc("thread/snapshot", snap)
+        return runner
+
+    # ── G1: Plan 领域状态命令 ─────────────────────────────────────────
+    if cmd in {
+        "plan/state",
+        "plan/propose",
+        "plan/approve",
+        "plan/revise",
+        "plan/cancel",
+        "plan/update-step",
+    }:
+        thread_id = command.get("thread_id") or state.get("thread_id", "")
+        engine = _get_engine()
+        try:
+            if cmd == "plan/state":
+                plan = engine.plan_state(thread_id)
+                _emit_jsonrpc(
+                    "plan/state",
+                    {"thread_id": thread_id, "plan": plan.to_dict() if plan else None},
+                )
+            elif cmd == "plan/propose":
+                raw = command.get("plan")
+                if not isinstance(raw, dict):
+                    emit_error(
+                        "plan/propose 需要 plan 字段（PlanState dict）", where=cmd
+                    )
+                else:
+                    raw.setdefault("plan_id", "default")
+                    from electromind.execution.plan import PlanState
+
+                    engine.plan_propose(thread_id, PlanState.from_dict(raw))
+            elif cmd == "plan/approve":
+                engine.plan_approve(thread_id)
+            elif cmd == "plan/revise":
+                engine.plan_revise(thread_id)
+            elif cmd == "plan/cancel":
+                engine.plan_cancel(thread_id)
+            elif cmd == "plan/update-step":
+                from electromind.execution.plan import StepStatus
+
+                step_id = str(command.get("step_id", ""))
+                status = StepStatus(str(command.get("status", "")))
+                if not step_id:
+                    emit_error("plan/update-step 需要 step_id", where=cmd)
+                else:
+                    engine.plan_update_step(thread_id, step_id, status)
+        except ValueError as exc:
+            emit_error(str(exc), where=cmd)
+        return runner
+
+    # ── G1: Artifact 领域状态命令 ─────────────────────────────────────
+    if cmd in {
+        "artifact/state",
+        "artifact/register",
+        "artifact/accept",
+        "artifact/reject",
+        "artifact/complete",
+        "artifact/validate",
+    }:
+        thread_id = command.get("thread_id") or state.get("thread_id", "")
+        engine = _get_engine()
+        try:
+            if cmd == "artifact/state":
+                _emit_jsonrpc(
+                    "artifact/state",
+                    {
+                        "thread_id": thread_id,
+                        "artifacts": [m.to_dict() for m in engine.artifacts(thread_id)],
+                    },
+                )
+            elif cmd == "artifact/register":
+                raw = command.get("manifest")
+                if not isinstance(raw, dict):
+                    emit_error("artifact/register 需要 manifest 字段", where=cmd)
+                else:
+                    from electromind.artifacts.manifest import ArtifactManifest
+
+                    engine.artifact_register(thread_id, ArtifactManifest.from_dict(raw))
+            elif cmd == "artifact/accept":
+                artifact_id = str(command.get("artifact_id", ""))
+                who = str(command.get("who", "user")) or "user"
+                manifest = engine.artifact_accept(thread_id, artifact_id, who=who)
+                if manifest is None:
+                    emit_error(f"artifact 不存在: {artifact_id}", where=cmd)
+            elif cmd == "artifact/reject":
+                artifact_id = str(command.get("artifact_id", ""))
+                reason = str(command.get("reason", ""))
+                manifest = engine.artifact_reject(thread_id, artifact_id, reason=reason)
+                if manifest is None:
+                    emit_error(f"artifact 不存在: {artifact_id}", where=cmd)
+            elif cmd == "artifact/complete":
+                artifact_id = str(command.get("artifact_id", ""))
+                manifest = engine.artifact_complete(thread_id, artifact_id)
+                if manifest is None:
+                    emit_error(f"artifact 不存在: {artifact_id}", where=cmd)
+            elif cmd == "artifact/validate":
+                artifact_id = str(command.get("artifact_id", ""))
+                parser = str(command.get("parser", ""))
+                manifest = engine.artifact_validate(
+                    thread_id, artifact_id, parser=parser
+                )
+                if manifest is None:
+                    emit_error(f"artifact 不存在: {artifact_id}", where=cmd)
+        except ValueError as exc:
+            emit_error(str(exc), where=cmd)
         return runner
 
     # ── Slash commands: intercepted BEFORE opening a runner ────────────
@@ -3161,9 +3342,10 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
         approval_id = command.get("approval_id", "")
         thread_id = command.get("thread_id", "")
         run_id = command.get("run_id", "")
-        if not await _approval_scope_valid(
+        scope_ok, resolved_approval = await _approval_scope_valid(
             runner, tool_call_id, approval_id, thread_id, run_id, approved=True
-        ):
+        )
+        if not scope_ok:
             log(f"[wire] permit rejected: scope mismatch for {tool_call_id}")
             _emit_jsonrpc(
                 "approval/resolved",
@@ -3180,6 +3362,11 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
         if thread_id and runner is not None:
             engine.register_runner(thread_id, runner)
         engine.permit_tool(thread_id or "", run_id or "", tool_call_id)
+        # P0-4: 记录审批时的参数摘要，执行时校验参数未被篡改
+        if runner is not None and resolved_approval is not None:
+            rec = getattr(runner, "record_approved_arguments", None)
+            if callable(rec):
+                rec(tool_call_id, getattr(resolved_approval, "arguments_digest", ""))
         _emit_jsonrpc(
             "approval/resolved",
             {
@@ -3202,9 +3389,10 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
         approval_id = command.get("approval_id", "")
         thread_id = command.get("thread_id", "")
         run_id = command.get("run_id", "")
-        if not await _approval_scope_valid(
+        scope_ok, _resolved = await _approval_scope_valid(
             runner, tool_call_id, approval_id, thread_id, run_id, approved=False
-        ):
+        )
+        if not scope_ok:
             log(f"[wire] deny rejected: scope mismatch for {tool_call_id}")
             _emit_jsonrpc(
                 "approval/resolved",

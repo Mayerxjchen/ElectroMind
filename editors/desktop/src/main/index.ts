@@ -119,12 +119,8 @@ function appIconPngPath(): string {
 }
 
 function appIconPath(): string {
-  if (process.platform === "darwin") {
-    const icns = path.join(__dirname, "..", "assets", "icon.icns");
-    if (existsSync(icns)) {
-      return icns;
-    }
-  }
+  // F2: 一律用 PNG。macOS 上 BrowserWindow 的 icon 本就由 bundle/dock
+  // （CFBundleIconFile）决定，传 .icns 反而触发 nativeImage 加载失败日志。
   return appIconPngPath();
 }
 
@@ -1080,6 +1076,7 @@ function ensureBridge(): AgentTransport | undefined {
 function buildWireBridge(): AgentBridge {
   const wireInvocation = resolveElectromindWireInvocation(electromindProjectRoot(), {
     yolo: yoloMode,
+    isPackaged: app.isPackaged,
   });
   return new AgentBridge({
     command: wireInvocation.command,
@@ -1486,7 +1483,22 @@ ipcMain.handle("desktop:send-user-input", async (_event, text: string, requestId
     request_id: reqId,
   });
 });
-const ALLOWED_WIRE_COMMANDS = new Set<string>(["skills", "cancel"]);
+const ALLOWED_WIRE_COMMANDS = new Set<string>([
+  "skills",
+  "cancel",
+  // G1: Plan / Artifact 领域状态命令
+  "plan/state",
+  "plan/propose",
+  "plan/approve",
+  "plan/revise",
+  "plan/cancel",
+  "artifact/state",
+  "artifact/register",
+  "artifact/accept",
+  "artifact/reject",
+  "artifact/complete",
+  "artifact/validate",
+]);
 
 ipcMain.handle("desktop:send-wire-command", async (_event, command: Record<string, unknown>) => {
   // Defense in depth: the Renderer may only send allowlisted commands.

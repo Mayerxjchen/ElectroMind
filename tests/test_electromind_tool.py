@@ -19,7 +19,7 @@ from electromind.core.tool import (
 # ---------------------------------------------------------------------------
 
 
-@tool()
+@tool(effect="pure")
 def add(a: int, b: int) -> int:
     """Add two numbers.
 
@@ -69,7 +69,7 @@ def test_call_no_bound_function():
 
 
 def test_call_async_func_rejected_in_sync_path():
-    @tool()
+    @tool(effect="pure")
     async def slow():
         """slow."""
         return "x"
@@ -80,7 +80,7 @@ def test_call_async_func_rejected_in_sync_path():
 
 
 def test_call_catches_exception():
-    @tool()
+    @tool(effect="pure")
     def boom():
         """boom."""
         raise RuntimeError("kaboom")
@@ -91,7 +91,7 @@ def test_call_catches_exception():
 
 
 def test_call_func_that_takes_no_args():
-    @tool()
+    @tool(effect="pure")
     def ping():
         """ping."""
         return "pong"
@@ -106,7 +106,7 @@ def test_call_func_that_takes_no_args():
 # ---------------------------------------------------------------------------
 
 
-@tool()
+@tool(effect="pure")
 async def aadd(a: int, b: int) -> int:
     """Async add.
 
@@ -155,7 +155,7 @@ def test_acall_no_bound_function():
 
 
 def test_acall_returns_sync_value():
-    @tool()
+    @tool(effect="pure")
     def sync_fn(x: int) -> int:
         """sync.
 
@@ -170,7 +170,7 @@ def test_acall_returns_sync_value():
 
 
 def test_acall_catches_exception():
-    @tool()
+    @tool(effect="pure")
     async def boom():
         """boom."""
         raise ValueError("nope")

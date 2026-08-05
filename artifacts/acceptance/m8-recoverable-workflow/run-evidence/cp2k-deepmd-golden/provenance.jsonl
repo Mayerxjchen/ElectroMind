@@ -1,0 +1,2 @@
+{"value": "-76.4", "unit": "Hartree", "source_file": "water-1.ENERGY_FORCE.out", "source_line": 1, "source_snippet": "ENERGY| Total FORCE_EVAL ( QS ) energy [Hartree]       -76.4", "parser": "cp2k_energy_force_parser", "artifact_id": "energy-1", "created_at": 1785908789.591799}
+{"value": "-76.4", "unit": "Hartree", "source_file": "water-1.ENERGY_FORCE.out", "source_line": 1, "source_snippet": "ENERGY| Total FORCE_EVAL ( QS ) energy [Hartree]       -76.4", "parser": "cp2k_energy_force_parser", "artifact_id": "energy-1", "created_at": 1785908789.592334}

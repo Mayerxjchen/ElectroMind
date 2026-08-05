@@ -5607,3 +5607,64 @@ pre:hover .copy-btn,
 .sci-metric-label { font-size: 10px; opacity: 0.45; text-transform: uppercase; letter-spacing: 0.3px; }
 .sci-metric-value { font-size: 16px; font-weight: 600; font-family: monospace; margin-top: 2px; }
 .sci-metric-unit { font-size: 11px; opacity: 0.4; margin-left: 2px; }
+
+/* ── G1: Manifest（Provenance 验收）────────────────────────────── */
+.manifest-panel {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 10px;
+}
+.manifest-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  opacity: 0.5;
+  margin-bottom: 6px;
+}
+.manifest-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.manifest-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--foreground) 2%, transparent);
+}
+.manifest-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.manifest-id { font-size: 13px; font-weight: 600; }
+.manifest-meta { font-size: 10px; opacity: 0.55; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.manifest-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 2px 6px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+.badge-created   { background: #374151; color: #d1d5db; }
+.badge-completed { background: #1e3a8a; color: #93c5fd; }
+.badge-validated { background: #064e3b; color: #6ee7b7; }
+.badge-accepted  { background: #14532d; color: #86efac; }
+.badge-rejected  { background: #7f1d1d; color: #fca5a5; }
+.badge-superseded{ background: #374151; color: #9ca3af; }
+.manifest-actions { display: flex; gap: 4px; flex-shrink: 0; }
+.manifest-accept { border-color: #22c55e; color: #22c55e; }
+.manifest-reject { border-color: #ef4444; color: #ef4444; }
+
+/* ── G1: PlanCard 扩展（evidence / 依赖 / 失败） ─────────────── */
+.plan-step-deps { opacity: 0.6; }
+.plan-step-evidence { display: flex; gap: 4px; margin-top: 2px; flex-wrap: wrap; }
+.plan-step-evidence code {
+  font-size: 9px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: color-mix(in srgb, #22c55e 8%, transparent);
+  color: #6ee7b7;
+}
+.plan-step-error { display: block; font-size: 11px; color: #f87171; margin-top: 2px; }
+.plan-step-failed .plan-step-title { color: #f87171; }
+.plan-empty { padding: 16px; text-align: center; opacity: 0.6; font-size: 12px; }
+.plan-empty-hint { margin-top: 4px; font-size: 11px; opacity: 0.8; }

@@ -37,6 +37,9 @@ class RunFrame:
     store: ConversationStore | None = None
     skills: SkillRegistry = field(default_factory=SkillRegistry)
     slots: list[ResourceSlot] = field(default_factory=list)
+    # P0-6: 本帧工具调用预算（子 agent 用；0 = 不限制）。执行前计数。
+    max_tool_calls: int = 0
+    tool_calls_executed: int = 0
 
     async def release(self) -> None:
         """弹帧时调用：关掉本帧拥有的资源，借用的留给父帧。"""

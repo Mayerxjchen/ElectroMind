@@ -1,0 +1,109 @@
+{
+  "plan_id": "cp2k-deepmd",
+  "version": 1,
+  "status": "approved",
+  "objective": "水分子 CP2K ENERGY_FORCE 单点 → DeepMD 数据",
+  "assumptions": [],
+  "questions": [],
+  "steps": [
+    {
+      "id": "s1",
+      "title": "生成 CP2K 输入",
+      "description": "",
+      "files": [],
+      "tools": [],
+      "depends_on": [],
+      "status": "pending",
+      "expected_artifacts": [
+        "water.inp"
+      ],
+      "effects": [],
+      "verification": [],
+      "evidence": [],
+      "error": "",
+      "retry_policy": "",
+      "skipped_reason": ""
+    },
+    {
+      "id": "s2",
+      "title": "Preflight 检查",
+      "description": "",
+      "files": [],
+      "tools": [],
+      "depends_on": [
+        "s1"
+      ],
+      "status": "pending",
+      "expected_artifacts": [],
+      "effects": [],
+      "verification": [],
+      "evidence": [],
+      "error": "",
+      "retry_policy": "",
+      "skipped_reason": ""
+    },
+    {
+      "id": "s3",
+      "title": "提交 Slurm Job",
+      "description": "",
+      "files": [],
+      "tools": [],
+      "depends_on": [
+        "s2"
+      ],
+      "status": "pending",
+      "expected_artifacts": [],
+      "effects": [],
+      "verification": [],
+      "evidence": [],
+      "error": "",
+      "retry_policy": "",
+      "skipped_reason": ""
+    },
+    {
+      "id": "s4",
+      "title": "解析 ENERGY_FORCE",
+      "description": "",
+      "files": [],
+      "tools": [],
+      "depends_on": [
+        "s3"
+      ],
+      "status": "pending",
+      "expected_artifacts": [],
+      "effects": [],
+      "verification": [],
+      "evidence": [],
+      "error": "",
+      "retry_policy": "",
+      "skipped_reason": ""
+    },
+    {
+      "id": "s5",
+      "title": "DeepMD 数据转换",
+      "description": "",
+      "files": [],
+      "tools": [],
+      "depends_on": [
+        "s4"
+      ],
+      "status": "pending",
+      "expected_artifacts": [],
+      "effects": [],
+      "verification": [],
+      "evidence": [],
+      "error": "",
+      "retry_policy": "",
+      "skipped_reason": ""
+    }
+  ],
+  "risks": [
+    "解析失败风险"
+  ],
+  "verification": [
+    "能量带单位且来自解析器"
+  ],
+  "created_at": 1785908789.58964,
+  "approved_at": 1785908789.590385,
+  "fingerprint": "499729c628ff89f2e7ead3f6e6f77d8f41bf9be4f198c60e5b848b1bc1dd3ef9"
+}

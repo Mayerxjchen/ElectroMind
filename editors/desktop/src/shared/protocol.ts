@@ -246,7 +246,88 @@ export type DesktopEvent =
  * ONLY surface available through sendWireCommand — anything else must
  * get its own typed API instead of a generic passthrough.
  */
-export type WireCommand = { cmd: "skills" | "cancel" };
+export type WireCommand =
+  | { cmd: "skills" }
+  | { cmd: "cancel" }
+  // G1: Plan / Artifact 领域状态命令（后端 harness protocol_v2 同名命令）
+  | { cmd: "plan/state"; thread_id?: string }
+  | { cmd: "plan/propose"; thread_id?: string; plan?: PlanState }
+  | { cmd: "plan/approve"; thread_id?: string }
+  | { cmd: "plan/revise"; thread_id?: string }
+  | { cmd: "plan/cancel"; thread_id?: string }
+  | { cmd: "artifact/state"; thread_id?: string }
+  | { cmd: "artifact/register"; thread_id?: string; manifest?: ArtifactManifest }
+  | { cmd: "artifact/accept"; thread_id?: string; artifact_id: string; who?: string }
+  | { cmd: "artifact/reject"; thread_id?: string; artifact_id: string; reason?: string }
+  | { cmd: "artifact/complete"; thread_id?: string; artifact_id: string }
+  | { cmd: "artifact/validate"; thread_id?: string; artifact_id: string; parser: string };
+
+// ── G1: Plan 领域状态（镜像后端 PlanState，见 execution/plan.py）─────
+
+export type PlanEvidence = {
+  kind: string;
+  detail: string;
+  sha256: string;
+  exit_code: number | null;
+  by: string;
+  recorded_at: number;
+};
+
+export type PlanStepState = {
+  id: string;
+  title: string;
+  description: string;
+  files: string[];
+  tools: string[];
+  depends_on: string[];
+  status: string;
+  expected_artifacts: string[];
+  effects: string[];
+  verification: string[];
+  evidence: PlanEvidence[];
+  error: string;
+  retry_policy: string;
+  skipped_reason: string;
+};
+
+export type PlanState = {
+  plan_id: string;
+  version: number;
+  status: string;
+  objective: string;
+  assumptions: string[];
+  questions: string[];
+  steps: PlanStepState[];
+  risks: string[];
+  verification: string[];
+  created_at: number;
+  approved_at: number | null;
+  fingerprint: string;
+};
+
+// ── G1: Artifact Manifest（镜像后端 ArtifactManifest）──────────────
+
+export type ArtifactManifest = {
+  artifact_id: string;
+  type: string;
+  path: string;
+  sha256: string;
+  run_id: string;
+  step_id: string;
+  created_by: string;
+  input_artifacts: string[];
+  command: string;
+  software: string;
+  software_version: string;
+  environment_digest: string;
+  units: string;
+  validation_status: string;
+  acceptance_status: string;
+  parser: string;
+  created_at: number;
+  scheduler: string;
+  job_id: string;
+};
 
 export type DesktopApi = {
     getAppInfo(): Promise<AppInfo>;

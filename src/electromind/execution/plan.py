@@ -420,6 +420,15 @@ class PlanTracker:
     def current(self) -> PlanState | None:
         return self._current
 
+    def restore(self, plan: PlanState) -> None:
+        """从磁盘恢复当前计划（G1：引擎接线；不触发版本检查）。
+
+        Approved 版本同时记入历史，保证后续 propose 的版本门仍然生效。
+        """
+        self._current = plan
+        if plan.status == PlanStatus.APPROVED:
+            self._history.append(plan)
+
     def _latest_approved_version(self, plan_id: str) -> int | None:
         versions = [
             p.version
@@ -541,6 +550,23 @@ class PlanTracker:
 # ── PlanStore — 磁盘持久化 ─────────────────────────────────────────────
 
 
+# 计划状态的推进序（同版本覆盖仅允许前向）
+_STATUS_RANK = {
+    PlanStatus.DRAFT: 0,
+    PlanStatus.READY: 1,
+    PlanStatus.APPROVED: 2,
+    PlanStatus.EXECUTING: 3,
+    PlanStatus.COMPLETED: 4,
+    PlanStatus.REVISING: 1,
+    PlanStatus.CANCELLED: 5,
+}
+
+
+def _is_forward_status(old: PlanStatus, new: PlanStatus) -> bool:
+    """同版本状态覆盖是否允许（前向推进）。"""
+    return _STATUS_RANK.get(new, 0) >= _STATUS_RANK.get(old, 0)
+
+
 class PlanStore:
     """按 ``plan_id@version`` 持久化 Plan 到 ``<root>/plans/``。
 
@@ -568,6 +594,15 @@ class PlanStore:
                 raise ValueError(
                     f"plan {plan.plan_id}@{plan.version} 已存在且内容不同，"
                     "禁止覆盖（必须创建新版本）"
+                )
+            # P0-1: 同指纹不同状态仅允许前向推进（READY→APPROVED→EXECUTING→
+            # COMPLETED）；已批准版本不可被降级（DRAFT/READY 篡改）覆盖。
+            if existing is not None and not _is_forward_status(
+                existing.status, plan.status
+            ):
+                raise ValueError(
+                    f"plan {plan.plan_id}@{plan.version} 已存在且状态为 "
+                    f"{existing.status}，禁止以 {plan.status} 覆盖（仅允许前向推进）"
                 )
         tmp = path.with_suffix(".tmp")
         tmp.write_text(
@@ -600,11 +635,18 @@ class PlanStore:
         return self._path_for(self.root, plan_id, version).exists()
 
     def delete(self, plan_id: str, version: int) -> bool:
-        path = self._path_for(self.root, plan_id, version)
-        if path.exists():
-            path.unlink()
-            return True
-        return False
+        """删除版本。P0-1: 已批准（APPROVED/EXECUTING/COMPLETED）版本不可删除。"""
+        plan = self.load(plan_id, version)
+        if plan is None:
+            return False
+        if plan.status in (
+            PlanStatus.APPROVED,
+            PlanStatus.EXECUTING,
+            PlanStatus.COMPLETED,
+        ):
+            raise ValueError(f"plan {plan_id}@{version} 已批准/执行/完成，禁止删除")
+        self._path_for(self.root, plan_id, version).unlink()
+        return True
 
     def list_ids(self) -> list[str]:
         ids: set[str] = set()

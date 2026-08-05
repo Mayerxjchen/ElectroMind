@@ -1,75 +1,62 @@
 /** PlanCard — renders a structured Plan with steps, risks, and actions.
  *
  * States:
- * - draft/ready: shows steps + [Edit Plan] [Approve & Execute]
- * - approved: shows frozen steps with status tracking
- * - executing: shows live step status (pending → running → done)
+ * - draft/ready: shows steps + [Approve & Execute]
+ * - approved/executing: frozen steps with live status tracking
  * - completed: shows final summary
+ *
+ * G1: types mirror the backend PlanState (execution/plan.py) — step
+ * statuses include the full M2 enum (completed/verified/failed/skipped)
+ * and evidence is displayed per step.
  */
 
 import React, { useCallback, useState } from "react";
 
-// ── Types (mirrors backend PlanState) ────────────────────────────────
-
-type PlanStatus = "draft" | "ready" | "approved" | "executing" | "completed";
-type StepStatus = "pending" | "running" | "done" | "blocked" | "skipped";
-
-interface PlanStep {
-  id: string;
-  title: string;
-  description?: string;
-  files?: string[];
-  tools?: string[];
-  depends_on?: string[];
-  status: StepStatus;
-}
-
-interface PlanData {
-  plan_id: string;
-  version: number;
-  status: PlanStatus;
-  objective: string;
-  assumptions?: string[];
-  questions?: string[];
-  steps: PlanStep[];
-  risks?: string[];
-  verification?: string[];
-  fingerprint?: string;
-}
+import type { PlanState } from "../../../shared/protocol";
 
 // ── Props ────────────────────────────────────────────────────────────
 
 interface Props {
-  plan: PlanData;
+  plan: PlanState;
   onApprove?: () => void;
-  onEdit?: () => void;
   onRevise?: () => void;
+  onCancel?: () => void;
 }
 
-// ── Status icons ─────────────────────────────────────────────────────
+// ── Status icons (M2 StepStatus full enum) ───────────────────────────
 
-const STEP_ICONS: Record<StepStatus, string> = {
+const STEP_ICONS: Record<string, string> = {
   pending: "○",
+  ready: "○",
   running: "◉",
-  done: "✓",
   blocked: "⊘",
+  completed: "✓",
+  verified: "✓✓",
+  failed: "✗",
   skipped: "−",
 };
 
-const STEP_CLASS: Record<StepStatus, string> = {
+const STEP_CLASS: Record<string, string> = {
   pending: "plan-step-pending",
+  ready: "plan-step-pending",
   running: "plan-step-running",
-  done: "plan-step-done",
   blocked: "plan-step-blocked",
+  completed: "plan-step-done",
+  verified: "plan-step-done",
+  failed: "plan-step-failed",
   skipped: "plan-step-skipped",
 };
 
 // ── Component ────────────────────────────────────────────────────────
 
-export const PlanCard: React.FC<Props> = ({ plan, onApprove, onEdit, onRevise }) => {
+export const PlanCard: React.FC<Props> = ({ plan, onApprove, onRevise, onCancel }) => {
   const [expandedRisks, setExpandedRisks] = useState(false);
 
-  const isFrozen = plan.status === "approved" || plan.status === "executing" || plan.status === "completed";
+  const isFrozen =
+    plan.status === "approved" ||
+    plan.status === "executing" ||
+    plan.status === "completed" ||
+    plan.status === "revising";
   const isApproved = plan.status === "approved";
   const isExecuting = plan.status === "executing";
 
@@ -77,7 +64,9 @@ export const PlanCard: React.FC<Props> = ({ plan, onApprove, onEdit, onRevise })
     onApprove?.();
   }, [onApprove]);
 
-  const doneCount = plan.steps.filter((s) => s.status === "done").length;
+  const doneCount = plan.steps.filter(
+    (s) => s.status === "completed" || s.status === "verified" || s.status === "skipped",
+  ).length;
   const totalCount = plan.steps.length;
 
   return (
@@ -107,7 +96,9 @@ export const PlanCard: React.FC<Props> = ({ plan, onApprove, onEdit, onRevise })
             key={step.id}
             className={`plan-step ${STEP_CLASS[step.status]} ${isFrozen ? "frozen" : ""}`}
           >
-            <span className="plan-step-icon">{STEP_ICONS[step.status]}</span>
+            <span className="plan-step-icon">
+              {STEP_ICONS[step.status] ?? "○"}
+            </span>
             <div className="plan-step-body">
               <span className="plan-step-title">{step.title}</span>
               {step.description && (
@@ -119,6 +110,25 @@ export const PlanCard: React.FC<Props> = ({ plan, onApprove, onEdit, onRevise })
                     <code key={f} className="plan-step-file">{f}</code>
                   ))}
                 </span>
+              )}
+              {step.depends_on && step.depends_on.length > 0 && (
+                <span className="plan-step-meta plan-step-deps">
+                  依赖: {step.depends_on.join(", ")}
+                </span>
+              )}
+              {/* G1: Evidence（确定性完成依据，sha256 前缀） */}
+              {step.evidence && step.evidence.length > 0 && (
+                <span className="plan-step-evidence">
+                  {step.evidence.map((e, i) => (
+                    <code key={i} title={`${e.kind} by ${e.by}`}>
+                      {e.kind}
+                      {e.sha256 ? `:${e.sha256.slice(0, 8)}` : ""}
+                    </code>
+                  ))}
+                </span>
+              )}
+              {step.error && (
+                <span className="plan-step-error">{step.error}</span>
               )}
             </div>
           </li>
@@ -179,17 +189,19 @@ export const PlanCard: React.FC<Props> = ({ plan, onApprove, onEdit, onRevise })
       )}
 
       {/* Actions */}
-      {!isFrozen && (
+      {!isFrozen && plan.status !== "completed" && plan.status !== "cancelled" && (
         <div className="plan-card-actions">
-          <button className="plan-btn plan-btn-edit" onClick={onEdit}>
-            编辑计划
-          </button>
           <button className="plan-btn plan-btn-approve" onClick={handleApprove}>
             批准并执行
           </button>
+          {onCancel && (
+            <button className="plan-btn plan-btn-cancel" onClick={onCancel}>
+              取消计划
+            </button>
+          )}
         </div>
       )}
-      {isFrozen && plan.status !== "completed" && (
+      {isFrozen && plan.status !== "completed" && plan.status !== "cancelled" && (
         <div className="plan-card-actions">
           <span className="plan-frozen-badge">已冻结 · v{plan.version}</span>
           {onRevise && (

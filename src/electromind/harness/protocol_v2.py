@@ -75,6 +75,19 @@ VALID_COMMANDS = frozenset(
         "run/cancel",
         "approval/resolve",
         "thread/archive",
+        # G1: Plan / Artifact 领域状态命令（CLI 与 Desktop 共用）
+        "plan/state",
+        "plan/propose",
+        "plan/approve",
+        "plan/revise",
+        "plan/cancel",
+        "plan/update-step",
+        "artifact/state",
+        "artifact/register",
+        "artifact/accept",
+        "artifact/reject",
+        "artifact/complete",
+        "artifact/validate",
     }
 )
 
@@ -97,6 +110,9 @@ SERVER_EVENTS = frozenset(
         "approval/requested",
         "approval/resolved",
         "external_task/state",
+        # G1: Plan / Artifact 领域状态事件（全量状态，CLI 与 Desktop 共用）
+        "plan/state",
+        "artifact/state",
     }
 )
 

@@ -1,6 +1,6 @@
 /** Inspector shell (right panel) — tab bar + content area.
  *
- * Tabs: Context | Changes | Files | Runs | Artifacts
+ * Tabs: Context | Plan | Changes | Files | Runs | Artifacts
  * Content is rendered by tab-specific panels.  The shell itself
  * just manages tab state and renders the chrome.
  */
@@ -9,10 +9,11 @@ import React, { useEffect, useState } from "react";
 import { useActiveThread, useExecutionContextState, useSkillsState, useActiveRun } from "../useStore";
 import { getThreadStore } from "../../store/ThreadStore";
 import { DiffViewer } from "./DiffViewer";
+import { PlanPanel } from "./PlanPanel";
 
 // ── Tab definitions ──────────────────────────────────────────────────
 
-type TabId = "context" | "changes" | "files" | "runs" | "artifacts";
+type TabId = "context" | "plan" | "changes" | "files" | "runs" | "artifacts";
 
 const TABS: { id: TabId; label: string; badge?: () => number | null }[] = [
   {
@@ -22,6 +23,15 @@ const TABS: { id: TabId; label: string; badge?: () => number | null }[] = [
       // eslint-disable-next-line react-hooks/rules-of-hooks
       const ec = useExecutionContextState();
       return ec?.documents.length ?? null;
+    },
+  },
+  {
+    id: "plan",
+    label: "Plan",
+    badge: () => {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const t = useActiveThread();
+      return t?.plan ? 1 : null;
     },
   },
   { id: "changes", label: "Changes" },
@@ -35,7 +45,15 @@ const TABS: { id: TabId; label: string; badge?: () => number | null }[] = [
       return run ? 1 : null;
     },
   },
-  { id: "artifacts", label: "Artifacts" },
+  {
+    id: "artifacts",
+    label: "Artifacts",
+    badge: () => {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const t = useActiveThread();
+      return t?.artifacts?.length ? t.artifacts.length : null;
+    },
+  },
 ];
 
 // ── Props ────────────────────────────────────────────────────────────
@@ -78,6 +96,7 @@ export const InspectorShell: React.FC<Props> = ({ onTabChange }) => {
       </div>
       <div className="inspector-content">
         {activeTab === "context" && <ContextPanel ec={ec} skills={skills} />}
+        {activeTab === "plan" && <PlanPanel />}
         {activeTab === "changes" && <ChangesPanel />}
         {activeTab === "files" && <FilesPanel />}
         {activeTab === "runs" && <RunsPanel run={run} />}
@@ -405,11 +424,14 @@ const ArtifactsPanel: React.FC = () => {
     }
   };
 
-  if (!artifacts.length) {
+  const thread = useActiveThread();
+  const manifests = thread?.artifacts ?? [];
+  if (!artifacts.length && !manifests.length) {
     return <PlaceholderPanel text="暂无产物" />;
   }
   return (
     <div className="artifacts-panel">
+      {manifests.length > 0 && <ManifestPanel manifests={manifests} threadId={thread?.id ?? ""} />}
       <ul className="artifacts-list">
         {artifacts.map((a) => (
           <li key={a.path} className="artifact-item">
@@ -455,6 +477,99 @@ const ArtifactsPanel: React.FC = () => {
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+/** G1: Provenance Manifest 区 —— M6 状态机（completed ≠ validated ≠
+ * accepted）视图 + 用户验收操作。数据来自 thread.artifacts（artifact/state
+ * 事件与快照），操作经 wire 命令回流。 */
+const ManifestPanel: React.FC<{
+  manifests: import("../../../shared/protocol").ArtifactManifest[];
+  threadId: string;
+}> = ({ manifests, threadId }) => {
+  const send = (command: import("../../../shared/protocol").WireCommand) => {
+    void window.desktop.sendWireCommand(command);
+  };
+  return (
+    <div className="manifest-panel">
+      <div className="manifest-title">Provenance 验收</div>
+      <ul className="manifest-list">
+        {manifests.map((m) => (
+          <li key={m.artifact_id} className="manifest-item">
+            <span className={`manifest-badge badge-${m.acceptance_status}`}>
+              {m.acceptance_status}
+            </span>
+            <div className="manifest-body">
+              <span className="manifest-id">{m.artifact_id}</span>
+              <span className="manifest-meta">
+                {m.type} · {m.path} · sha256 {m.sha256.slice(0, 8)}
+                {m.units ? ` · ${m.units}` : ""}
+                {m.created_by ? ` · by ${m.created_by}` : ""}
+              </span>
+              {m.parser && <span className="manifest-meta">parser: {m.parser}</span>}
+            </div>
+            <div className="manifest-actions">
+              {m.acceptance_status === "created" && (
+                <button
+                  className="inspector-action"
+                  onClick={() =>
+                    send({ cmd: "artifact/complete", thread_id: threadId, artifact_id: m.artifact_id })
+                  }
+                >
+                  完成
+                </button>
+              )}
+              {m.acceptance_status === "completed" && (
+                <button
+                  className="inspector-action"
+                  onClick={() => {
+                    const parser = window.prompt("解析器/检查器名称（VALIDATED 依据）");
+                    if (parser) {
+                      send({
+                        cmd: "artifact/validate",
+                        thread_id: threadId,
+                        artifact_id: m.artifact_id,
+                        parser,
+                      });
+                    }
+                  }}
+                >
+                  验证
+                </button>
+              )}
+              {m.acceptance_status === "validated" && (
+                <button
+                  className="inspector-action manifest-accept"
+                  onClick={() =>
+                    send({ cmd: "artifact/accept", thread_id: threadId, artifact_id: m.artifact_id })
+                  }
+                >
+                  接受
+                </button>
+              )}
+              {["created", "completed", "validated"].includes(m.acceptance_status) && (
+                <button
+                  className="inspector-action manifest-reject"
+                  onClick={() => {
+                    const reason = window.prompt("驳回原因（REJECTED 必须记录原因）");
+                    if (reason) {
+                      send({
+                        cmd: "artifact/reject",
+                        thread_id: threadId,
+                        artifact_id: m.artifact_id,
+                        reason,
+                      });
+                    }
+                  }}
+                >
+                  驳回
+                </button>
+              )}
+            </div>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 };

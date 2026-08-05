@@ -58,6 +58,24 @@ function pack() {
     overwrite: true,
     icon: iconByPlatform[platform],
     appVersion: version,
+    // F1: 生产包只含运行资源 —— 源码/脚本/开发产物/中间文件全部排除，
+    // 否则 .venv 符号链接会导致 codesign --deep 失败、包体膨胀数倍。
+    asar: true,
+    ignore: [
+      /\.venv($|\/)/, // 图标生成用的 Python venv（26M+，符号链接）
+      /assets\/icon\.iconset($|\/)/, // 图标生成中间目录
+      /assets\/generate_icons\.py/,
+      /src($|\/)/, // TypeScript 源码不进包（dist 已编译）
+      /scripts($|\/)/, // 打包/测试脚本
+      /tests($|\/)/,
+      /release($|\/)/,
+      /\.git($|\/)/,
+      /\.gitignore/,
+      /README\.md/,
+      /tsconfig\.json/,
+      /esbuild\.js/,
+      /package-lock\.json/,
+    ],
   });
 }
 
@@ -117,9 +135,49 @@ function stageLinux() {
   return tar;
 }
 
+// D2: 嵌入内置 Agent（Standalone 模式，macOS）。
+// 源：仓库根 dist/electromind-<ver>-<plat>（scripts/build-standalone.sh 产物，
+// 排除 wheel/sdist/校验和文件）。嵌入后 Desktop 优先使用内置 Agent，
+// 用户无需安装 CLI。找不到产物 → 退回 Companion 包（不报错）。
+function embedAgent(appDir) {
+  const distDir = path.join(root, "..", "..", "dist");
+  const candidates = fs
+    .readdirSync(distDir)
+    .filter(
+      (f) =>
+        f.startsWith("electromind-") &&
+        !f.endsWith(".whl") &&
+        !f.endsWith(".tar.gz") &&
+        !f.endsWith(".txt"),
+    )
+    .map((f) => path.join(distDir, f));
+  if (!candidates.length) {
+    console.warn(
+      "D2: 未找到 standalone agent（dist/electromind-*），跳过嵌入 —— 产出 Companion 包",
+    );
+    return false;
+  }
+  // .app bundle 在 packagedDir()/<productName>.app/ 之下（packager 输出）。
+  const appBundle = path.join(appDir, `${productName}.app`);
+  const agentDir = path.join(appBundle, "Contents", "Resources", "agent");
+  fs.mkdirSync(agentDir, { recursive: true });
+  const src = candidates[0];
+  fs.copyFileSync(src, path.join(agentDir, "electromind"));
+  fs.chmodSync(path.join(agentDir, "electromind"), 0o755);
+  console.log(`D2: 已嵌入内置 Agent ${path.basename(src)} → Resources/agent/electromind`);
+  return true;
+}
+
 async function main() {
   fs.mkdirSync(releaseDir, { recursive: true });
   await pack();
+  if (platform === "darwin") {
+    embedAgent(packagedDir());
+  } else {
+    // TODO(D2-win/linux): Windows 产物为 .exe，Linux 目录结构不同；
+    // 嵌入逻辑按平台调整后再启用。
+    console.warn(`D2: ${platform} 平台暂不嵌入内置 Agent（仅 macOS 已验证）`);
+  }
   const out =
     platform === "darwin"
       ? stageMac()

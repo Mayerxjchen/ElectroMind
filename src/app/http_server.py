@@ -1,5 +1,10 @@
 """HTTP 后端：与 wire 共享同一套命令处理核，只换传输壳。
 
+**Status: EXPERIMENTAL / MAINTENANCE-ONLY**（2026-08-05 范围收缩决议，
+见 docs/superpowers/specs/2026-08-05-scope-contraction-cli-desktop.md）
+不删除、不承诺兼容、不新适配功能；仅保留既有测试防腐化。正式入口为
+CLI 与 Desktop（Wire 内部传输层）。
+
 对齐关系（一字不改命令/事件 JSON）：
 
 - wire 的 stdin（收 JSON 命令）  → ``POST /command``（body 是同一个命令对象）

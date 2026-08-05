@@ -990,20 +990,26 @@ async def driver_artifact_lifecycle(task: TaskSpec, thread_root: Path) -> dict:
         units="Hartree",
     )
     registry.register(m)
-    # 程序正常结束 → COMPLETED
+    # 程序正常结束 → acceptance=COMPLETED（validation 保持 CREATED）
     completed = m.complete()
     if completed.acceptance_status != ArtifactStatus.COMPLETED:
         return _fail(FailureCategory.VALIDATION, "complete 未进入 COMPLETED")
-    if completed.acceptance_status == ArtifactStatus.VALIDATED:
+    if completed.validation_status == ArtifactStatus.VALIDATED:
         return _fail(FailureCategory.VALIDATION, "程序结束被自动升级为 VALIDATED")
-    # 解析器通过 → VALIDATED
+    # 解析器通过 → validation=VALIDATED（P0-7 双状态分离）
     validated = completed.validate(parser="energy_parser")
-    if validated.acceptance_status != ArtifactStatus.VALIDATED:
+    if validated.validation_status != ArtifactStatus.VALIDATED:
         return _fail(FailureCategory.VALIDATION, "validate 未进入 VALIDATED")
-    # 用户确认 → ACCEPTED
+    if validated.acceptance_status != ArtifactStatus.COMPLETED:
+        return _fail(FailureCategory.VALIDATION, "validate 污染了 acceptance 状态")
+    # 用户确认 → ACCEPTED（确认者持久化；validation 保留）
     accepted = validated.accept(who="user-alice")
     if accepted.acceptance_status != ArtifactStatus.ACCEPTED:
         return _fail(FailureCategory.VALIDATION, "accept 未进入 ACCEPTED")
+    if accepted.validation_status != ArtifactStatus.VALIDATED:
+        return _fail(FailureCategory.VALIDATION, "accept 污染了 validation 状态")
+    if accepted.accepted_by != "user-alice":
+        return _fail(FailureCategory.VALIDATION, "accepted_by 未持久化")
     # 创建者不能自行接受
     try:
         validated.accept(who="tool_parse")

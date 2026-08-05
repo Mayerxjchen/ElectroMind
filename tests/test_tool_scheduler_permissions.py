@@ -78,7 +78,10 @@ def _call(cid, name, effect, **args) -> ToolCallInfo:
 
 def test_effects_conflict_matrix():
     assert not effects_conflict(ToolEffect.READ_WORKSPACE, ToolEffect.READ_WORKSPACE)
-    assert not effects_conflict(ToolEffect.PURE, ToolEffect.WRITE_WORKSPACE)
+    assert not effects_conflict(ToolEffect.READ_WORKSPACE, ToolEffect.READ_HOST)
+    # P0-3: PURE 保守串行（纯计算工具也可能带副作用）
+    assert effects_conflict(ToolEffect.PURE, ToolEffect.WRITE_WORKSPACE)
+    assert effects_conflict(ToolEffect.PURE, ToolEffect.PURE)
     assert effects_conflict(ToolEffect.WRITE_WORKSPACE, ToolEffect.WRITE_WORKSPACE)
     assert effects_conflict(ToolEffect.EXECUTE, ToolEffect.READ_WORKSPACE)
     assert effects_conflict(None, ToolEffect.READ_WORKSPACE)  # 未判定 → 串行

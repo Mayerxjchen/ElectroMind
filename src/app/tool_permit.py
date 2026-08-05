@@ -233,6 +233,20 @@ def parse_permit_answer(text: str) -> bool | None:
     return None
 
 
+def _arguments_digest(arguments: str) -> str:
+    """与 wire 审批时一致的参数摘要（sha256 of sorted JSON）。"""
+    import hashlib
+    import json
+
+    try:
+        normalized = json.dumps(
+            json.loads(arguments), ensure_ascii=False, sort_keys=True
+        )
+    except (json.JSONDecodeError, TypeError):
+        normalized = str(arguments)
+    return hashlib.sha256(normalized.encode()).hexdigest()
+
+
 def apply_permit_answer(runner: Runner, tool_call_id: str, approved: bool) -> None:
     if approved:
         runner.inbound.permit(tool_call_id)
@@ -250,6 +264,14 @@ def _make_require_tool_permit(*, auto_safe: bool = False):
         if not result.approved:
             message = result.reason.strip() or USER_DENIED_TOOL_MESSAGE
             return ToolDecision.deny(message)
+        # P0-4: 执行前校验参数摘要——审批后参数被修改则拒绝执行
+        check = getattr(ctx.runner, "check_approved_arguments", None)
+        if callable(check):
+            digest = _arguments_digest(ctx.arguments)
+            if not check(ctx.tool_call_id, digest):
+                return ToolDecision.deny(
+                    "工具参数在审批后被修改，拒绝执行（请重新审批）"
+                )
         return None
 
     return require_tool_permit

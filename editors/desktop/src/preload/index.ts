@@ -13,7 +13,22 @@ import type {
 } from "../shared/protocol";
 
 /** Wire commands the Renderer may send directly (capability boundary). */
-const ALLOWED_WIRE_COMMANDS = new Set<string>(["skills", "cancel"]);
+const ALLOWED_WIRE_COMMANDS = new Set<string>([
+  "skills",
+  "cancel",
+  // G1: Plan / Artifact 领域状态命令
+  "plan/state",
+  "plan/propose",
+  "plan/approve",
+  "plan/revise",
+  "plan/cancel",
+  "artifact/state",
+  "artifact/register",
+  "artifact/accept",
+  "artifact/reject",
+  "artifact/complete",
+  "artifact/validate",
+]);
 
 function subscribeToChannel<T>(
   channel: string,

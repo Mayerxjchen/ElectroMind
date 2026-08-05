@@ -100,6 +100,8 @@ export function createThreadState(
     skillsState: null,
     executionContextState: null,
     executionState: null,
+    plan: null,
+    artifacts: [],
     scrollTop: 0,
     userScrolledUp: false,
     // Protocol v2 fields
@@ -585,6 +587,22 @@ class ThreadStore {
         return true;
       }
 
+      // ── G1: Plan / Artifact 领域状态 ─────────────────────────────
+      case "plan/state": {
+        const rawPlan = params.plan as Record<string, unknown> | null | undefined;
+        t.plan = rawPlan ? (rawPlan as ThreadState["plan"]) : null;
+        this.emit();
+        return true;
+      }
+      case "artifact/state": {
+        const rawArtifacts = params.artifacts as Array<Record<string, unknown>> | undefined;
+        t.artifacts = Array.isArray(rawArtifacts)
+          ? (rawArtifacts as ThreadState["artifacts"])
+          : [];
+        this.emit();
+        return true;
+      }
+
       // ── Protocol v2: thread/snapshot ──────────────────────────────
       case "thread/snapshot":
         this.applySnapshot(params);
@@ -824,6 +842,16 @@ class ThreadStore {
         runId: String(a.run_id ?? params.active_run_id ?? ""),
         timestamp: Date.now(),
       }));
+    }
+
+    // G1: 恢复 Plan / Artifact 领域状态（重启后 Thread/Run/Plan/Approval/
+    // Artifact 五态完整恢复；快照里 plan=null 表示无计划，不覆盖旧值）
+    if (params.plan) {
+      t.plan = params.plan as ThreadState["plan"];
+    }
+    const snapArtifacts = params.artifacts as Array<Record<string, unknown>> | undefined;
+    if (Array.isArray(snapArtifacts)) {
+      t.artifacts = snapArtifacts as ThreadState["artifacts"];
     }
 
     // Durable timeline: rebuild items from the snapshot's history list

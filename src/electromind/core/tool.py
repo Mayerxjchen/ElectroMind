@@ -187,7 +187,9 @@ def extract_function_schema(func, name_override=None, description_override=None)
     return func_name, description, json_schema
 
 
-def tool(name=None, description=None):
+def tool(name=None, description=None, effect=None):
+    """工具装饰器；``effect`` 声明副作用类别（P0-3 注册门要求）。"""
+
     def decorator(func):
         func_name, func_description, parameters = extract_function_schema(
             func,
@@ -199,6 +201,7 @@ def tool(name=None, description=None):
             description=func_description or "",
             parameters=parameters,
             func=func,
+            effect=effect,
         )
 
     return decorator

@@ -38,10 +38,11 @@ export type CliInvocation = {
 };
 
 export type BackendAvailability = {
-  /** 后端是否可用（源码检出模式下的 uv run 或全局 CLI）。 */
+  /** 后端是否可用（内置 Agent / 源码检出模式下的 uv run / 全局 CLI）。 */
   available: boolean;
-  /** 'project' = uv run 源码检出，'global' = 全局 electromind CLI，'none' = 不可用。 */
-  mode: "project" | "global" | "none";
+  /** 'bundled' = app 内置 Agent，'project' = uv run 源码检出，
+   *  'global' = 全局 electromind CLI，'none' = 不可用。 */
+  mode: "bundled" | "project" | "global" | "none";
   /** 人类可读的解析结果标签。 */
   label: string;
 };
@@ -345,9 +346,25 @@ export function resolveCliCommand(command: string): string {
   return trimmed;
 }
 
+/**
+ * D2: 内置 Agent（Standalone 模式）—— 打包时把 PyInstaller 单文件放进
+ * ``Resources/agent/electromind``；存在即优先使用（生产包不依赖用户安装）。
+ */
+export function bundledAgentPath(): string | null {
+  const resources =
+    typeof process.resourcesPath === "string" && process.resourcesPath
+      ? process.resourcesPath
+      : "";
+  if (!resources) {
+    return null;
+  }
+  const candidate = join(resources, "agent", "electromind");
+  return existsSync(candidate) ? candidate : null;
+}
+
 export function resolveElectromindWireInvocation(
   projectRoot: string,
-  options?: { yolo?: boolean },
+  options?: { yolo?: boolean; isPackaged?: boolean },
 ): CliInvocation {
   // Desktop defaults to local execution mode to avoid requiring
   // Docker/Podman. Users can opt into sandbox mode in Settings.
@@ -355,6 +372,17 @@ export function resolveElectromindWireInvocation(
   if (options?.yolo) {
     wireArgs.push("--permission-mode", "auto");
   }
+  // D2: 生产包优先内置 Agent（Resources/agent/electromind）；
+  // 无内置 → 系统安装的 CLI（找不到时 spawn 失败由 AgentBridge.onError
+  // 呈现明确的"后端未安装"状态，不进入任何源码回退）。
+  if (options?.isPackaged) {
+    const bundled = bundledAgentPath();
+    if (bundled) {
+      return { command: bundled, args: wireArgs };
+    }
+    return { command: resolveCliCommand("electromind"), args: wireArgs };
+  }
+  // F3: `uv run --project` 回退只属于开发模式（源码检出）。
   const pyproject = projectRoot ? join(projectRoot, "pyproject.toml") : "";
   const uv = resolveCliCommand("uv");
   if (pyproject && existsSync(pyproject) && uv) {
@@ -370,13 +398,24 @@ export function resolveElectromindWireInvocation(
 }
 
 /**
- * 解析后端可用性——同时覆盖源码检出（uv run）和全局 CLI 两种模式。
+ * 解析后端可用性——同时覆盖源码检出（uv run，仅开发模式）和全局 CLI。
  * 环境自检与启动使用同一来源，避免启动能用但自检挡墙的割裂。
  */
-export function resolveBackendAvailability(projectRoot: string): BackendAvailability {
+export function resolveBackendAvailability(
+  projectRoot: string,
+  isPackaged: boolean = false,
+): BackendAvailability {
+  // D2: 生产包先查内置 Agent（自检与启动同一口径）。
+  if (isPackaged) {
+    const bundled = bundledAgentPath();
+    if (bundled) {
+      return { available: true, mode: "bundled", label: bundled };
+    }
+  }
+  // F3: 生产包跳过项目模式（见 resolveElectromindWireInvocation）。
   const pyproject = projectRoot ? join(projectRoot, "pyproject.toml") : "";
   const uv = resolveCliCommand("uv");
-  if (pyproject && existsSync(pyproject) && uv) {
+  if (!isPackaged && pyproject && existsSync(pyproject) && uv) {
     return {
       available: true,
       mode: "project",

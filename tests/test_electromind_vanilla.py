@@ -48,7 +48,7 @@ class FakeProvider:
         return stream()
 
 
-@tool()
+@tool(effect="pure")
 def echo(msg: str) -> str:
     """Echo back."""
     return msg
@@ -112,7 +112,7 @@ def test_vanilla_agent_alias_points_to_vanilla_runner():
 async def test_vanilla_runner_does_not_execute_tools_requested_by_synthesis_turn():
     calls = []
 
-    @tool()
+    @tool(effect="pure")
     def record(value: str) -> str:
         """Record a value."""
         calls.append(value)

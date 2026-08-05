@@ -47,6 +47,8 @@ def make_side_effect_tool(
             fh.write(f"{name}|ok\n")
         return ToolOutput.succeed(f"side effect recorded: {name}")
 
+    from electromind.execution.effects import ToolEffect
+
     return FunctionTool(
         name=name,
         description="记录一次外部副作用（eval 专用，用于幂等验证）。",
@@ -56,6 +58,7 @@ def make_side_effect_tool(
             "required": ["name"],
         },
         func=eval_side_effect,
+        effect=ToolEffect.WRITE_WORKSPACE,
     )
 
 

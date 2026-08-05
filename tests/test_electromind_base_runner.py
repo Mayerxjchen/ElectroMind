@@ -188,7 +188,7 @@ async def test_flush_each_continuing(tmp_path):
         function=types.SimpleNamespace(name="echo", arguments='{"msg":"ping"}'),
     )
 
-    @tool()
+    @tool(effect="pure")
     def echo(msg: str) -> str:
         """Echo back."""
         return msg
@@ -228,7 +228,7 @@ async def test_event_stream_with_tools(tmp_path):
         function=types.SimpleNamespace(name="echo", arguments='{"msg":"hi"}'),
     )
 
-    @tool()
+    @tool(effect="pure")
     def echo(msg: str) -> str:
         """Echo back."""
         return msg

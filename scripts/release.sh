@@ -22,6 +22,76 @@ for arg in "$@"; do
 done
 
 # 注意：全角括号紧贴 $VAR 会被 macOS 系统 bash 3.2 吞进变量名，必须用 ${VAR}。
+# P0-8 发布门禁：完整 CI + Golden Tasks + 关键模块分支覆盖 + 验收报告。
+# 任一失败即中止发布（set -e 保证）。
+echo "==> 发布门禁 1/4：完整 CI（ruff + 测试 + 覆盖率 + 产物完整性）"
+bash scripts/ci-check.sh
+
+echo "==> 发布门禁 2/4：Golden Tasks（66 项全部通过）"
+ELECTROMIND_TEST_CONTAINER_IMAGE="${ELECTROMIND_TEST_CONTAINER_IMAGE:-}" \
+  uv run python -m evals run 2>&1 | tail -20 | grep -qE '"passed": 6[0-9]' || {
+    echo "Golden Tasks 未全通过，中止发布" >&2
+    exit 1
+  }
+
+echo "==> 发布门禁 3/4：关键模块纯分支覆盖率 >= 90%"
+uv run python - <<'PY'
+import json
+import subprocess
+import sys
+
+subprocess.run(
+    [
+        sys.executable, "-m", "pytest", "-q", "--no-header",
+        "--cov=src/electromind/engine", "--cov=src/electromind/execution",
+        "--cov=src/electromind/context", "--cov=src/electromind/artifacts",
+        "--cov=src/electromind/core/budget.py", "--cov=src/electromind/core/capabilities.py",
+        "--cov=src/electromind/core/retry.py", "--cov=src/electromind/tools/delegate.py",
+        "--cov-report=json", "-o", "addopts=",
+    ],
+    check=True,
+    capture_output=True,
+    text=True,
+    timeout=900,
+)
+cov = json.load(open("coverage.json"))
+targets = [
+    "engine/run_engine.py", "execution/plan.py", "execution/permissions.py",
+    "execution/idempotency.py", "execution/effects.py", "execution/tool_scheduler.py",
+    "execution/intent_log.py", "context/budget.py", "context/compactor.py",
+    "context/manager.py", "context/memory.py", "artifacts/manifest.py",
+    "artifacts/registry.py", "artifacts/provenance.py",
+    "core/budget.py", "core/capabilities.py", "core/retry.py",
+    "tools/delegate.py",
+]
+files = cov["files"]
+below = []
+total_b = covered_b = 0
+for name in targets:
+    f = files.get("src/electromind/" + name)
+    if f is None:
+        below.append((name, 0.0))
+        continue
+    b_total = len(f["executed_branches"]) + len(f["missing_branches"])
+    b_covered = len(f["executed_branches"])
+    total_b += b_total
+    covered_b += b_covered
+    rate = b_covered / b_total * 100 if b_total else 100.0
+    if rate < 90.0:
+        below.append((name, rate))
+overall = covered_b / total_b * 100 if total_b else 0.0
+print(f"critical branch coverage: {overall:.2f}%")
+if below:
+    print(f"below 90%: {below}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+
+echo "==> 发布门禁 4/4：验收报告存在性"
+test -f artifacts/acceptance/m1-m7-runengine/acceptance-report.json || {
+  echo "缺少 m1-m7 验收报告，中止发布" >&2
+  exit 1
+}
+
 echo "==> 构建 ${VERSION}（tag ${TAG}）"
 rm -rf dist build
 uv build

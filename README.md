@@ -20,7 +20,7 @@ ElectroMind 整合了第一性原理计算软件（VASP、CP2K、LAMMPS、DeepMD
 - 本地（local）、容器（Docker / Podman）、远程（SSH / HPC）三种 Sandbox，适配计算集群
 - 科学计算 Skills：内建 CP2K、VASP、LAMMPS、DeepMD、MCMC 等软件的输入生成、输出解析与工作流编排
 - 会话持久化与恢复：`--continue`、`--resume`、`session list`
-- HTTP 与 Wire（stdio NDJSON）后端，供 Web UI、桌面端、VS Code 插件集成
+- Wire（stdio NDJSON）内部传输层，驱动 Desktop；HTTP 后端（experimental）
 - 可扩展的 Skills 系统与子 Agent 委托
 - 内建工具：命令执行、文件读写、网页搜索、URL 抓取、计算结果可视化
 
@@ -48,12 +48,15 @@ uv sync
 
 ## 执行内核架构（v0.8 起）
 
-自 v0.8 起，ElectroMind 的执行内核收敛为**唯一 Run 生命周期**：
+自 v0.8 起，ElectroMind 的执行内核收敛为**唯一 Run 生命周期**（正式入口：CLI 与 Desktop；Wire 为 Desktop 的内部传输层）：
 
 ```text
-CLI / Wire / HTTP / Desktop
-          │
-  ApplicationService（app/service.py，进程级共享）
+CLI         Desktop
+ │            │
+ │        Wire（内部协议，非公开接口）
+ │            │
+ └────┬───────┘
+ApplicationService（app/service.py，进程级共享）
           │
       RunEngine（electromind.engine — 唯一执行状态机）
    ┌──────┼───────────┬──────────────┐
@@ -92,6 +95,25 @@ AgentCore      Sandbox      Runner      RunSnapshot
 - **Provider 可靠性**（`core/capabilities.py` / `retry.py` /
   `budget.py`）：能力协商（保守默认）、指数退避重试（429/5xx/超时）、
   Run 级预算（token/调用次数/墙钟/外部成本，子 Agent 计入父 Run）。
+
+### 接口支持级别
+
+```text
+Supported interfaces（正式支持）:
+- CLI        —— 最完整、最稳定的基准入口，核心功能的参考实现
+- Desktop    —— CLI 能力的图形化呈现，经 Wire 驱动，不复制 Agent 状态机
+
+Experimental interfaces（暂停开发，maintenance-only）:
+- HTTP       —— 不承诺兼容，新功能不要求适配
+- Web        —— 同上
+- VS Code    —— 同上
+```
+
+边界原则：**CLI 是完整功能入口，Desktop 是 CLI 能力的图形化呈现，Wire 只是连接
+Desktop 与 Core 的内部传输层**（不作为公开 API 承诺长期兼容）。细节与验收范围
+见 `docs/superpowers/specs/2026-08-05-scope-contraction-cli-desktop.md`。
+
+---
 
 ### Golden Task 评测（evals/）
 
@@ -135,9 +157,9 @@ src/
 ├── app/                 CLI、REPL、配置、会话管理、HTTP/Wire 后端、Dockerfile
 └── electromind/         核心：运行时、Thread、对话持久化、Sandbox、Skills、工具、Trace
 editors/
-├── desktop/             Electron 桌面端
-├── vscode/              VS Code 扩展
-└── web/                 浏览器 Web UI（React + assistant-ui）
+├── desktop/             Electron 桌面端（正式支持，经 Wire 协议驱动 Core）
+├── vscode/              VS Code 扩展（experimental，暂停开发）
+└── web/                 浏览器 Web UI（experimental，暂停开发）
 skills/                  科学计算领域 Skills（CP2K / VASP / LAMMPS / DeepMD / MCMC 等）
 tests/                   应用、核心、Sandbox 与协议测试
 scripts/                 质量检查与发布脚本
@@ -234,18 +256,9 @@ docker build -t electromind:browser -f src/app/Dockerfile.browser src/app
 
 ---
 
-## 桌面端、Web UI 与编辑器集成
+## 桌面端（正式支持）与实验性编辑器
 
-### Web UI（浏览器访问）
-
-```bash
-cd editors/web
-npm install
-npm run dev
-# 自动启动后端 + Vite 开发服务器，浏览器打开 http://localhost:5173
-```
-
-### Electron Desktop
+### Electron Desktop（正式支持）
 
 ```bash
 cd editors/desktop
@@ -253,21 +266,25 @@ npm install
 npm start
 ```
 
-桌面端通过 Wire 协议与 `electromind --wire` 子进程通信，提供三栏工作台（会话列表 / 对话区 / 文件与 Artifacts 预览）。macOS 版本可在 [GitHub Releases](https://github.com/Mayerxjchen/ElectroMind/releases) 下载。
+桌面端通过 Wire 协议与 `electromind --wire` 子进程通信，提供三栏工作台（会话列表 / 对话区 / 文件与 Artifacts 预览）。
+
+> **安装包状态：** Desktop 打包脚本已提供（`editors/desktop/scripts/package.js`），
+> 预构建安装包**尚未正式发布**（GitHub Releases 暂无产物）。当前请从源码运行
+> Desktop，并确保本机已安装 `electromind` CLI（`uv tool install electromind`）——
+> Desktop 是图形壳，Agent 能力由 CLI 的 `--wire` 子进程提供。
+
+### Web UI 与 VS Code 扩展（experimental，暂停开发）
+
+代码保留但不在开发计划内，不承诺兼容；新功能不要求适配。仅维护既有测试防腐化。
+
+- **Web UI**：`cd editors/web && npm install && npm run dev`（Vite :5173）
+- **VS Code 扩展**：`editors/vscode/`
 
 
 
-## HTTP 与 Wire 集成
+## Wire（内部协议）与 HTTP（experimental）
 
-**HTTP 后端**（供 Web 前端、自定义客户端集成）：
-
-```bash
-electromind --http --host 127.0.0.1 --port 8848
-# POST /command  → 发送命令
-# GET  /events   → SSE 事件流
-```
-
-**Wire 后端**（供桌面端、VS Code 插件等进程间通信）：
+**Wire 后端**（Desktop 的内部传输层）：
 
 ```bash
 electromind --wire
@@ -275,7 +292,15 @@ electromind --wire
 # stdout → JSON-RPC 事件（NDJSON）
 ```
 
-Wire 协议的完整事件定义见 `src/electromind/adapters/`。
+Wire 不承诺对外长期兼容（仅供 Desktop 使用）；协议的完整事件定义见 `src/electromind/adapters/`。
+
+**HTTP 后端**（experimental，暂停开发）：
+
+```bash
+electromind --http --host 127.0.0.1 --port 8848
+# POST /command  → 发送命令
+# GET  /events   → SSE 事件流
+```
 
 ---
 

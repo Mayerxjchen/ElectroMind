@@ -33,7 +33,21 @@ class ArtifactRegistry:
     # ── 注册 ─────────────────────────────────────────────────────────
 
     def register(self, manifest: ArtifactManifest) -> ArtifactManifest:
-        """注册新 Artifact。同 id 已存在（内容不同）→ 先记录替换事件。"""
+        """注册新 Artifact。同 id 已存在（内容不同）→ 先记录替换事件。
+
+        P0-7: 输入 Artifact 缺失不静默——记录 warning 事件（verify_all 时
+        作为错误报告）。
+        """
+        for input_id in manifest.input_artifacts:
+            if input_id not in self._manifests:
+                self._events.append(
+                    {
+                        "event": "missing_input",
+                        "artifact_id": manifest.artifact_id,
+                        "input_artifact_id": input_id,
+                        "at": time.time(),
+                    }
+                )
         existing = self._manifests.get(manifest.artifact_id)
         if existing is not None and existing.sha256 != manifest.sha256:
             self._events.append(
@@ -111,13 +125,21 @@ class ArtifactRegistry:
             )
 
     def verify_all(self, root: Path) -> list[str]:
-        """全量完整性检查；返回问题列表（空 = 全部一致）。"""
+        """全量完整性检查；返回问题列表（空 = 全部一致）。
+
+        P0-7: 输入 Artifact 缺失同样作为错误报告（不静默忽略）。
+        """
         errors: list[str] = []
         for manifest in self._manifests.values():
             try:
                 self.verify_integrity(manifest, root)
             except ArtifactIntegrityError as exc:
                 errors.append(str(exc))
+            for input_id in manifest.input_artifacts:
+                if input_id not in self._manifests:
+                    errors.append(
+                        f"artifact {manifest.artifact_id} 的输入 {input_id} 缺失"
+                    )
         return errors
 
     # ── 事件 ─────────────────────────────────────────────────────────

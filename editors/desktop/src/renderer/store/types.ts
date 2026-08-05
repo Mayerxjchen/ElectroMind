@@ -10,6 +10,8 @@
 // Session / thread identity
 // ---------------------------------------------------------------------------
 
+import type { ArtifactManifest, PlanState } from "../../shared/protocol";
+
 export type ThreadId = string;
 
 export type ThreadSummary = {
@@ -207,6 +209,11 @@ export type ThreadState = {
   skillsState: SkillsState | null;
   executionContextState: ExecutionContextState | null;
   executionState: ExecutionState | null;
+
+  /** G1: 当前 Plan（无则 null；plan/state 事件与快照恢复）。 */
+  plan: PlanState | null;
+  /** G1: Artifact 清单（artifact/state 事件与快照恢复）。 */
+  artifacts: ArtifactManifest[];
 
   /** Scroll position in the message list (preserved across switches). */
   scrollTop: number;

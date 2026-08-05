@@ -142,12 +142,31 @@ class ApprovalRequest:
     risk: str = "low"  # "low" | "medium" | "high"
     summary: str = ""
     expires_at: str = ""  # ISO 8601
+    arguments_digest: str = ""  # P0-4: 审批时的工具参数摘要（防参数篡改）
 
     status: ApprovalStatus = ApprovalStatus.PENDING
 
     def is_resolvable(self) -> bool:
         """True if the approval can still be resolved."""
-        return self.status == ApprovalStatus.PENDING
+        if self.status != ApprovalStatus.PENDING:
+            return False
+        if self.is_expired():
+            return False
+        return True
+
+    def is_expired(self, *, now: float | None = None) -> bool:
+        """按 expires_at（ISO 8601）判定过期；空 = 永不过期。"""
+        if not self.expires_at:
+            return False
+        try:
+            import time as _time
+            from datetime import datetime
+
+            parsed = datetime.fromisoformat(self.expires_at.replace("Z", "+00:00"))
+            current = now if now is not None else _time.time()
+            return parsed.timestamp() < current
+        except (ValueError, TypeError):
+            return False
 
     def approve(self) -> bool:
         if not self.is_resolvable():
