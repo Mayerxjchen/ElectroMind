@@ -34,8 +34,6 @@ RSYNC_EXCLUDES := \
 	--exclude htmlcov \
 	--exclude build \
 	--exclude dist \
-	--exclude docs/node_modules \
-	--exclude docs/.vitepress/cache \
 	--exclude .electromind \
 	--exclude artifacts \
 	--exclude .DS_Store
