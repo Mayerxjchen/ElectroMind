@@ -15,6 +15,7 @@ Install target: ``~/.electromind/skills/<name>/`` (user scope).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 import time
@@ -169,73 +170,10 @@ class SkillInstaller:
         (max 6 levels, atomic Skill boundary).  Multiple candidates are NOT
         guessed — the caller presents the list.
         """
-        import subprocess
-
         with _TemporaryDir() as tmp:
             clone = tmp.path / "repo"
-            proc = subprocess.run(
-                [
-                    "git",
-                    "clone",
-                    "--quiet",
-                    "--depth",
-                    "1",
-                    "--filter=blob:none",
-                    "--no-recurse-submodules",
-                    "-c",
-                    "core.hooksPath=/dev/null",
-                    repo,
-                    str(clone),
-                ],
-                capture_output=True,
-                text=True,
-                timeout=120,
-            )
-            if proc.returncode != 0:
-                raise InstallError(
-                    f"git clone failed: {proc.stderr.strip() or proc.stdout.strip()}"
-                )
-            if ref != "HEAD":
-                checkout = subprocess.run(
-                    ["git", "-C", str(clone), "checkout", "--quiet", ref],
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                if checkout.returncode != 0:
-                    raise InstallError(
-                        f"git checkout {ref!r} failed: {checkout.stderr.strip()}"
-                    )
-            sha = subprocess.run(
-                ["git", "-C", str(clone), "rev-parse", "HEAD"],
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            commit_sha = sha.stdout.strip() if sha.returncode == 0 else ""
-
-            if path:
-                skill_root = clone / path
-                candidates = (
-                    [skill_root]
-                    if (skill_root / "SKILL.md").is_file()
-                    else []
-                )
-            else:
-                from .discovery import discover_skill_dirs
-
-                candidates = discover_skill_dirs(clone)
-            if not candidates:
-                raise InstallError(f"no SKILL.md found in repo {repo}")
-            if len(candidates) > 1:
-                listing = ", ".join(
-                    str(c.relative_to(clone)) for c in sorted(candidates)
-                )
-                raise InstallError(
-                    "repo contains multiple skills; install one at a time "
-                    f"(use path=): {listing}"
-                )
-            skill_dir = candidates[0]
+            commit_sha = self._clone_repo(repo, ref, clone)
+            skill_dir = self._identify_in_clone(clone, repo, path)
             name = validate_skill_dir(skill_dir)
             return await self._install_staged(
                 name,
@@ -246,6 +184,109 @@ class SkillInstaller:
                 requested_ref=ref,
                 source_path=path or "",
             )
+
+    async def identify_source(
+        self,
+        source: str,
+        *,
+        ref: str = "HEAD",
+        path: str | None = None,
+    ) -> dict[str, object]:
+        """Identify what installing *source* would install, WITHOUT installing.
+
+        Returns ``{"name", "is_git", "commit_sha", "candidates"}`` so the CLI
+        can preflight conflicts and present the plan before writing anything.
+        Git sources are cloned to a temporary directory (discarded after).
+        """
+        is_git = source.startswith(("http://", "https://", "git@", "git://")) or (
+            source.endswith(".git")
+        )
+        if is_git:
+            with _TemporaryDir() as tmp:
+                clone = tmp.path / "repo"
+                commit_sha = self._clone_repo(source, ref, clone)
+                skill_dir = self._identify_in_clone(clone, source, path)
+                name = validate_skill_dir(skill_dir)
+                return {
+                    "name": name,
+                    "is_git": True,
+                    "commit_sha": commit_sha,
+                    "candidates": sorted(
+                        str(c.relative_to(clone))
+                        for c in _find_skill_dirs(clone)
+                    ),
+                }
+        src = Path(source).expanduser().resolve()
+        if not src.is_dir():
+            raise InstallError(f"source is not a directory: {src}")
+        name = validate_skill_dir(src)
+        return {"name": name, "is_git": False, "commit_sha": "", "candidates": []}
+
+    def _clone_repo(self, repo: str, ref: str, dest: Path) -> str:
+        """Safe shallow partial clone + optional checkout; returns the commit SHA."""
+        import subprocess
+
+        proc = subprocess.run(
+            [
+                "git",
+                "clone",
+                "--quiet",
+                "--depth",
+                "1",
+                "--filter=blob:none",
+                "--no-recurse-submodules",
+                "-c",
+                "core.hooksPath=/dev/null",
+                repo,
+                str(dest),
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+        if proc.returncode != 0:
+            raise InstallError(
+                f"git clone failed: {proc.stderr.strip() or proc.stdout.strip()}"
+            )
+        if ref != "HEAD":
+            checkout = subprocess.run(
+                ["git", "-C", str(dest), "checkout", "--quiet", ref],
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if checkout.returncode != 0:
+                raise InstallError(
+                    f"git checkout {ref!r} failed: {checkout.stderr.strip()}"
+                )
+        sha = subprocess.run(
+            ["git", "-C", str(dest), "rev-parse", "HEAD"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        return sha.stdout.strip() if sha.returncode == 0 else ""
+
+    def _identify_in_clone(self, clone: Path, repo: str, path: str | None) -> Path:
+        """Find the skill dir in a clone; raise when missing or ambiguous."""
+        if path:
+            skill_root = clone / path
+            candidates = [skill_root] if (skill_root / "SKILL.md").is_file() else []
+        else:
+            from .discovery import discover_skill_dirs
+
+            candidates = discover_skill_dirs(clone)
+        if not candidates:
+            raise InstallError(f"no SKILL.md found in repo {repo}")
+        if len(candidates) > 1:
+            listing = ", ".join(
+                str(c.relative_to(clone)) for c in sorted(candidates)
+            )
+            raise InstallError(
+                "repo contains multiple skills; install one at a time "
+                f"(use path=): {listing}"
+            )
+        return candidates[0]
 
     # -- update / uninstall / list ----------------------------------------
 
@@ -268,6 +309,56 @@ class SkillInstaller:
             return False
         shutil.rmtree(target, ignore_errors=True)
         return True
+
+    # -- SKILL-8: trust + update -----------------------------------------
+
+    def set_trust(self, name: str, granted: bool) -> bool:
+        """Grant or revoke trust on an installer-managed skill.
+
+        Updates ``trust_granted`` in the install manifest; the discovery
+        trust evaluator reads it, so a trusted skill becomes activatable on
+        the next catalog reload.  Refuses non-managed (hand-written) dirs.
+        """
+        from .skill import validate_skill_name
+
+        if validate_skill_name(name) is not None:
+            raise InstallError(f"invalid skill name {name!r}")
+        target = (self.root / name).resolve()
+        if not target.is_dir():
+            return False
+        manifest = target / MANIFEST_NAME
+        if not manifest.is_file():
+            raise InstallError(f"not installer-managed: {name!r}")
+        try:
+            data = json.loads(manifest.read_text(encoding="utf-8"))
+            data["trust_granted"] = granted
+            manifest.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+        except (OSError, ValueError) as exc:
+            raise InstallError(f"cannot update manifest: {exc}") from exc
+        return True
+
+    async def update(self, name: str) -> InstallResult | None:
+        """Re-fetch and re-install from the recorded source (atomic).
+
+        Git sources re-clone at the requested ref (which may have moved — the
+        new commit is pinned again); local sources re-copy; archive sources
+        re-extract.  Returns ``None`` when not installed / not managed.
+        """
+        record = next((r for r in self.installed() if r.name == name), None)
+        if record is None:
+            return None
+        if record.source_type == "git":
+            url = record.source.rsplit("#", 1)[0]
+            return await self.install_from_git(
+                url,
+                ref=record.requested_ref or "HEAD",
+                path=record.source_path or None,
+            )
+        if record.source_type == "local":
+            return await self.install_from_dir(Path(record.source))
+        if record.source_type == "archive":
+            return await self.install_from_archive(Path(record.source))
+        return None
 
     def installed(self) -> list[InstallRecord]:
         """Provenance records of all installed skills."""
@@ -483,7 +574,6 @@ def _is_device_name(name: str) -> bool:
 
 def _dir_digest(path: Path) -> str:
     """Content digest of a skill directory (SKILL.md + files)."""
-    import hashlib
     import os
 
     h = hashlib.sha256()
@@ -513,3 +603,34 @@ class _TemporaryDir:
 
     def __exit__(self, *exc) -> None:
         shutil.rmtree(self.path, ignore_errors=True)
+
+
+def _file_digest(path: Path) -> str:
+    """SHA-256 of one file's bytes (best-effort)."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return "unreadable"
+
+
+def snapshot_files(directory: Path) -> dict[str, str]:
+    """relative path → digest for a skill directory (manifest excluded)."""
+    files: dict[str, str] = {}
+    if not directory.is_dir():
+        return files
+    for p in sorted(directory.rglob("*")):
+        if not p.is_file():
+            continue
+        rel = p.relative_to(directory).as_posix()
+        if rel == MANIFEST_NAME or rel.startswith("."):
+            continue
+        files[rel] = _file_digest(p)
+    return files
+
+
+def diff_snapshots(old: dict[str, str], new: dict[str, str]) -> tuple[list[str], list[str], list[str]]:
+    """(changed, added, removed) relative paths between two snapshots."""
+    changed = sorted(f for f in old if f in new and old[f] != new[f])
+    added = sorted(f for f in new if f not in old)
+    removed = sorted(f for f in old if f not in new)
+    return changed, added, removed

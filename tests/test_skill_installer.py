@@ -386,3 +386,56 @@ class TestTarSymlinkTraversal:
         installer = SkillInstaller(tmp_path / "skills")
         with pytest.raises(InstallError, match="link/special file"):
             await installer.install_from_archive(archive)
+
+
+class TestTrustAndUpdate:
+    async def test_set_trust_roundtrip(self, tmp_path):
+        """SKILL-8: trust is stored in the manifest and read back."""
+        src = _make_skill(tmp_path / "src", "alpha")
+        installer = SkillInstaller(tmp_path / "skills")
+        await installer.install_from_dir(src)
+        assert installer.installed()[0].trust_granted is False  # default untrusted
+        assert installer.set_trust("alpha", True) is True
+        assert installer.installed()[0].trust_granted is True
+        assert installer.set_trust("alpha", False) is True
+        assert installer.installed()[0].trust_granted is False
+
+    async def test_set_trust_refuses_hand_managed(self, tmp_path):
+        """Trust may only be granted on installer-managed skills."""
+        src = _make_skill(tmp_path / "src", "manual")
+        installer = SkillInstaller(tmp_path / "skills")
+        # hand-written skill without a manifest
+        import shutil
+
+        shutil.copytree(src, installer.root / "manual")
+        from electromind.skills.installer import InstallError
+
+        try:
+            installer.set_trust("manual", True)
+            raise AssertionError("expected InstallError for hand-managed skill")
+        except InstallError:
+            pass
+
+    async def test_update_local_reinstalls_and_diff(self, tmp_path):
+        """SKILL-8: update re-installs from the recorded source (atomic)."""
+        from electromind.skills.installer import diff_snapshots, snapshot_files
+
+        src = _make_skill(tmp_path / "src", "beta")
+        installer = SkillInstaller(tmp_path / "skills")
+        await installer.install_from_dir(src)
+        old = snapshot_files(installer.root / "beta")
+
+        # change the source, then update
+        (src / "SKILL.md").write_text(
+            "---\nname: beta\ndescription: updated\n---\nNew body.\n", encoding="utf-8"
+        )
+        result = await installer.update("beta")
+        assert result is not None
+        new = snapshot_files(result.target)
+        changed, added, removed = diff_snapshots(old, new)
+        assert "SKILL.md" in changed
+        assert result.updated is True
+
+    async def test_update_unknown_returns_none(self, tmp_path):
+        installer = SkillInstaller(tmp_path / "skills")
+        assert await installer.update("nope") is None

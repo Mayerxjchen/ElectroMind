@@ -71,6 +71,31 @@ def build_parser() -> argparse.ArgumentParser:
     uninstall.add_argument("name")
 
     sub.add_parser("installed", help="列出已安装 Skill 及其来源记录")
+
+    # ── SKILL-8: managed install CLI ───────────────────────────────────
+    add = sub.add_parser(
+        "add", help="SKILL-8: 从 Git/本地来源安装 Skill（识别 → 预检 → 确认 → 信任）"
+    )
+    add.add_argument("source", help="Git URL / GitHub 子目录 / 本地目录")
+    add.add_argument("--scope", default="user", choices=["user", "project"])
+    add.add_argument("--ref", default="HEAD", help="branch/tag/commit")
+    add.add_argument("--path", help="monorepo 内的 Skill 或 Skill root")
+    add.add_argument("--name", help="显式本地规范名称")
+    add.add_argument("--dry-run", action="store_true", help="只识别、校验和展示计划")
+    add.add_argument("--trust", action="store_true", help="安装后明确授予信任")
+    add.add_argument("--force", action="store_true", help="允许替换同来源已有安装")
+    add.add_argument("--yes", action="store_true", help="非交互确认安装（不隐含信任）")
+
+    remove = sub.add_parser("remove", help="卸载 installer 管理的 Skill")
+    remove.add_argument("name")
+
+    update = sub.add_parser("update", help="从记录来源重新安装并显示差异")
+    update.add_argument("name")
+
+    trust = sub.add_parser("trust", help="显式授予/撤销已安装 Skill 信任")
+    trust.add_argument("name")
+    trust.add_argument("--revoke", action="store_true", help="撤销信任")
+
     return parser
 
 
@@ -99,6 +124,14 @@ def run(argv: list[str]) -> int:
         return _uninstall(args.name)
     if action == "installed":
         return _installed()
+    if action == "add":
+        return _add(args)
+    if action == "remove":
+        return _uninstall(args.name)
+    if action == "update":
+        return _update(args.name)
+    if action == "trust":
+        return _trust(args.name, revoke=args.revoke)
     return EXIT_CLI
 
 
@@ -424,8 +457,181 @@ def _installed() -> int:
         print("(no installed skills)")
         return EXIT_OK
     for record in records:
+        trust = "trusted" if record.trust_granted else "untrusted"
         print(
             f"  {record.name}: {record.source_type} · {record.source} · "
-            f"{record.digest[:12]}…"
+            f"{record.digest[:12]}… · {trust}"
         )
+    return EXIT_OK
+
+
+# ── SKILL-8: managed install CLI ──────────────────────────────────────
+
+def _confirm(prompt: str) -> bool:
+    try:
+        return input(prompt).strip().lower() in ("y", "yes")
+    except EOFError:
+        return False
+
+
+def _generation_status() -> None:
+    """Report the catalog generation after an install/trust/update.
+
+    Generation freeze is preserved: the current run stays pinned; the new
+    content is available to new runs (RFC section 八).
+    """
+    service = _catalog_service()
+    before = getattr(service.list(), "generation", None)
+    try:
+        catalog = service.reload()
+    except Exception:
+        catalog = service.list()
+    after = getattr(catalog, "generation", before)
+    print(f"Registry generation: {before} → {after}")
+    print("The Skill is available to new runs.")
+    print("The current run remains pinned to its frozen generation.")
+
+
+def _preflight(name: str, scope: str) -> list[str]:
+    """Warn when installing *name* would be shadowed or conflict."""
+    issues: list[str] = []
+    try:
+        catalog = _catalog_service().list()
+    except Exception:
+        return issues
+    for c in catalog.candidates:
+        if c.descriptor.name != name:
+            continue
+        if c.source.scope == scope:
+            issues.append(
+                f'Skill "{name}" already exists in {scope} scope '
+                f"({c.descriptor.entry_path}) — same-scope conflict."
+            )
+        else:
+            issues.append(
+                f'Skill "{name}" already exists in {c.source.scope} scope '
+                f"({c.descriptor.entry_path}) — your install will be shadowed."
+            )
+    return issues
+
+
+def _add(args) -> int:
+    """SKILL-8: install from a git/local source with preflight + trust."""
+    import asyncio
+
+    from electromind.skills.installer import InstallError
+
+    installer = _installer()
+    try:
+        info = asyncio.run(
+            installer.identify_source(args.source, ref=args.ref, path=args.path)
+        )
+    except InstallError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return EXIT_CLI
+
+    name = args.name or str(info["name"])
+    print(f"Skill: {name}")
+    if info["is_git"]:
+        print(f"  Source: {args.source}")
+        print(f"  Commit: {str(info['commit_sha'])[:12]}")
+    if args.path:
+        print(f"  Path:   {args.path}")
+    if len(info["candidates"]) > 1:
+        print(f"  Candidates: {', '.join(str(c) for c in info['candidates'])}")
+    print(f"  Scope:  {args.scope}")
+
+    issues = _preflight(name, args.scope)
+    for line in issues:
+        print(f"  ⚠ {line}")
+    if issues and not args.force:
+        print("Installation cancelled (use --force to override).", file=sys.stderr)
+        return EXIT_CLI
+
+    if args.dry_run:
+        print("Dry run: nothing installed.")
+        return EXIT_OK
+
+    if not args.yes and not _confirm("Install this Skill? [y/N] "):
+        print("Cancelled.", file=sys.stderr)
+        return EXIT_CLI
+
+    try:
+        if info["is_git"]:
+            result = asyncio.run(
+                installer.install_from_git(args.source, ref=args.ref, path=args.path)
+            )
+        else:
+            result = asyncio.run(installer.install_from_dir(Path(args.source)))
+    except InstallError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return EXIT_CLI
+
+    print(f"Installed: {result.target}")
+    print("Trust was not granted by default.")
+
+    if args.trust:
+        installer.set_trust(name, True)
+        print(f"Trust granted: {name}")
+    elif not args.yes and _confirm("Trust this installed Skill? [y/N] "):
+        installer.set_trust(name, True)
+        print(f"Trust granted: {name}")
+
+    _generation_status()
+    return EXIT_OK
+
+
+def _update(name: str) -> int:
+    """SKILL-8: re-install from the recorded source and show the diff."""
+    import asyncio
+
+    from electromind.skills.installer import (
+        InstallError,
+        diff_snapshots,
+        snapshot_files,
+    )
+
+    installer = _installer()
+    record = next((r for r in installer.installed() if r.name == name), None)
+    if record is None:
+        print(f"未找到已安装的 Skill: {name}", file=sys.stderr)
+        return EXIT_CLI
+    old_files = snapshot_files(installer.root / name)
+    try:
+        result = asyncio.run(installer.update(name))
+    except InstallError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return EXIT_CLI
+    if result is None:
+        print(f"未找到已安装的 Skill: {name}", file=sys.stderr)
+        return EXIT_CLI
+    changed, added, removed = diff_snapshots(old_files, snapshot_files(result.target))
+    print(f"Updated: {name}")
+    for f in changed:
+        print(f"  ~ {f}")
+    for f in added:
+        print(f"  + {f}")
+    for f in removed:
+        print(f"  - {f}")
+    if not (changed or added or removed):
+        print("  (no content change)")
+    _generation_status()
+    return EXIT_OK
+
+
+def _trust(name: str, revoke: bool) -> int:
+    """SKILL-8: explicitly grant/revoke trust on an installed skill."""
+    from electromind.skills.installer import InstallError
+
+    installer = _installer()
+    try:
+        ok = installer.set_trust(name, not revoke)
+    except InstallError as exc:
+        print(f"✗ {exc}", file=sys.stderr)
+        return EXIT_CLI
+    if not ok:
+        print(f"未找到已安装的 Skill: {name}", file=sys.stderr)
+        return EXIT_CLI
+    print(f"{'Revoked' if revoke else 'Granted'} trust: {name}")
+    _generation_status()
     return EXIT_OK
