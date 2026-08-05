@@ -207,9 +207,14 @@ describe("ThreadStore timeline projection", () => {
     // Simulated resume: fresh store + applySnapshot with persisted state
     resetThreadStore();
     store = getThreadStore();
-    const item = (id, kind, payload) => ({
+    const item = (id, kind, payload, timestamp) => ({
       id,
       kind,
+      // D3.3.1: the restore contract carries stable timestamps so a
+      // second applySnapshot re-projects identically (idempotent resume).
+      // Without them historyToItem falls back to Date.now() and the
+      // restored timeline is non-deterministic.
+      timestamp,
       role: kind === "user_message" ? "user" : "assistant",
       text: String(payload.text ?? ""),
       tool_call_id: payload.tool_call_id,
@@ -222,8 +227,8 @@ describe("ThreadStore timeline projection", () => {
     const snap = {
       thread_id: "t1",
       items: [
-        item("tool-tc-1", "tool_call", { tool_call_id: "tc-1", name: "read_file", status: "done", run_id: "r-1" }),
-        item("asst-1", "assistant_message", { text: "done" }),
+        item("tool-tc-1", "tool_call", { tool_call_id: "tc-1", name: "read_file", status: "done", run_id: "r-1" }, 1785940049000),
+        item("asst-1", "assistant_message", { text: "done" }, 1785940049001),
       ],
     };
     store.applySnapshot(snap);

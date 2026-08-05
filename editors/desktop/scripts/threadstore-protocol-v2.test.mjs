@@ -374,7 +374,11 @@ describe("ThreadStore protocol v2", () => {
     store.applyWireEvent("run/completed", { thread_id: "t1", seq: 4 });
     assert.equal(store.ensureThread("t1").status, "idle");
     assert.equal(store.ensureThread("t1").activeRun, null);
-    assert.equal(store.ensureThread("t1").items.length, 2);
+    // D3.3.1: run lifecycle persists as items (run_begin + run_end) so
+    // terminal state survives snapshot restore.
+    assert.equal(store.ensureThread("t1").items.length, 4);
+    const kinds = store.ensureThread("t1").items.map((i) => i.kind);
+    assert.deepEqual(kinds, ["run_begin", "assistant_message", "tool_result", "run_end"]);
   });
 });
 

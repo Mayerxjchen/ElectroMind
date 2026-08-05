@@ -26,6 +26,28 @@ import type {
   TimelineItem,
 } from "./timeline-types";
 
+// ── Feature gate ──────────────────────────────────────────────────────
+//
+// D3.3: v1 fallback kept.  D3.4: v2 is the only path (v1 diagnostic
+// only).  D3.5: delete the v1 projection path and this switch — two
+// interpretation rules must never ship.
+
+export const TIMELINE_PROJECTION_V2 = true;
+
+/** v2 by default; localStorage "desktop.timelineProjection" = "v1"
+ *  opts out for diagnostics. */
+export function timelineProjectionEnabled(): boolean {
+  try {
+    const v = window.localStorage.getItem("desktop.timelineProjection");
+    if (v === "v1" || v === "v2") {
+      return v === "v2";
+    }
+  } catch {
+    /* storage unavailable — keep the default */
+  }
+  return TIMELINE_PROJECTION_V2;
+}
+
 // ── Input ─────────────────────────────────────────────────────────────
 
 /** Kinds the projection understands.  ThreadItemKind plus synthesized
@@ -617,10 +639,12 @@ function pushItem(state: TimelineProjectionState, item: TimelineItem): void {
 // ── Small helpers (pure, deterministic) ───────────────────────────────
 
 /** Merge only present fields — updates must never clobber existing
- *  values with undefined (e.g. a COMPLETED job event without detail). */
+ *  values with undefined (e.g. a COMPLETED job event without detail),
+ *  and never rewrite the creation timestamp (creation time is stable so
+ *  full replay of the persisted item list converges with the live feed). */
 function mergePatch(target: Record<string, unknown>, patch: Record<string, unknown>): void {
   for (const [key, value] of Object.entries(patch)) {
-    if (value !== undefined) {
+    if (value !== undefined && key !== "timestamp") {
       target[key] = value;
     }
   }

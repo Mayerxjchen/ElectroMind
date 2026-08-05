@@ -19,7 +19,9 @@
         "test:inspector-state": "node --test scripts/inspector-state.test.mjs",
         "test:timeline-projection": "node --test scripts/timeline-projection.test.mjs",
         "test:threadstore-timeline": "node --test scripts/threadstore-timeline.test.mjs",
-        "test:timeline-adapter": "node --test scripts/timeline-adapter.test.mjs"
+        "test:timeline-adapter": "node --test scripts/timeline-adapter.test.mjs",
+        "test:threadstore-restore": "node --test scripts/threadstore-restore.test.mjs",
+        "test:renderer-timeline": "node --test scripts/message-renderer-timeline.test.mjs"
     },
     "devDependencies": {
         "@electron/packager": "^18.3.6",

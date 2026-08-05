@@ -613,8 +613,10 @@ class ThreadStore {
           pendingApprovals: [],
         });
         this.updateThread(threadId, { status: "running" });
-        this.feedTimeline(threadId, {
-          id: `run:${runId}`,
+        // D3.3.1: lifecycle facts persist as items — the append feeds the
+        // projection (single path) and survives snapshot restore.
+        this.appendThreadItem(threadId, {
+          id: `run-${runId}`,
           kind: "run_begin",
           threadId,
           timestamp: Date.now(),
@@ -628,9 +630,25 @@ class ThreadStore {
           activeRun: null,
           status: "idle",
         });
-        this.feedTimeline(threadId, {
-          id: `run:${runId || "end"}`,
+        this.appendThreadItem(threadId, {
+          id: `run-${runId || "end"}-end`,
           kind: "run_end",
+          threadId,
+          timestamp: Date.now(),
+          payload: { run_id: runId },
+        });
+        return true;
+      }
+      case "run/cancelled":
+      case "RunCancelled": {
+        const runId = String(params.run_id ?? "");
+        this.updateThread(threadId, {
+          activeRun: null,
+          status: "idle",
+        });
+        this.appendThreadItem(threadId, {
+          id: `run-${runId || "end"}-cancel`,
+          kind: "run_cancelled",
           threadId,
           timestamp: Date.now(),
           payload: { run_id: runId },
@@ -699,7 +717,9 @@ class ThreadStore {
           };
           const t2 = this.ensureThread(threadId);
           t2.pendingPermits = [...t2.pendingPermits, permit];
-          this.feedTimeline(threadId, {
+          // D3.3.1: the approval lifecycle persists as an item so a
+          // resolution + restore re-projects the final status.
+          this.appendThreadItem(threadId, {
             id: `approval:${toolCallId}`,
             kind: "approval",
             threadId,
@@ -721,20 +741,29 @@ class ThreadStore {
         t3.pendingPermits = t3.pendingPermits.filter(
           (p) => p.toolCallId !== resolvedToolCallId,
         );
-        this.feedTimeline(threadId, {
-          id: `approval:${resolvedToolCallId}`,
-          kind: "approval",
-          threadId,
-          timestamp: Date.now(),
-          payload: {
-            tool_call_id: resolvedToolCallId,
-            status:
-              String(params.status ?? params.allowed ?? "approved") === "denied" ||
-              String(params.allowed ?? "") === "false"
-                ? "denied"
-                : "approved",
-          },
-        });
+        // D3.3.1: resolve the persisted approval item IN PLACE (same id,
+        // mutated payload) so restore re-projects the final status.
+        const resolvedStatus =
+          String(params.status ?? params.allowed ?? "approved") === "denied" ||
+          String(params.allowed ?? "") === "false"
+            ? "denied"
+            : "approved";
+        const approvalItem = t3.items.find(
+          (it) => it.id === `approval:${resolvedToolCallId}` && it.kind === "approval",
+        );
+        if (approvalItem) {
+          approvalItem.payload = {
+            ...approvalItem.payload,
+            status: resolvedStatus,
+          };
+          this.feedTimeline(threadId, {
+            id: approvalItem.id,
+            kind: "approval",
+            threadId: approvalItem.threadId,
+            timestamp: approvalItem.timestamp,
+            payload: approvalItem.payload,
+          });
+        }
         this.emit();
         return true;
       }
@@ -789,8 +818,8 @@ class ThreadStore {
           pendingApprovals: [],
         });
         this.updateThread(threadId, { status: "running" });
-        this.feedTimeline(threadId, {
-          id: `run:${runId}`,
+        this.appendThreadItem(threadId, {
+          id: `run-${runId}`,
           kind: "run_begin",
           threadId,
           timestamp: Date.now(),
@@ -875,8 +904,8 @@ class ThreadStore {
             status: "idle",
           });
         }
-        this.feedTimeline(threadId, {
-          id: `run:${runId || "end"}`,
+        this.appendThreadItem(threadId, {
+          id: `run-${runId || "end"}-end`,
           kind: "run_end",
           threadId,
           timestamp: Date.now(),
@@ -925,47 +954,81 @@ class ThreadStore {
   ): ThreadItem {
     const kind = String(m.kind ?? "");
     const role = String(m.role ?? "");
+    // D3.3.1: preserve backend timestamps so restored projections match
+    // the live feed exactly (group startedAt/endedAt, item timestamps).
     const base = {
       threadId,
-      timestamp: Date.now(),
+      timestamp: Number(m.timestamp ?? Date.now()),
     };
     switch (kind) {
       case "text":
         return {
           ...base,
-          id: `hist-${index}`,
+          id: String(m.id ?? `hist-${index}`),
           kind: role === "user" ? "user_message" : "assistant_message",
-          payload: { text: String(m.text ?? "") },
+          payload: {
+            text: String(m.text ?? ""),
+            ...(m.streaming !== undefined ? { streaming: Boolean(m.streaming) } : {}),
+          },
         };
       case "thinking":
         return {
           ...base,
-          id: `hist-${index}`,
+          id: String(m.id ?? `hist-${index}`),
           kind: "reasoning",
-          payload: { text: String(m.text ?? "") },
+          payload: {
+            text: String(m.text ?? ""),
+            ...(m.streaming !== undefined ? { streaming: Boolean(m.streaming) } : {}),
+          },
         };
       case "tool_call":
         return {
           ...base,
-          id: `hist-${index}`,
+          id: String(m.id ?? `hist-${index}`),
           kind: "tool_call",
           payload: {
             tool_call_id: String(m.tool_call_id ?? ""),
             name: String(m.name ?? ""),
             arguments: String(m.arguments ?? ""),
             run_id: String(m.run_id ?? ""),
-            status: "done",
+            status: String(m.status ?? "done"),
+            content: m.content !== undefined ? String(m.content) : undefined,
+            exit_code: m.exit_code !== undefined ? Number(m.exit_code) : undefined,
+            duration_seconds:
+              m.duration_seconds !== undefined ? Number(m.duration_seconds) : undefined,
           },
         };
       case "tool_result":
         return {
           ...base,
-          id: `hist-${index}`,
+          id: String(m.id ?? `hist-${index}`),
           kind: "tool_result",
           payload: {
             tool_call_id: String(m.tool_call_id ?? ""),
             content: String(m.content ?? ""),
             status: "done",
+          },
+        };
+      // D3.3.1: terminal lifecycle facts survive restore as items.
+      case "run_begin":
+      case "run_end":
+      case "run_cancelled":
+        return {
+          ...base,
+          id: String(m.id ?? `hist-${index}`),
+          kind,
+          payload: { run_id: String(m.run_id ?? "") },
+        };
+      case "approval":
+        return {
+          ...base,
+          id: String(m.id ?? `hist-${index}`),
+          kind: "approval",
+          payload: {
+            tool_call_id: String(m.tool_call_id ?? ""),
+            name: String(m.name ?? m.tool_name ?? ""),
+            arguments: String(m.arguments ?? "{}"),
+            status: String(m.status ?? "pending"),
           },
         };
       default:

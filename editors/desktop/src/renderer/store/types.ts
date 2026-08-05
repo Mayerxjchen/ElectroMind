@@ -101,7 +101,13 @@ export type ThreadItemKind =
   | "file_change"
   | "artifact"
   | "approval"
-  | "error";
+  | "error"
+  // D3.3.1: terminal lifecycle facts persisted as items so snapshot
+  // restore re-projects them (timeline is derived data, not a second
+  // persisted copy).
+  | "run_begin"
+  | "run_end"
+  | "run_cancelled";
 
 export type ThreadItem = {
   id: string;
