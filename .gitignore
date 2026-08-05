@@ -72,3 +72,13 @@ editors/web/tsconfig.tsbuildinfo
 
 # coverage 产物（验收脚本生成）
 coverage.json
+
+# docs/superpowers — local workflow records, not for GitHub
+docs/superpowers/specs/2026-08-05-desktop-d3-scope-refinement.md
+docs/superpowers/acceptance/2026-08-05-desktop-d3.2-acceptance.json
+docs/superpowers/acceptance/2026-08-05-desktop-d3.3-acceptance.json
+docs/superpowers/acceptance/2026-08-05-desktop-d3.4-acceptance.json
+docs/superpowers/acceptance/2026-08-05-desktop-d3.5-acceptance.json
+docs/superpowers/plans/2026-07-30-project-skills-autodiscovery.md
+docs/superpowers/plans/2026-08-05-cli-entrypoint-audit.md
+docs/superpowers/plans/2026-08-05-desktop-d0-packaging-smoke.md
