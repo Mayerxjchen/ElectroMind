@@ -1,6 +1,6 @@
 {
   "milestone": "M0-EVAL-BASELINE",
-  "tested_commit": "dc540a3ba32a7fbf57bf58023c527d6f405fe63f",
+  "tested_commit": "6106f298064bb51caa43b5ed75ec4ef9f48c8d5f",
   "status": "pass",
   "generated_at": "2026-08-04T19:01:30.191774+00:00",
   "evals": {

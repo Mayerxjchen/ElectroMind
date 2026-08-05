@@ -1,6 +1,6 @@
 {
   "milestone": "M8-RECOVERABLE-WORKFLOW",
-  "tested_commit": "b070583090a6d69507025298c36858163e234bda",
+  "tested_commit": "6106f298064bb51caa43b5ed75ec4ef9f48c8d5f",
   "status": "pass",
   "workflow": "cp2k-deepmd-recoverable",
   "all_steps_passed": true,
