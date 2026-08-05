@@ -1,0 +1,19 @@
+ *******************************************************************************
+ **** PROGRAM STARTED AT               2024-06-12 12:00:00.000
+ *******************************************************************************
+ GLOBAL| Program name                         CP2K
+ GLOBAL| Method                                Quickstep DFT
+ GLOBAL| Number of processes                  64
+ *******************************************************************************
+
+  SCF WAVEFUNCTION OPTIMIZATION
+
+  Step     Update method      Time    Convergence         Total energy    Change
+     1 OT DIIS     0.15E+00    1.5      -17.1234000000     -1.50E-01
+     2 OT DIIS     0.15E+00    1.5      -17.1234000010     -1.20E-01
+
+  *** SCF run NOT converged after    2 steps ***
+
+  PROGRAM ABORTED
+  CP2K| ERROR: out of memory allocating 4823883377 bytes
+  CP2K| Called from file: /build/cp2k/src/dbcsr/dbcsr_alloc.C

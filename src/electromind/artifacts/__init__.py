@@ -16,6 +16,7 @@ from .registry import (
     ArtifactRegistry,
     sha256_file,
 )
+from .training import TrainingDataGateError, accepted_for_training, assert_accepted
 
 __all__ = [
     "ArtifactIntegrityError",
@@ -27,4 +28,7 @@ __all__ = [
     "ProvenanceStore",
     "ValueProvenance",
     "sha256_file",
+    "TrainingDataGateError",
+    "accepted_for_training",
+    "assert_accepted",
 ]

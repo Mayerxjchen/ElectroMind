@@ -22,7 +22,8 @@
         "test:threadstore-restore": "node --test scripts/threadstore-restore.test.mjs",
         "test:renderer-timeline": "node --test scripts/message-renderer-timeline.test.mjs",
         "test:composer-permissions": "node --test scripts/composer-permissions.test.mjs",
-        "test:composer-status": "node --test scripts/composer-status.test.mjs"
+        "test:composer-status": "node --test scripts/composer-status.test.mjs",
+        "test:parser-unverified": "node --test scripts/parser-unverified.test.mjs"
     },
     "devDependencies": {
         "@electron/packager": "^18.3.6",

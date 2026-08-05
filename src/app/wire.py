@@ -3156,11 +3156,18 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
             elif cmd == "artifact/validate":
                 artifact_id = str(command.get("artifact_id", ""))
                 parser = str(command.get("parser", ""))
-                manifest = engine.artifact_validate(
+                # P2.4: 跑确定性 Parser，通过才 VALIDATED；否则 validation=REJECTED。
+                manifest, parse_result = engine.artifact_validate_with_parser(
                     thread_id, artifact_id, parser=parser
                 )
                 if manifest is None:
                     emit_error(f"artifact 不存在: {artifact_id}", where=cmd)
+                elif parse_result is not None and not parse_result.valid:
+                    emit_error(
+                        f"artifact {artifact_id} 解析未通过（{parse_result.outcome}）: "
+                        f"{parse_result.summary}",
+                        where=cmd,
+                    )
         except ValueError as exc:
             emit_error(str(exc), where=cmd)
         return runner

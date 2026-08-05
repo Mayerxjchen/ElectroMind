@@ -40,11 +40,22 @@ export const FileSummary: React.FC<Props> = ({
           {summary.label}
         </span>
         <span className="file-summary-name">{filename}</span>
+        {summary.unverified && (
+          <span className="file-summary-unverified" title="TS 快速预览，未经确定性 Parser 校验">
+            未验证
+          </span>
+        )}
       </div>
 
       {/* Description */}
       {summary.description && (
         <p className="file-summary-desc">{summary.description}</p>
+      )}
+      {summary.unverified && (
+        <p className="file-summary-unverified-note">
+          该结果为快速预览（未验证）：仅供查看趋势，不用于科学结论 / 训练数据。
+          正式判定请依赖 Python 确定性 Parser 的结果。
+        </p>
       )}
 
       {/* Metrics grid */}

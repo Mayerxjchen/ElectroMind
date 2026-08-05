@@ -254,10 +254,44 @@ class RunEngine:
         parser: str,
         who: str = "",
     ) -> ArtifactManifest | None:
-        """确定性 Parser 通过 → VALIDATED（必须记录解析器名）。"""
+        """确定性 Parser 通过 → VALIDATED（必须记录解析器名）。
+
+        P2.4: 这是低层转换，仅当调用方已确认 parser 通过时使用。
+        真正跑解析的入口是 :meth:`artifact_validate_with_parser`。
+        """
         return self._artifact_transition(
             thread_id, artifact_id, "validate", parser=parser, who=who
         )
+
+    def artifact_validate_with_parser(
+        self,
+        thread_id: str,
+        artifact_id: str,
+        *,
+        parser: str,
+    ) -> tuple[ArtifactManifest | None, object | None]:
+        """P2.4: 跑确定性 Python Parser，通过才 VALIDATED。
+
+        - Scheduler COMPLETED ≠ 科学成功：即使作业退出码为 0，只要
+          parser 判定不成立（未收敛 / 截断 / 失败 / 能量缺失），就走
+          validation=REJECTED（acceptance 保持 COMPLETED）。
+        - 返回 ``(manifest, parse_result)``；解析失败不抛错。
+        """
+        from ..parsers import parse_file
+
+        manifest = self._ensure_artifacts(thread_id).get(artifact_id)
+        if manifest is None:
+            return None, None
+        path = Path(manifest.path)
+        if not path.is_absolute():
+            path = self._thread_root(thread_id) / path
+        result = parse_file(path, parser=parser)
+        if result.valid:
+            updated = self.artifact_validate(thread_id, artifact_id, parser=parser)
+        else:
+            reason = result.summary or f"解析未通过（{result.outcome}）"
+            updated = self.artifact_validate_fail(thread_id, artifact_id, reason=reason)
+        return updated, result
 
     def artifact_validate_fail(
         self, thread_id: str, artifact_id: str, *, reason: str

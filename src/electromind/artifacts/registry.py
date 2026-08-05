@@ -135,6 +135,20 @@ class ArtifactRegistry:
         # 含历史版本：SUPERSEDED 查询应返回所有被替代的旧版本。
         return [m for m in self._manifests.values() if m.acceptance_status == status]
 
+    def training_data_candidates(self) -> list[ArtifactManifest]:
+        """P2.5: 允许进入 DeePMD 训练数据的 Artifact。
+
+        唯一入口：只有用户/独立 Reviewer 确认后的 ACCEPTED Artifact
+        （acceptance 门隐含 VALIDATED，见 manifest.accept）才可进入训练集。
+        COMPLETED / VALIDATED / REJECTED / SUPERSEDED 一律排除——
+        未经验证的数值进入训练集会污染势函数。
+        """
+        return [
+            m
+            for m in self._current_manifests().values()
+            if m.acceptance_status is ArtifactStatus.ACCEPTED
+        ]
+
     def inputs_of(self, artifact_id: str) -> list[ArtifactManifest]:
         """输入 Artifact（依赖图上游）。"""
         manifest = self._manifests.get(artifact_id)

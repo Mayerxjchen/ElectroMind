@@ -205,6 +205,91 @@ def test_registry_delete_records_event(tmp_path):
     assert not registry.delete("art-1", reason="x")
 
 
+# ── P2.5: 只有 ACCEPTED Artifact 可进 DeePMD 训练数据 ─────────────────
+
+
+def test_training_data_candidates_only_accepted(tmp_path):
+    from electromind.artifacts.training import (
+        TrainingDataGateError,
+        accepted_for_training,
+        assert_accepted,
+    )
+
+    registry = ArtifactRegistry()
+    # 一个写盘文件，供 SHA 校验
+    f = tmp_path / "frame.xyz"
+    f.write_text("3\n\nO 0 0 0\nH 1 0 0\nH 0 1 0\n", encoding="utf-8")
+    digest = sha256_file(f)
+
+    def manifest(**kw):
+        base = dict(
+            artifact_id="frame.xyz",
+            type="data",
+            path=str(f),
+            sha256=digest,
+            run_id="run-1",
+            created_by="agent",
+            units="Hartree",
+        )
+        base.update(kw)
+        return ArtifactManifest(**base)
+
+    # VALIDATED（未 ACCEPTED）→ 排除
+    registry.register(manifest().complete().validate(parser="cp2k"))
+    # COMPLETED（未验证）→ 排除
+    registry.register(manifest(artifact_id="frame2.xyz").complete())
+    # REJECTED → 排除
+    registry.register(manifest(artifact_id="frame3.xyz").reject(reason="坏"))
+
+    samples = accepted_for_training(registry, root=tmp_path)
+    assert samples == []  # 没有任何 ACCEPTED → 训练集为空
+
+    # 用户确认 ACCEPTED → 进入
+    accepted = (
+        manifest(artifact_id="frame4.xyz")
+        .complete()
+        .validate(parser="cp2k")
+        .accept(who="user-alice")
+    )
+    registry.register(accepted)
+    samples = accepted_for_training(registry, root=tmp_path)
+    assert len(samples) == 1
+    assert samples[0]["artifact_id"] == "frame4.xyz"
+    assert samples[0]["accepted_by"] == "user-alice"
+    assert samples[0]["parser"] == "cp2k"
+
+    # assert_accepted 单点门
+    assert_accepted(accepted)
+    with pytest.raises(TrainingDataGateError, match="未 ACCEPTED"):
+        assert_accepted(registry.get("frame.xyz"))
+
+
+def test_training_gate_rejects_sha_mismatch(tmp_path):
+    """P2.5: ACCEPTED 但文件被改 → 训练门拒绝（SHA 不一致不可信）。"""
+    from electromind.artifacts.training import (
+        TrainingDataGateError,
+        accepted_for_training,
+    )
+
+    f = tmp_path / "frame.xyz"
+    f.write_text("v1", encoding="utf-8")
+    digest = sha256_file(f)
+    registry = ArtifactRegistry()
+    registry.register(
+        _manifest(path=str(f), sha256=digest)
+        .complete()
+        .validate(parser="cp2k")
+        .accept(who="user")
+    )
+    # 文件被改 → SHA 不符
+    f.write_text("v2-changed", encoding="utf-8")
+    with pytest.raises(TrainingDataGateError, match="SHA|摘要|禁止进入训练集"):
+        accepted_for_training(registry, root=tmp_path)
+    # 关闭 SHA 校验 → 仍返回（调用方自担风险），但默认必须校验
+    samples = accepted_for_training(registry, root=tmp_path, verify_sha=False)
+    assert len(samples) == 1
+
+
 def test_registry_integrity(tmp_path):
     registry = ArtifactRegistry()
     f = tmp_path / "energy.json"

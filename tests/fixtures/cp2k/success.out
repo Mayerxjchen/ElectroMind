@@ -1,0 +1,32 @@
+ *******************************************************************************
+ **** PROGRAM STARTED AT               2024-06-12 09:30:11.123
+ *******************************************************************************
+ GLOBAL| Program name                         CP2K
+ GLOBAL| Input file name                      H2O.inp
+ GLOBAL| Number of processes                  4
+ GLOBAL| Method                                Quickstep DFT
+ *******************************************************************************
+
+  MOTION| Molecular dynamics run
+  SCF WAVEFUNCTION OPTIMIZATION
+
+  Step     Update method      Time    Convergence         Total energy    Change
+     1 OT DIIS     0.15E+00    1.5      -17.1234567890     -1.23E-02
+     2 OT DIIS     0.15E+00    1.5      -17.1234567891     -5.00E-05
+     3 OT DIIS     0.15E+00    1.5      -17.1234567892     -2.00E-06
+     4 OT DIIS     0.15E+00    1.5      -17.1234567893     -1.00E-07
+
+  *** SCF run converged in    4 steps ***
+
+  ENERGY| Total FORCE_EVAL ( QS ) energy [Hartree]       -17.1234567893
+
+  ATOMIC FORCES in [a.u.]
+  Atom  Kind  Element       x              y              z
+     1      1  O           -0.000000      0.000000      0.120000
+     2      1  H            0.761000      0.000000     -0.480000
+     3      1  H           -0.761000      0.000000     -0.480000
+  SUM OF ATOMIC FORCES      -0.000000     -0.000000     -0.000000
+
+  PROGRAM ENDED IN CP2K
+  CP2K| The program is finished, have a nice day!
+ *******************************************************************************

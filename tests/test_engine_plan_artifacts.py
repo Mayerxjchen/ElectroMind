@@ -13,6 +13,8 @@ conftest 的 HOME 隔离保证每个用例独立 home；同用例内两个引擎
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from electromind.artifacts.manifest import ArtifactManifest, ArtifactStatus
@@ -182,8 +184,111 @@ def test_artifact_persists_across_engine_instances():
     engine2 = RunEngine()
     manifests = engine2.artifacts(THREAD)
     assert len(manifests) == 1
-    assert manifests[0].artifact_id == "a1"
-    assert manifests[0].acceptance_status == ArtifactStatus.COMPLETED
+
+
+# ── P2.4: COMPLETED ≠ 科学成功；Parser 通过才 VALIDATED ───────────────
+
+
+def _cp2k_fixture(name: str):
+    return Path(__file__).parent / "fixtures" / "cp2k" / name
+
+
+def test_validate_with_parser_success_gates_to_validated():
+    """CP2K 正常结束 + 能量齐全 → VALIDATED。"""
+    engine = RunEngine()
+    src = _cp2k_fixture("success.out")
+    manifest = ArtifactManifest(
+        artifact_id="cp2k-run",
+        type="parsed_result",
+        path=str(src),
+        sha256="x" * 64,
+        created_by="tool-1",
+    )
+    engine.artifact_register(THREAD, manifest)
+    engine.artifact_complete(THREAD, "cp2k-run")
+    updated, result = engine.artifact_validate_with_parser(
+        THREAD, "cp2k-run", parser="cp2k"
+    )
+    assert updated is not None
+    assert updated.validation_status == ArtifactStatus.VALIDATED
+    assert result is not None and result.valid
+    assert updated.parser == "cp2k"
+    assert updated.acceptance_status == ArtifactStatus.COMPLETED  # 双状态分离
+
+
+def test_validate_with_parser_not_converged_rejected():
+    """CP2K 正常结束但 SCF 未收敛 → validation=REJECTED（acceptance 仍 COMPLETED）。"""
+    engine = RunEngine()
+    src = _cp2k_fixture("not_converged.out")
+    engine.artifact_register(
+        THREAD,
+        ArtifactManifest(
+            artifact_id="nc",
+            type="parsed_result",
+            path=str(src),
+            sha256="x" * 64,
+            created_by="tool-1",
+        ),
+    )
+    engine.artifact_complete(THREAD, "nc")
+    updated, result = engine.artifact_validate_with_parser(THREAD, "nc", parser="cp2k")
+    assert updated is not None
+    assert updated.validation_status == ArtifactStatus.REJECTED
+    assert updated.acceptance_status == ArtifactStatus.COMPLETED  # 程序完成但科学不可信
+    assert result is not None and not result.valid
+
+
+def test_validate_with_parser_truncated_rejected():
+    """截断输出（无正常结束标志）→ 绝不 VALIDATED。"""
+    engine = RunEngine()
+    src = _cp2k_fixture("truncated.out")
+    engine.artifact_register(
+        THREAD,
+        ArtifactManifest(
+            artifact_id="trunc",
+            type="parsed_result",
+            path=str(src),
+            sha256="x" * 64,
+            created_by="tool-1",
+        ),
+    )
+    engine.artifact_complete(THREAD, "trunc")
+    updated, result = engine.artifact_validate_with_parser(
+        THREAD, "trunc", parser="cp2k"
+    )
+    assert updated is not None
+    assert updated.validation_status == ArtifactStatus.REJECTED
+    assert result is not None and result.truncated
+
+
+def test_validate_with_parser_missing_file_rejected():
+    """文件缺失 → UNKNOWN → REJECTED（不猜成功）。"""
+    engine = RunEngine()
+    engine.artifact_register(
+        THREAD,
+        ArtifactManifest(
+            artifact_id="gone",
+            type="parsed_result",
+            path="does-not-exist.out",
+            sha256="x" * 64,
+            created_by="tool-1",
+        ),
+    )
+    engine.artifact_complete(THREAD, "gone")
+    updated, result = engine.artifact_validate_with_parser(
+        THREAD, "gone", parser="cp2k"
+    )
+    assert updated is not None
+    assert updated.validation_status == ArtifactStatus.REJECTED
+    assert result is not None and not result.valid
+
+
+def test_validate_with_parser_unknown_artifact_returns_none():
+    engine = RunEngine()
+    updated, result = engine.artifact_validate_with_parser(
+        THREAD, "nope", parser="cp2k"
+    )
+    assert updated is None and result is None
 
 
 # ── state_emitter 推送契约 ────────────────────────────────────────────

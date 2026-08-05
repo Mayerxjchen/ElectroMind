@@ -1,0 +1,19 @@
+ *******************************************************************************
+ **** PROGRAM STARTED AT               2024-06-12 11:00:00.000
+ *******************************************************************************
+ GLOBAL| Program name                         CP2K
+ GLOBAL| Method                                Quickstep DFT
+ *******************************************************************************
+
+  SCF WAVEFUNCTION OPTIMIZATION
+
+  Step     Update method      Time    Convergence         Total energy    Change
+     1 OT DIIS     0.15E+00    1.5      -17.1234000000     -1.50E-01
+     2 OT DIIS     0.15E+00    1.5      -17.1234000010     -1.20E-01
+    10 OT DIIS     0.15E+00    1.5      -17.1234000100     -5.00E-02
+
+  *** SCF run NOT converged after    10 steps ***
+
+  ERROR:
+  DEADLINE EXCEEDED: Job timed out at wall clock limit
+  (job was killed by the scheduler before completing)

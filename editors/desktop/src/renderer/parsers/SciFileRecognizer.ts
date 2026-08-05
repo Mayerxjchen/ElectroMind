@@ -38,6 +38,8 @@ export interface SciFileSummary {
   metrics: { label: string; value: string }[];
   suggestedViewer: "structure" | "results" | "hpc" | "text" | "external";
   externalTool?: string;  // e.g. "VMD", "VESTA"
+  /** P2.1: TS parser 只是快速预览，未经确定性校验。UI 必须标注"未验证"。 */
+  unverified: boolean;
 }
 
 // ── Extension mapping ────────────────────────────────────────────────
@@ -110,6 +112,7 @@ export function recognizeSciFile(
       description: `${sizeBytes} bytes`,
       metrics: [{ label: "大小", value: formatBytes(sizeBytes) }],
       suggestedViewer: "external",
+      unverified: false,
     };
   }
 
@@ -119,6 +122,7 @@ export function recognizeSciFile(
     description: filename,
     metrics: [{ label: "大小", value: formatBytes(sizeBytes) }],
     suggestedViewer: "text",
+    unverified: false,
   };
 }
 
@@ -271,6 +275,14 @@ function buildSummary(
     : kind === "density" ? "VESTA"
     : undefined;
 
+  // P2.1: 凡是 TS 正则解析出的科学指标（能量/收敛/力）都是快速预览，
+  // 未经 Python 确定性 Parser 校验 → 一律标"未验证"。
+  const unverified =
+    kind === "cp2k_output" ||
+    kind === "lammps_thermo" ||
+    kind === "deepmd_curve" ||
+    kind === "vasp_oszicar";
+
   return {
     kind,
     label: LABELS[kind] ?? kind,
@@ -278,6 +290,7 @@ function buildSummary(
     metrics,
     suggestedViewer,
     externalTool,
+    unverified,
   };
 }
 

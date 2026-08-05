@@ -81,6 +81,10 @@ export const ScientificResults: React.FC<Props> = ({
   return (
     <div className="sci-results">
       {title && <h4 className="sci-section-title" style={{ marginBottom: 10 }}>{title}</h4>}
+      {/* P2.1: TS 快速预览的结果未经确定性 Parser 校验，一律标注。 */}
+      <div className="file-summary-unverified" title="TS 快速预览，未经确定性 Parser 校验">
+        未验证
+      </div>
 
       {/* Energy table */}
       {energies && energies.length > 0 && (
