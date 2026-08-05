@@ -46,6 +46,68 @@ uv sync
 
 ---
 
+## 执行内核架构（v0.8 起）
+
+自 v0.8 起，ElectroMind 的执行内核收敛为**唯一 Run 生命周期**：
+
+```text
+CLI / Wire / HTTP / Desktop
+          │
+  ApplicationService（app/service.py，进程级共享）
+          │
+      RunEngine（electromind.engine — 唯一执行状态机）
+   ┌──────┼───────────┬──────────────┐
+ContextManager  ToolScheduler  PlanStore  ThreadSessionManager
+   │              │            │            │
+AgentCore      Sandbox      Runner      RunSnapshot
+```
+
+- **RunEngine**（`electromind/engine/run_engine.py`）是唯一 Run 状态事实源：
+  cancel / steer / permit / deny 全部经它（App 层不再直接操作
+  `runner.inbound`）；事件带 per-thread 单调 `seq`；同一 Thread 同时最多
+  一个可写 Run。
+- **语义检查点**（`harness/checkpoints.py`）在循环的六个命名点
+  （RUN_STARTED / BEFORE_MODEL / AFTER_MODEL / BEFORE_TOOL_BATCH /
+  AFTER_TOOL_BATCH / BEFORE_FINALIZE）统一处理取消与立即输入注入，
+  ToolCall 永不孤立。
+- **Plan**（`execution/plan.py`）：`PlanState` / `PlanStore` /
+  `StepVerifier`——已批准计划不可原地修改；无 Evidence 不得
+  COMPLETED；无验证器结果不得 VERIFIED；指纹覆盖全部内容字段。
+- **幂等**（`execution/idempotency.py`）：外部副作用（提交/删除/上传）
+  必须带 `IdempotencyKey`；同 key 重放原结果，状态未知进入
+  RECONCILING 不盲目重试。
+- **上下文与预算**（`context/`）：模型调用前 Token 估算与 85% 阈值检查，
+  超限先压缩；用户固定约束 100% 保留；Thread / Project / Artifact 三层
+  记忆。
+- **工具治理**（`execution/effects.py` / `tool_scheduler.py` /
+  `permissions.py`）：工具必须声明 Effect（未声明不能注册正式 Runner）；
+  只读可并行、写与外部提交串行；审批绑定 Thread/Run/ToolCall/Action/
+  过期，跨域重放全部拒绝。
+- **子 Agent**（`tools/delegate.py`）：结构化 `SubAgentResult` 交付；
+  委派深度默认 1、系统最大 2；token/工具调用/超时预算硬限制；工具
+  白名单与读写路径边界。
+- **Artifact**（`artifacts/`）：`ArtifactManifest` + `ArtifactRegistry`，
+  completed ≠ validated ≠ accepted 严格分离（Parser 通过才 VALIDATED，
+  用户或独立 Reviewer 确认才 ACCEPTED），SHA-256 完整性校验。
+- **Provider 可靠性**（`core/capabilities.py` / `retry.py` /
+  `budget.py`）：能力协商（保守默认）、指数退避重试（429/5xx/超时）、
+  Run 级预算（token/调用次数/墙钟/外部成本，子 Agent 计入父 Run）。
+
+### Golden Task 评测（evals/）
+
+```bash
+python -m evals list          # 列出全部任务
+python -m evals run           # 运行全部（JSON 报告）
+python -m evals baseline      # 保存/刷新基线
+```
+
+66 个确定性 Golden Tasks（Planning / Tool Use / Safety / Context /
+Scientific / Recovery 六类 ≥10 个）用脚本化 Provider 驱动，验证引擎的
+状态、工具、副作用与 Artifact 行为；safety 与 recovery 类 100% 通过
+是发布门槛。
+
+---
+
 ## 快速开始
 
 ```bash

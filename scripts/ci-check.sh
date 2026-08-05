@@ -28,7 +28,9 @@ uv run scripts/check-skill-isolation.py
 # 二次门禁；不足即非零退出（`set -e` 保证）。
 step "pytest + coverage（>= ${COVERAGE_MIN:-78}%）"
 uv run pytest tests/ --cov=src --cov-report=json --cov-report=term -q
-COVERAGE_MIN="${COVERAGE_MIN:-78}" uv run python - "$COVERAGE_MIN" <<'PY'
+COVERAGE_MIN="${COVERAGE_MIN:-78}"
+export COVERAGE_MIN
+uv run python - "$COVERAGE_MIN" <<'PY'
 import json
 import sys
 
