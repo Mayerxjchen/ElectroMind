@@ -16,7 +16,17 @@
 
 import { installCopyButtons, installMessageActions, renderToolCard } from "./copy.ts";
 import { VirtualList } from "./VirtualList.ts";
+import { renderIcon, type DesktopIconName } from "./icons.ts";
 import type { ThreadItem } from "./store/types.ts";
+import type {
+  ActivityAction,
+  ActivityGroupItem,
+  ApprovalItem,
+  ArtifactItem,
+  JobItem,
+  PlanItem,
+  TimelineItem,
+} from "./timeline-types.ts";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -26,6 +36,15 @@ export interface WireEventMessage {
 }
 
 type PermitCallback = (toolCallId: string, approved: boolean) => void;
+
+/** Item kinds that are projection facts only — never rendered directly
+ *  (the v1 fallback path skips them; v2 renders via syncTimeline). */
+const NON_RENDERED_KINDS = new Set<ThreadItem["kind"]>([
+  "run_begin",
+  "run_end",
+  "run_cancelled",
+  "approval",
+]);
 
 // ── MessageRenderer ──────────────────────────────────────────────────
 
@@ -37,6 +56,12 @@ export class MessageRenderer {
   private toolCards = new Map<string, HTMLElement>();
   private permitPrompts = new Map<string, HTMLElement>();
   private items: ThreadItem[] = [];
+  // D3.3/D3.4: projected-timeline path (single source of truth).
+  private timeline: TimelineItem[] = [];
+  private timelineMode = false;
+  private lastSyncKey = "";
+  /** User expansion overrides for activity groups (default by status). */
+  private groupOverrides = new Map<string, boolean>();
   private virtualList: VirtualList;
 
   constructor(container: HTMLElement, onPermit: PermitCallback) {
@@ -49,7 +74,11 @@ export class MessageRenderer {
       itemCount: 0,
       renderItem: (index, el) => {
         el.innerHTML = "";
-        el.appendChild(this.buildItemElement(this.items[index]));
+        el.appendChild(
+          this.timelineMode
+            ? this.buildTimelineElement(this.timeline[index])
+            : this.buildItemElement(this.items[index]),
+        );
       },
       estimateHeight: () => 80,
       overscan: 4,
@@ -69,8 +98,11 @@ export class MessageRenderer {
    */
   syncItems(items: ThreadItem[]): void {
     this.hideSkeleton();
+    this.timelineMode = false;
     const prevCount = this.items.length;
-    this.items = items;
+    // D3.3.1: lifecycle kinds are projection facts, not renderable items
+    // — the v1 path keeps its exact previous visuals.
+    this.items = items.filter((it) => !NON_RENDERED_KINDS.has(it.kind));
 
     // Detect tool-call results that arrived for already-rendered items
     let needRefresh = false;
@@ -106,6 +138,424 @@ export class MessageRenderer {
     this.renderedDoneIds.clear();
     this.toolCards.clear();
     this.permitPrompts.clear();
+    this.groupOverrides.clear();
+    this.lastSyncKey = "";
+  }
+
+  // ── D3.4: projected timeline rendering (v2 path) ──────────────────
+
+  /**
+   * Render the PROJECTED task timeline (single source of truth).  Each
+   * TimelineItem is drawn by buildTimelineElement; in-place status
+   * changes (action completed, job state, approval resolution) trigger
+   * a virtual-list refresh via a cheap content fingerprint.
+   */
+  syncTimeline(timeline: TimelineItem[]): void {
+    this.hideSkeleton();
+    this.timelineMode = true;
+    const prevCount = this.timeline.length;
+    this.timeline = timeline;
+    const key = this.timelineKey(timeline);
+    const changed = key !== this.lastSyncKey;
+    this.lastSyncKey = key;
+    if (this.timeline.length !== prevCount || changed) {
+      this.virtualList.setCount(this.timeline.length);
+      if (changed && this.timeline.length === prevCount) {
+        this.virtualList.refresh();
+      }
+    }
+    if (!this.userScrolledUp) {
+      this.virtualList.scrollToBottom();
+    }
+  }
+
+  /** Fingerprint of the timeline — detects in-place mutations that need
+   *  a re-render even when the item count is unchanged. */
+  private timelineKey(timeline: readonly TimelineItem[]): string {
+    let key = "";
+    for (const item of timeline) {
+      key += item.id;
+      switch (item.kind) {
+        case "activity_group":
+          key += `:${item.status}`;
+          for (const a of item.actions) {
+            key += `:${a.status}${a.durationMs ?? 0}`;
+          }
+          break;
+        case "user_message":
+        case "assistant_message":
+          key += `:${item.text.length}`;
+          break;
+        case "approval":
+          key += `:${item.status}`;
+          break;
+        case "job":
+          key += `:${item.state}`;
+          break;
+        case "artifact":
+          key += `:${item.status}`;
+          break;
+        case "plan":
+          key += `:${item.status}${item.version}`;
+          break;
+        default:
+          break;
+      }
+    }
+    return key;
+  }
+
+  /** Build the DOM block for one projected timeline item. */
+  private buildTimelineElement(item: TimelineItem): HTMLElement {
+    switch (item.kind) {
+      case "user_message": {
+        const el = this.createBlock("user-message");
+        el.textContent = item.text;
+        return el;
+      }
+      case "assistant_message": {
+        if (item.reasoning) {
+          const el = this.createBlock("reasoning-block");
+          const summary = document.createElement("summary");
+          summary.textContent = "思考过程";
+          const details = document.createElement("details");
+          details.appendChild(summary);
+          const body = document.createElement("div");
+          body.className = "reasoning-body";
+          body.textContent = item.text;
+          details.appendChild(body);
+          el.appendChild(details);
+          return el;
+        }
+        const el = this.createBlock("assistant-message");
+        el.innerHTML = this.markdownToHtml(item.text);
+        installCopyButtons(el);
+        installMessageActions(el);
+        return el;
+      }
+      case "activity_group":
+        return this.buildActivityGroup(item);
+      case "approval":
+        return this.buildApprovalItem(item);
+      case "plan":
+        return this.buildPlanItem(item);
+      case "job":
+        return this.buildJobItem(item);
+      case "artifact":
+        return this.buildArtifactItem(item);
+      case "recovery": {
+        const el = this.createBlock("recovery-row");
+        el.textContent = item.message;
+        return el;
+      }
+      case "error": {
+        const el = this.createBlock("error-banner");
+        el.textContent = item.message;
+        return el;
+      }
+    }
+  }
+
+  /**
+   * Activity group — one Codex-style block per run segment.
+   * Expand rules: running → expanded; completed → collapsed;
+   * failed / cancelled → expanded (reason visible).
+   */
+  private buildActivityGroup(group: ActivityGroupItem): HTMLElement {
+    const el = this.createBlock("activity-group");
+    el.dataset.groupId = group.id;
+    const expanded = this.groupOverrides.get(group.id) ?? this.groupDefaultExpanded(group);
+    el.classList.toggle("expanded", expanded);
+
+    const header = document.createElement("button");
+    header.type = "button";
+    header.className = "activity-header";
+    header.setAttribute("aria-expanded", String(expanded));
+
+    const icon = document.createElement("span");
+    icon.className = `activity-icon activity-icon-${group.status}`;
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = renderIcon(this.groupIcon(group.status));
+
+    const summary = document.createElement("span");
+    summary.className = "activity-summary";
+    summary.textContent = this.activitySummary(group);
+
+    const chevron = document.createElement("span");
+    chevron.className = "activity-chevron";
+    chevron.setAttribute("aria-hidden", "true");
+    chevron.innerHTML = renderIcon("chevron-right");
+
+    header.appendChild(icon);
+    header.appendChild(summary);
+    header.appendChild(chevron);
+
+    const actions = document.createElement("div");
+    actions.className = "activity-actions";
+    actions.classList.toggle("collapsed", !expanded);
+    for (const action of group.actions) {
+      actions.appendChild(this.buildActionRow(action));
+    }
+
+    header.addEventListener("click", () => {
+      const next = !(this.groupOverrides.get(group.id) ?? this.groupDefaultExpanded(group));
+      this.groupOverrides.set(group.id, next);
+      el.classList.toggle("expanded", next);
+      header.setAttribute("aria-expanded", String(next));
+      actions.classList.toggle("collapsed", !next);
+    });
+
+    el.appendChild(header);
+    el.appendChild(actions);
+    return el;
+  }
+
+  private groupDefaultExpanded(group: ActivityGroupItem): boolean {
+    return group.status !== "completed";
+  }
+
+  private groupIcon(status: ActivityGroupItem["status"]): DesktopIconName {
+    switch (status) {
+      case "running":
+        return "loader-circle";
+      case "failed":
+        return "x";
+      case "cancelled":
+        return "pause";
+      default:
+        return "check";
+    }
+  }
+
+  private activitySummary(group: ActivityGroupItem): string {
+    const n = group.actions.length;
+    const word = n === 1 ? "action" : "actions";
+    const elapsed =
+      group.endedAt !== undefined
+        ? Math.max(0, Math.round((group.endedAt - group.startedAt) / 1000))
+        : 0;
+    switch (group.status) {
+      case "running":
+        return `Working… ${n} ${word}`;
+      case "completed":
+        return `Worked for ${elapsed}s · ${n} ${word}`;
+      case "failed":
+        return `Failed after ${elapsed}s · ${n} ${word}`;
+      case "cancelled":
+        return `Cancelled after ${elapsed}s · ${n} ${word}`;
+    }
+  }
+
+  private buildActionRow(action: ActivityAction): HTMLElement {
+    const row = document.createElement("div");
+    row.className = `activity-action activity-action-${action.status}`;
+    // D3.2 inspector triggers: clicking a file/artifact action opens the
+    // matching Inspector tab.
+    if (action.kind === "file_change" || action.kind === "artifact") {
+      row.dataset.inspectorTab = action.kind === "file_change" ? "changes" : "artifacts";
+      row.dataset.inspectorTrigger = action.id;
+      if (action.kind === "artifact") {
+        row.dataset.inspectorResource = String(action.title);
+      }
+    }
+    const icon = document.createElement("span");
+    icon.className = "activity-action-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = renderIcon(this.actionIcon(action));
+
+    const title = document.createElement("span");
+    title.className = "activity-action-title";
+    title.textContent = action.title;
+    title.title = action.title;
+
+    const meta = document.createElement("span");
+    meta.className = "activity-action-meta";
+    const metaParts: string[] = [];
+    if (action.durationMs !== undefined) {
+      metaParts.push(`${(action.durationMs / 1000).toFixed(1)}s`);
+    }
+    if (action.exitCode !== undefined) {
+      metaParts.push(`exit ${action.exitCode}`);
+    }
+    meta.textContent = metaParts.join(" · ");
+
+    row.appendChild(icon);
+    row.appendChild(title);
+    if (metaParts.length) row.appendChild(meta);
+
+    // Failed actions auto-expand their detail.
+    if (action.status === "failed" && action.detail) {
+      const detail = document.createElement("div");
+      detail.className = "activity-action-detail";
+      detail.textContent = action.detail;
+      row.appendChild(detail);
+    }
+    return row;
+  }
+
+  private actionIcon(action: ActivityAction): DesktopIconName {
+    switch (action.kind) {
+      case "command":
+        return "terminal";
+      case "file_change":
+        return "file";
+      case "artifact":
+        return "box";
+      default:
+        return "wrench";
+    }
+  }
+
+  /**
+   * Inline approval — never requires opening the Inspector.
+   * Pending: [Deny] [Allow once]; resolved: a quiet status row.
+   */
+  private buildApprovalItem(item: ApprovalItem): HTMLElement {
+    const el = this.createBlock("approval-card");
+    if (item.status !== "pending") {
+      const icon = document.createElement("span");
+      icon.className = "approval-icon";
+      icon.setAttribute("aria-hidden", "true");
+      icon.innerHTML = renderIcon(item.status === "approved" ? "check" : "x");
+      const label = document.createElement("span");
+      label.className = "approval-resolved-label";
+      label.textContent =
+        item.status === "approved"
+          ? `已批准：${item.toolName}`
+          : `已拒绝：${item.toolName}`;
+      el.appendChild(icon);
+      el.appendChild(label);
+      return el;
+    }
+    const head = document.createElement("div");
+    head.className = "approval-head";
+    head.textContent = "Approval required";
+    el.appendChild(head);
+
+    const tool = document.createElement("div");
+    tool.className = "approval-tool";
+    tool.textContent = item.toolName;
+    el.appendChild(tool);
+
+    const meta = document.createElement("div");
+    meta.className = "approval-meta";
+    const metaParts: string[] = [];
+    if (item.target) metaParts.push(item.target);
+    if (item.workdir) metaParts.push(item.workdir);
+    if (item.risk) metaParts.push(`${item.risk} risk`);
+    meta.textContent = metaParts.join(" · ");
+    if (metaParts.length) el.appendChild(meta);
+    if (item.summary) {
+      const summary = document.createElement("div");
+      summary.className = "approval-summary";
+      summary.textContent = item.summary;
+      el.appendChild(summary);
+    }
+
+    const actions = document.createElement("div");
+    actions.className = "approval-actions";
+    const deny = document.createElement("button");
+    deny.type = "button";
+    deny.className = "approval-deny";
+    deny.textContent = "Deny";
+    const allow = document.createElement("button");
+    allow.type = "button";
+    allow.className = "approval-allow";
+    allow.textContent = "Allow once";
+    deny.addEventListener("click", () => this.onPermit(item.toolCallId, false));
+    allow.addEventListener("click", () => this.onPermit(item.toolCallId, true));
+    actions.appendChild(deny);
+    actions.appendChild(allow);
+    el.appendChild(actions);
+    return el;
+  }
+
+  /** Compact plan summary — click opens the Inspector plan tab. */
+  private buildPlanItem(item: PlanItem): HTMLElement {
+    const el = this.createBlock("plan-card");
+    el.dataset.inspectorTab = "plan";
+    el.dataset.inspectorTrigger = item.id;
+    const done = item.steps.filter((s) => s.status === "completed" || s.status === "done").length;
+    const head = document.createElement("div");
+    head.className = "plan-card-head";
+    const label = document.createElement("span");
+    label.className = "plan-card-label";
+    label.textContent = `Plan · ${done}/${item.steps.length} completed`;
+    const status = document.createElement("span");
+    status.className = `plan-card-status status-${this.cssClass(item.status)}`;
+    status.textContent = item.status;
+    head.appendChild(label);
+    head.appendChild(status);
+    el.appendChild(head);
+    if (item.objective) {
+      const objective = document.createElement("div");
+      objective.className = "plan-card-objective";
+      objective.textContent = item.objective;
+      el.appendChild(objective);
+    }
+    return el;
+  }
+
+  /** Compact job row — state updates re-render this SAME item in place. */
+  private buildJobItem(item: JobItem): HTMLElement {
+    const el = this.createBlock("job-row");
+    const icon = document.createElement("span");
+    icon.className = "job-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = renderIcon("server");
+    const body = document.createElement("span");
+    body.className = "job-body";
+    const title = document.createElement("span");
+    title.className = "job-title";
+    title.textContent = `Slurm job ${item.jobId}`;
+    const state = document.createElement("span");
+    state.className = `job-state status-${this.cssClass(item.state)}`;
+    state.textContent = item.state;
+    body.appendChild(title);
+    body.appendChild(state);
+    if (item.detail) {
+      const detail = document.createElement("span");
+      detail.className = "job-detail";
+      detail.textContent = item.detail;
+      body.appendChild(detail);
+    }
+    el.appendChild(icon);
+    el.appendChild(body);
+    return el;
+  }
+
+  /** Compact artifact row — click opens the Inspector artifacts tab. */
+  private buildArtifactItem(item: ArtifactItem): HTMLElement {
+    const el = this.createBlock("artifact-row");
+    el.dataset.inspectorTab = "artifacts";
+    el.dataset.inspectorTrigger = item.id;
+    el.dataset.inspectorResource = item.path;
+    const icon = document.createElement("span");
+    icon.className = "artifact-icon";
+    icon.setAttribute("aria-hidden", "true");
+    icon.innerHTML = renderIcon("box");
+    const body = document.createElement("span");
+    body.className = "artifact-row-body";
+    const name = document.createElement("span");
+    name.className = "artifact-row-name";
+    name.textContent = item.name ?? item.path.split("/").pop() ?? item.path;
+    const meta = document.createElement("span");
+    meta.className = "artifact-row-meta";
+    const metaParts: string[] = [];
+    if (item.status) metaParts.push(String(item.status));
+    if (item.size !== undefined) metaParts.push(this.formatBytes(item.size));
+    meta.textContent = metaParts.join(" · ");
+    body.appendChild(name);
+    if (metaParts.length) body.appendChild(meta);
+    el.appendChild(icon);
+    el.appendChild(body);
+    return el;
+  }
+
+  private cssClass(value: unknown): string {
+    return String(value ?? "")
+      .toLowerCase()
+      .replace(/[^a-z0-9-]+/g, "-");
   }
 
   /** Build a detached block element for one ThreadItem (virtual list
@@ -222,7 +672,20 @@ export class MessageRenderer {
 
   addUser(text: string): void {
     this.hideSkeleton();
-    // Route through the virtual timeline (single rendering path)
+    // Route through the ACTIVE rendering path (single rendering path).
+    if (this.timelineMode) {
+      this.syncTimeline([
+        ...this.timeline,
+        {
+          id: `user-${Date.now()}`,
+          kind: "user_message",
+          threadId: "",
+          timestamp: Date.now(),
+          text,
+        },
+      ]);
+      return;
+    }
     this.syncItems([
       ...this.items,
       {
@@ -247,17 +710,34 @@ export class MessageRenderer {
 
   clear(): void {
     this.items = [];
+    this.timeline = [];
+    this.timelineMode = false;
     this.virtualList.setCount(0);
     this.toolCards.clear();
     this.permitPrompts.clear();
     this.renderedIds.clear();
     this.renderedDoneIds.clear();
+    this.groupOverrides.clear();
+    this.lastSyncKey = "";
     this.skeletonVisible = false;
   }
 
   showError(message: string): void {
     this.hideSkeleton();
-    // Route through the virtual timeline (single rendering path)
+    // Route through the ACTIVE rendering path (single rendering path).
+    if (this.timelineMode) {
+      this.syncTimeline([
+        ...this.timeline,
+        {
+          id: `error-${Date.now()}`,
+          kind: "error",
+          threadId: "",
+          timestamp: Date.now(),
+          message,
+        },
+      ]);
+      return;
+    }
     this.syncItems([
       ...this.items,
       {

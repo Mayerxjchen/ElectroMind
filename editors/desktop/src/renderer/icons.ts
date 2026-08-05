@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   ArrowUp,
   Box,
+  Check,
   ChevronDown,
   ChevronRight,
   CircleAlert,
@@ -27,6 +28,7 @@ import {
   PanelLeftOpen,
   PanelRightClose,
   PanelRightOpen,
+  Pause,
   Pin,
   PinOff,
   Plug,
@@ -35,6 +37,7 @@ import {
   Server,
   Settings,
   Square,
+  Terminal,
   Trash2,
   Wrench,
   X,
@@ -48,6 +51,7 @@ type DesktopIconName =
   | "arrow-left"
   | "arrow-up"
   | "box"
+  | "check"
   | "chevron-down"
   | "chevron-right"
   | "circle-alert"
@@ -68,6 +72,7 @@ type DesktopIconName =
   | "loader-circle"
   | "minus"
   | "moon"
+  | "pause"
   | "panel-left-close"
   | "panel-left-open"
   | "panel-right-close"
@@ -80,6 +85,7 @@ type DesktopIconName =
   | "server"
   | "settings"
   | "square"
+  | "terminal"
   | "trash-2"
   | "wrench"
   | "x"
@@ -90,6 +96,7 @@ const iconRegistry: Record<DesktopIconName, IconNode> = {
   "arrow-left": ArrowLeft,
   "arrow-up": ArrowUp,
   box: Box,
+  check: Check,
   "chevron-down": ChevronDown,
   "chevron-right": ChevronRight,
   "circle-alert": CircleAlert,
@@ -109,6 +116,7 @@ const iconRegistry: Record<DesktopIconName, IconNode> = {
   keyboard: Keyboard,
   "loader-circle": LoaderCircle,
   minus: Minus,
+  pause: Pause,
   moon: Moon,
   "panel-left-close": PanelLeftClose,
   "panel-left-open": PanelLeftOpen,
@@ -122,6 +130,7 @@ const iconRegistry: Record<DesktopIconName, IconNode> = {
   server: Server,
   settings: Settings,
   square: Square,
+  terminal: Terminal,
   "trash-2": Trash2,
   wrench: Wrench,
   x: X,

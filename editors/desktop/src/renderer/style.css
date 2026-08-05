@@ -6077,3 +6077,436 @@ pre:hover .copy-btn,
         transition: none;
     }
 }
+
+/* ── D3.4: Codex-style task timeline blocks ─────────────────────────── */
+
+/* Activity group — one block per run segment. */
+.activity-group {
+  margin: 12px 0;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.activity-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  text-align: left;
+}
+
+.activity-header:hover {
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+}
+
+.activity-icon {
+  display: inline-flex;
+  width: 16px;
+  height: 16px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.activity-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.activity-icon-running {
+  color: var(--primary);
+}
+
+.activity-icon-running svg {
+  animation: spin 1s linear infinite;
+}
+
+.activity-icon-completed {
+  color: #22c55e;
+}
+
+.activity-icon-failed {
+  color: #ef4444;
+}
+
+.activity-icon-cancelled {
+  color: var(--text-tertiary);
+}
+
+.activity-summary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activity-chevron {
+  display: inline-flex;
+  color: var(--text-tertiary);
+  transition: transform 120ms ease;
+}
+
+.activity-chevron svg {
+  width: 14px;
+  height: 14px;
+}
+
+.activity-group.expanded .activity-chevron {
+  transform: rotate(90deg);
+}
+
+.activity-actions {
+  border-top: 1px solid var(--hairline);
+}
+
+.activity-actions.collapsed {
+  display: none;
+}
+
+.activity-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px 4px 30px;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.activity-action + .activity-action {
+  border-top: 1px solid color-mix(in srgb, var(--hairline) 50%, transparent);
+}
+
+.activity-action:hover {
+  background: color-mix(in srgb, var(--foreground) 3%, transparent);
+}
+
+.activity-action-icon {
+  display: inline-flex;
+  flex: none;
+  width: 14px;
+  height: 14px;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+}
+
+.activity-action-icon svg {
+  width: 13px;
+  height: 13px;
+}
+
+.activity-action-running .activity-action-icon {
+  color: var(--primary);
+}
+
+.activity-action-running .activity-action-icon svg {
+  animation: spin 1s linear infinite;
+}
+
+.activity-action-completed .activity-action-icon {
+  color: #22c55e;
+}
+
+.activity-action-failed .activity-action-icon {
+  color: #ef4444;
+}
+
+.activity-action-cancelled .activity-action-icon {
+  color: var(--text-tertiary);
+}
+
+.activity-action-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 12px;
+}
+
+.activity-action-meta {
+  flex: none;
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-action-detail {
+  grid-column: 2 / -1;
+  margin: 2px 0 4px 30px;
+  padding: 6px 8px;
+  border-left: 2px solid color-mix(in srgb, #ef4444 60%, transparent);
+  background: color-mix(in srgb, #ef4444 6%, transparent);
+  border-radius: 0 4px 4px 0;
+  color: var(--text-secondary);
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Inline approval. */
+.approval-card {
+  margin: 12px 0;
+  border: 1px solid color-mix(in srgb, #f59e0b 40%, var(--hairline));
+  border-radius: 8px;
+  background: color-mix(in srgb, #f59e0b 5%, var(--surface));
+  padding: 10px 12px;
+}
+
+.approval-head {
+  color: var(--text-tertiary);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.approval-tool {
+  margin-top: 6px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow-wrap: anywhere;
+}
+
+.approval-meta,
+.approval-summary {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.approval-actions button {
+  padding: 4px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.approval-deny {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+}
+
+.approval-deny:hover {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.approval-allow {
+  border: 1px solid #22c55e;
+  background: #22c55e;
+  color: #fff;
+}
+
+.approval-allow:hover {
+  opacity: 0.9;
+}
+
+.approval-card:has(.approval-resolved-label) {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-color: var(--hairline);
+  background: var(--surface);
+}
+
+.approval-icon {
+  display: inline-flex;
+  color: var(--text-tertiary);
+}
+
+.approval-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.approval-resolved-label {
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* Job row — one item, state updates in place. */
+.job-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.job-icon {
+  display: inline-flex;
+  color: var(--text-tertiary);
+}
+
+.job-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.job-body {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.job-title {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.job-state {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
+}
+
+.job-detail {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* Artifact row — click opens the Inspector artifacts tab. */
+.artifact-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.artifact-row:hover {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.artifact-icon {
+  display: inline-flex;
+  color: var(--text-tertiary);
+}
+
+.artifact-icon svg {
+  width: 16px;
+  height: 16px;
+}
+
+.artifact-row-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.artifact-row-name {
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.artifact-row-meta {
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+/* Plan summary — click opens the Inspector plan tab. */
+.plan-card {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background-color 120ms ease;
+}
+
+.plan-card:hover {
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+}
+
+.plan-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plan-card-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.plan-card-status {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
+}
+
+.plan-card-objective {
+  margin-top: 4px;
+  color: var(--text-secondary);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Recovery — visible but quiet. */
+.recovery-row {
+  margin: 12px 0;
+  padding: 6px 12px;
+  border-left: 2px solid var(--primary);
+  color: var(--text-tertiary);
+  font-size: 12px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .activity-icon-running svg,
+  .activity-action-running .activity-action-icon svg {
+    animation: none;
+  }
+
+  .activity-chevron {
+    transition: none;
+  }
+}

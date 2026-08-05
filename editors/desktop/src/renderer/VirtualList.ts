@@ -65,6 +65,15 @@ export class VirtualList {
   refresh(): void {
     this.heights.clear();
     this.recomputeTotalHeight();
+    // Recycle every mounted element so the window re-renders from scratch
+    // even when the range bounds did not move — in-place content updates
+    // (tool upgrades, job state changes, approval resolution) must
+    // rebuild the visible blocks.
+    for (const [, el] of this.itemElements) {
+      this.recycle(el);
+    }
+    this.itemElements.clear();
+    this.visibleRange = [-1, -1];
     this.renderVisible();
   }
 
