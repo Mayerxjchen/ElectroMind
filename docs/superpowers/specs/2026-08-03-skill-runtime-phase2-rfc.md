@@ -391,7 +391,50 @@ Project  → .electromind/skills、.agents/skills、.claude/skills
 Add-dir  → 显式目录下的上述三类路径
 ```
 
-祖先发现：从 cwd 向上到 repo root，每一级只检查三个固定目录。不执行 `find repo -name SKILL.md`、不递归扫描 HOME、不扫描兄弟项目。Nested Monorepo 动态嵌套发现放入 SKILL-7（Context Roots 按需发现）。
+祖先发现：从 cwd 向上到 repo root，每一级只检查三个固定目录（`.electromind`、`.agents`、`.claude`）。不执行 `find repo -name SKILL.md`、不递归扫描 HOME、不扫描兄弟项目。Nested Monorepo 动态嵌套发现放入 SKILL-7（Context Roots 按需发现）。
+
+### Root 内发现语义（有界递归）
+
+祖先发现定位的是 **Skill root**。每个 root **内部**的发现不是扁平一层，而是**有界递归**。三个概念必须区分：
+
+```text
+Skill root     → 作用域配置提供的搜索根（project / user / admin / builtin）
+Atomic Skill   → 一个可触发、加载、执行的 Skill：<dir>/SKILL.md（+ references/ scripts/ assets/）
+Grouping dir   → 仅用于组织的中层目录（如 procedures/、tools/），本身不是 Skill
+```
+
+Collection manifest（显式声明成员 root）在本提案中**预留但不实现**（PR 2）。
+
+root 内发现不变量：
+
+```text
+MAX_DEPTH                = 6    根内递归最多 6 层
+STOP_AT_SKILL_BOUNDARY   = true 发现 SKILL.md 后将该目录视为完整 Atomic Skill，默认不再向下发现
+EXACT_FILENAME           = true 只接受精确大小写 "SKILL.md"（忽略 SKILL.MD / skill.md 并产生诊断）
+FOLLOW_NESTED_SYMLINKS   = false 默认不跟随遍历中遇到的嵌套目录符号链接
+DISCOVERY_ORDER          = deterministic 稳定排序，不依赖文件系统遍历顺序
+PHYSICAL_FILE_DUPLICATE  = deduplicate 同一物理文件（resolved path / dev+inode）经多个 root 发现时去重，
+                            保留全部来源，最高优先级来源生效；不是同名冲突
+DUPLICATE_SAME_SCOPE     = error 同一作用域下两个不同物理文件声明同名 → 确定性报错。
+                            例外：builtin 内置作用域可能合法地持有同一 bundle 的多个安装副本
+                            （如 .venv/ 与仓库 skills/），该场景降级为 warning，不阻断运行时
+CROSS_SCOPE_CONFLICT     = shadow 高优先级覆盖低优先级（project > user > admin > builtin），
+                            低优先级保留 shadowed 诊断
+NAME_DIRECTORY_MISMATCH  = warning frontmatter name 与父目录名不一致仍注册，仅诊断（迁移兼容）
+IGNORED_DIRS             = .git .hg .svn .venv __pycache__ node_modules 及隐藏目录
+```
+
+**不使用 `rglob("SKILL.md")`。** 遇到 Atomic Skill 后停止下钻，防止 Skill 内部 `references/`、`scripts/`、源码树中的示例 `SKILL.md` 被误注册为独立技能（对应 Codex issue #22275 类缺陷）。
+
+入口级目录符号链接（root 的直接子级）在独立安全策略下可提升为 **adopted root**（见 symlink 策略），目标不必位于原 root 内，但必须落在当前作用域允许的 trusted path 集合内。
+
+现有分组布局无需移动即可被发现：
+
+```text
+skills/procedures/comp-chem-workflow/SKILL.md
+skills/tools/cp2k/SKILL.md
+skills/aicc/procedures/comp-chem-workflow/SKILL.md   ← 深度 3，≤ MAX_DEPTH
+```
 
 ## 十一、Catalog Budget 与 Override
 
