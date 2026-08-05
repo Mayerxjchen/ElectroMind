@@ -152,7 +152,7 @@ window < 900px   → left bar auto-shrinks or collapses
 
 ---
 
-## D3.3 — Unified Task Timeline (largest work; after Shell stabilizes)
+## D3.3 — Unified Task Timeline (data layer DONE — commits 9b30613, 016496f, next)
 
 Problem: main.ts too large (4364 lines), Tool/Plan/Artifact/Approval inserted
 different ways, long tasks produce fragmented cards, hard to see "where the
@@ -223,17 +223,48 @@ Keep VirtualList; add TimelineProjection; extract renderer from main.ts
 gradually; keep Wire Event input compatible; pin projection with tests. NO React
 rewrite of the Timeline.
 
-### Acceptance
+### Acceptance (data layer)
 
-- [ ] Consecutive tool calls aggregated
-- [ ] Completed Activity collapses by default
-- [ ] Failed Activity auto-expands
-- [ ] Approval operable inline
-- [ ] Job status updates the same item
-- [ ] Artifact click opens Inspector
-- [ ] 5000 items: no visible perf regression
-- [ ] Thread switch does not leak other threads' events
-- [ ] Timeline rebuilds from persisted state after resume
+- [x] Consecutive tool calls aggregated (pure projection, tests 1–3)
+- [ ] Completed Activity collapses by default (D3.4 visuals)
+- [ ] Failed Activity auto-expands (D3.4 visuals)
+- [ ] Approval operable inline (D3.4; ApprovalItem projected now)
+- [x] Job status updates the same item (projection test 9)
+- [x] Artifact click opens Inspector (D3.2 attrs preserved via adapter)
+- [x] 5000 items: no visible perf regression (full < 100ms, step < 5ms)
+- [x] Thread switch does not leak other threads' events (tests 11/20 + store test)
+- [x] Timeline rebuilds from persisted state after resume (store test)
+
+### Implementation notes (2026-08-05)
+
+- **Chain**: Wire Event → ThreadStore (feed hooks) → TimelineProjection
+  (pure fold) → `ThreadState.timeline: TimelineItem[]` (single source of
+  truth) → `timeline-adapter.ts` → existing MessageRenderer cards.
+- **Modules**: `timeline-types.ts` (first-class item union),
+  `timeline-projection.ts` (`projectTimeline` full replay +
+  `reduceTimeline` incremental, SAME step function — identity test 14),
+  `timeline-adapter.ts` (TimelineItem → existing card shapes, visual
+  parity by construction), `inspector-model`-style gating:
+  `TIMELINE_PROJECTION_V2` (default on; localStorage
+  `desktop.timelineProjection="v1"` opts out — remove the dual path
+  before release).
+- **Store integration**: feeds at appendThreadItem, ToolResult /
+  applyDelta in-place mutations, approval/plan/artifact domain state,
+  run lifecycle (RunBegin/RunEnd/run/started/run/completed); snapshot
+  restore + HistoryReplay rebuild via the same fold.  ToolCallBegin
+  items now persist `run_id` so rebuilds bind groups to the same run.
+  Wire dedup (event_id/seq) precedes all feeds.
+- **Reasoning** is folded into AssistantMessageItem with a
+  `reasoning: true` marker (not a first-class TimelineItem — the spec
+  union has none) so the adapter can render the existing collapsible
+  block.
+- **Known limits (documented)**: resolved approvals / finished runs do
+  not survive snapshot rebuild (they live only in the live feed and in
+  `pendingPermits`); artifact/plan/job/approval one-level items are
+  skipped by the adapter until D3.4 (no cards today — parity).  Group
+  ids for repeated runs get deterministic `:N` suffixes.
+- **Tests**: 21 pure + 10 store + 9 adapter = 40 new cases; full suite
+  124 green; D3.2 CDP 22/22 regression passed on the v2 build.
 
 ---
 

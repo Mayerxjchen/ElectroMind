@@ -147,8 +147,9 @@ export function reduceTimeline(
       break;
     case "reasoning":
       // Thinking between tool calls is NOT the final text — it must not
-      // fragment the current activity group.
-      upsertMessage(state, source, "assistant_message");
+      // fragment the current activity group; it renders as the reasoning
+      // block via the adapter's `reasoning` marker.
+      upsertMessage(state, source, "assistant_message", true);
       break;
     case "tool_call": {
       // Primary path: the store mutates the tool_call item in place, so
@@ -459,6 +460,7 @@ function upsertMessage(
   state: TimelineProjectionState,
   source: TimelineSource,
   kind: "user_message" | "assistant_message",
+  reasoning = false,
 ): void {
   const existingIdx = state.indexById.get(source.id);
   const text = str(source.payload.text ?? "");
@@ -478,6 +480,7 @@ function upsertMessage(
     timestamp: source.timestamp,
     text,
     streaming: source.payload.streaming === true,
+    reasoning,
   });
 }
 

@@ -2,6 +2,7 @@ import { getThreadStore } from "./store/ThreadStore";
 import { SessionManager } from "./store/SessionManager";
 import { InspectorController } from "./InspectorController";
 import { isInspectorTab, type InspectorTab } from "./inspector-model";
+import { timelineProjectionEnabled, timelineToRenderItems } from "./timeline-adapter";
 import { MessageRenderer } from "./MessageRenderer";
 import { ContextUsageRing } from "./context-usage";
 import { INSTALL_COMMANDS, bindHealthPanel, renderHealthPanel } from "./environment-health";
@@ -1751,7 +1752,13 @@ async function start(): Promise<void> {
       chatRenderer.clear();
       lastRenderedThreadId = currentId;
     }
-    chatRenderer.syncItems(thread.items);
+    // D3.3: the renderer consumes the PROJECTED task timeline (single
+    // source of truth); the adapter maps it onto the existing cards.
+    chatRenderer.syncItems(
+      timelineProjectionEnabled()
+        ? timelineToRenderItems(thread.timeline)
+        : thread.items,
+    );
     // Activity state is a pure projection of the store (single source).
     if (uiState.activityState !== state.activityState) {
       uiState.activityState = state.activityState;

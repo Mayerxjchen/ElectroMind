@@ -82,6 +82,9 @@ export type AssistantMessageItem = {
   text: string;
   /** True while the text is still streaming (deltas keep appending). */
   streaming?: boolean;
+  /** True when this is an intermediate "thinking" stream (renders as the
+   *  collapsible reasoning block — never part of the final answer). */
+  reasoning?: boolean;
 };
 
 export type ApprovalItem = {
