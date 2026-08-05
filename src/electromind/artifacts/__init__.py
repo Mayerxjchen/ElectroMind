@@ -1,0 +1,27 @@
+"""Artifact 与 Provenance（M6，非 HPC 部分）。
+
+- ``manifest``：ArtifactManifest + 严格状态语义（completed ≠ validated ≠ accepted）
+- ``registry``：ArtifactRegistry（SHA-256、完整性、依赖图、事件记录）
+"""
+
+from .manifest import (
+    ArtifactManifest,
+    ArtifactStatus,
+    ArtifactTransitionError,
+    allowed_artifact_transitions,
+)
+from .registry import (
+    ArtifactIntegrityError,
+    ArtifactRegistry,
+    sha256_file,
+)
+
+__all__ = [
+    "ArtifactIntegrityError",
+    "ArtifactManifest",
+    "ArtifactRegistry",
+    "ArtifactStatus",
+    "ArtifactTransitionError",
+    "allowed_artifact_transitions",
+    "sha256_file",
+]

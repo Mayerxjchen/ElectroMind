@@ -72,6 +72,12 @@ class SubAgentSpec:
     - ``max_turns``：子 agent 的循环上限。
     - ``workspace``：独立 workspace 名；空表示复用主 agent 的 ``main`` workspace，
       非空则在 ``workspaces/<name>/`` 下开自己的地盘。
+    - ``max_depth``：委派深度上限（默认 1；系统最大 2）。
+    - ``max_tokens``：总 token 预算（0 = 不限制）。
+    - ``max_tool_calls``：工具调用次数上限（0 = 不限制）。
+    - ``timeout_seconds``：子 agent 运行超时（0 = 不限制）。
+    - ``allowed_tools``：工具白名单；空表示放开全部。
+    - ``read_paths`` / ``write_paths``：读写路径边界；空表示不限制。
     """
 
     system: str = ""
@@ -80,6 +86,14 @@ class SubAgentSpec:
     sandbox_tools: tuple[str, ...] = ()
     max_turns: int = 24
     workspace: str = ""
+    # M5 委派预算
+    max_depth: int = 1
+    max_tokens: int = 0
+    max_tool_calls: int = 0
+    timeout_seconds: float = 0.0
+    allowed_tools: tuple[str, ...] = ()
+    read_paths: tuple[str, ...] = ()
+    write_paths: tuple[str, ...] = ()
 
     def to_dict(self) -> dict:
         data: dict = {
@@ -89,8 +103,17 @@ class SubAgentSpec:
             "sandbox_tools": list(self.sandbox_tools),
             "max_turns": self.max_turns,
             "workspace": self.workspace,
+            "max_depth": self.max_depth,
+            "max_tokens": self.max_tokens,
+            "max_tool_calls": self.max_tool_calls,
+            "timeout_seconds": self.timeout_seconds,
+            "allowed_tools": list(self.allowed_tools),
+            "read_paths": list(self.read_paths),
+            "write_paths": list(self.write_paths),
         }
-        return {key: value for key, value in data.items() if value not in ("", [])}
+        return {
+            key: value for key, value in data.items() if value not in ("", [], 0, 0.0)
+        }
 
     @classmethod
     def from_dict(cls, payload: dict) -> SubAgentSpec:
@@ -102,6 +125,13 @@ class SubAgentSpec:
             sandbox_tools=tuple(tools),
             max_turns=payload.get("max_turns", 24),
             workspace=payload.get("workspace", ""),
+            max_depth=payload.get("max_depth", 1),
+            max_tokens=payload.get("max_tokens", 0),
+            max_tool_calls=payload.get("max_tool_calls", 0),
+            timeout_seconds=payload.get("timeout_seconds", 0.0),
+            allowed_tools=tuple(payload.get("allowed_tools", ())),
+            read_paths=tuple(payload.get("read_paths", ())),
+            write_paths=tuple(payload.get("write_paths", ())),
         )
 
 

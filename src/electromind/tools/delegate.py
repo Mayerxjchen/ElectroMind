@@ -18,13 +18,17 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
-from dataclasses import replace
+import inspect
+import json
+from dataclasses import dataclass, field, replace
 
 from ..core.agent import Agent
+from ..core.budget import BudgetExceededError, RunBudget
 from ..core.message import Messages, reply_text
 from ..core.provider import ProviderProtocol
-from ..core.tool import FunctionTool, ToolOutput
+from ..core.tool import FunctionTool, ToolOutput, normalize_tool_output
 from ..ithread import SubAgentSpec
 from ..runtime.frame import RunFrame
 from ..runtime.resource import ConversationResource, ResourceSlot
@@ -47,6 +51,133 @@ def observe_subagent_event(context, name: str, event) -> None:
         conversation_id=str(getattr(context, "conversation_id", "") or ""),
         event=event,
     )
+
+
+# ── M5: 结构化结果与委派预算 ────────────────────────────────────────────
+
+# 系统最大委派深度（硬限制，不可配置放宽）
+SYSTEM_MAX_DEPTH = 2
+
+
+@dataclass
+class SubAgentResult:
+    """子 agent 的结构化交付（M5 §10.1）。父 agent 不得只接收自由文本。"""
+
+    status: str = "completed"  # completed | timeout | budget_exceeded | error | denied
+    summary: str = ""
+    artifacts: list[str] = field(default_factory=list)
+    evidence: list[str] = field(default_factory=list)
+    assumptions: list[str] = field(default_factory=list)
+    unresolved_questions: list[str] = field(default_factory=list)
+    verification: list[str] = field(default_factory=list)
+    usage: dict = field(default_factory=dict)  # tokens / tool_calls / model_calls
+
+    def to_dict(self) -> dict:
+        return {
+            "status": self.status,
+            "summary": self.summary,
+            "artifacts": list(self.artifacts),
+            "evidence": list(self.evidence),
+            "assumptions": list(self.assumptions),
+            "unresolved_questions": list(self.unresolved_questions),
+            "verification": list(self.verification),
+            "usage": dict(self.usage),
+        }
+
+    def to_json(self) -> str:
+        return json.dumps(self.to_dict(), ensure_ascii=False)
+
+
+def delegation_depth(context) -> int:
+    """当前委派深度 = 帧栈中除基帧外的帧数。"""
+    return max(0, len(getattr(context, "frames", [])) - 1)
+
+
+def check_delegation_allowed(context, sub_spec: SubAgentSpec, name: str) -> str | None:
+    """委派前置检查：返回拒绝原因；None = 允许。
+
+    - 深度：``min(sub_spec.max_depth, SYSTEM_MAX_DEPTH)`` 硬限制。
+    - 循环委派：系统最大深度 2 保证主→子→孙 后必然拒绝。
+    """
+    depth = delegation_depth(context)
+    limit = min(sub_spec.max_depth, SYSTEM_MAX_DEPTH)
+    if depth + 1 > limit:
+        return (
+            f"子 agent {name!r} 委派深度超限：当前 {depth}，上限 {limit}"
+            f"（系统最大 {SYSTEM_MAX_DEPTH}，禁止无限委派）"
+        )
+    return None
+
+
+def filter_tools_by_whitelist(
+    tools: list[FunctionTool], allowed: tuple[str, ...] | list[str]
+) -> list[FunctionTool]:
+    """按工具白名单过滤；白名单为空 = 放开全部。"""
+    if not allowed:
+        return list(tools)
+    names = set(allowed)
+    return [t for t in tools if t.name in names]
+
+
+def bound_paths(
+    tools: list[FunctionTool],
+    *,
+    read_paths: tuple[str, ...] = (),
+    write_paths: tuple[str, ...] = (),
+) -> list[FunctionTool]:
+    """按读写路径边界包裹工具；边界为空 = 不限制。
+
+    包裹层检查 ``path`` 参数是否在允许前缀内，越界返回失败 ToolOutput。
+    """
+    if not read_paths and not write_paths:
+        return list(tools)
+
+    read_prefixes = tuple(p.rstrip("/") + "/" for p in read_paths)
+    write_prefixes = tuple(p.rstrip("/") + "/" for p in write_paths)
+
+    def _within(prefixes: tuple[str, ...], path: str) -> bool:
+        return any(path.startswith(p) for p in prefixes)
+
+    def wrap(tool: FunctionTool) -> FunctionTool:
+        orig = tool.func
+
+        async def guarded(*args, **kwargs) -> ToolOutput:
+            path = kwargs.get("path") or (args[0] if args else "")
+            if isinstance(path, str):
+                if (
+                    tool.name.startswith("read")
+                    and read_prefixes
+                    and not _within(read_prefixes, path)
+                ):
+                    return ToolOutput.fail(
+                        f"子 agent 路径越界：读取 {path!r} 不在允许目录 {read_paths} 内"
+                    )
+                if (
+                    tool.name.startswith("write")
+                    and write_prefixes
+                    and not _within(write_prefixes, path)
+                ):
+                    return ToolOutput.fail(
+                        f"子 agent 路径越界：写入 {path!r} 不在允许目录 {write_paths} 内"
+                    )
+            if inspect.iscoroutinefunction(orig):
+                return await orig(*args, **kwargs)
+            result = orig(*args, **kwargs)
+            if inspect.isawaitable(result):
+                result = await result
+            return normalize_tool_output(result)
+
+        return FunctionTool(
+            name=tool.name,
+            description=tool.description,
+            parameters=tool.parameters,
+            func=guarded,
+            effect=tool.effect,
+        )
+
+    return [
+        wrap(t) if t.name.startswith(("read_", "write_", "str_")) else t for t in tools
+    ]
 
 
 def provider_with_model(provider: ProviderProtocol, model: str) -> ProviderProtocol:
@@ -114,13 +245,26 @@ async def build_sub_frame(context, name: str, sub_spec: SubAgentSpec) -> RunFram
     computer_desc = await sandbox.describe() if sandbox is not None else ""
     system_prompt = "\n".join(part for part in (computer_desc, sub_spec.system) if part)
     tools = sandbox.tools() if sandbox is not None else []
+    # M5：工具白名单 + 读写路径边界
+    tools = filter_tools_by_whitelist(tools, sub_spec.allowed_tools)
+    tools = bound_paths(
+        tools,
+        read_paths=sub_spec.read_paths,
+        write_paths=sub_spec.write_paths,
+    )
 
     provider = provider_with_model(context.agent.provider, sub_spec.model)
+    budget = (
+        RunBudget(max_total_tokens=sub_spec.max_tokens)
+        if sub_spec.max_tokens > 0
+        else None
+    )
     sub_agent = Agent(
         provider,
         system=system_prompt,
         tools=tools,
         max_turns=sub_spec.max_turns,
+        budget=budget,
     )
 
     conversation_id = next_sub_conversation_id(
@@ -143,16 +287,80 @@ async def build_sub_frame(context, name: str, sub_spec: SubAgentSpec) -> RunFram
     )
 
 
-async def run_sub_agent(context, name: str, task: str) -> str:
-    """在当前栈顶帧（子帧）上把 task 跑到结束，返回子 agent 的最终文本答复。
+async def run_sub_agent(
+    context, name: str, task: str, sub_spec: SubAgentSpec
+) -> SubAgentResult:
+    """在当前栈顶帧（子帧）上把 task 跑到结束，返回结构化结果。
 
     复用 Runner 自己的 ``run``：它读写的 ``agent`` / ``messages`` / ``store`` 等都经
     property 指向栈顶帧，因而落到子帧上——包括子对话的落盘。默认仍在此处丢弃事件，
     只取结果；若 runner 安装了观察者，会旁路上报给前端实验展示。
+
+    M5 契约：
+    - 超时（``timeout_seconds``）→ status=timeout 的结构化终止。
+    - token 预算（``max_tokens``，经 Agent.budget 硬检查）→ status=budget_exceeded。
+    - 工具调用数（``max_tool_calls``）在结束后检查 → 超限标记 budget_exceeded。
     """
-    async for event in context.run(task):
-        observe_subagent_event(context, name, event)
-    return reply_text(context.messages.data)
+    usage: dict = {}
+    status = "completed"
+    timeout = sub_spec.timeout_seconds
+    try:
+        if timeout and timeout > 0:
+
+            async def _run():
+                async for event in context.run(task):
+                    observe_subagent_event(context, name, event)
+
+            await asyncio.wait_for(_run(), timeout=timeout)
+        else:
+            async for event in context.run(task):
+                observe_subagent_event(context, name, event)
+    except asyncio.TimeoutError:
+        status = "timeout"
+    except BudgetExceededError:
+        status = "budget_exceeded"
+    except Exception as exc:  # noqa: BLE001 — 结构化终止，不吞错误详情
+        status = "error"
+        usage["error"] = f"{type(exc).__name__}: {exc}"[:200]
+
+    messages = context.messages.data
+    summary = reply_text(messages)
+    tool_calls = _count_tool_calls(messages)
+    last_usage = getattr(context.agent, "last_usage", None)
+    if last_usage:
+        usage["tokens"] = last_usage
+    usage["tool_calls"] = tool_calls
+    usage["model_calls"] = getattr(
+        getattr(context.agent, "budget", None), "model_calls", 0
+    )
+    if status == "completed" and sub_spec.max_tool_calls > 0:
+        if tool_calls > sub_spec.max_tool_calls:
+            status = "budget_exceeded"
+    if status != "completed":
+        summary = summary or f"子 agent {name!r} 未完成（{status}）"
+    return SubAgentResult(
+        status=status,
+        summary=summary,
+        artifacts=[
+            getattr(getattr(m, "content", None), "tool_call_id", "")
+            for m in messages
+            if m.role == "assistant"
+        ],
+        evidence=[],
+        assumptions=[],
+        unresolved_questions=[],
+        verification=[],
+        usage=usage,
+    )
+
+
+def _count_tool_calls(messages) -> int:
+    count = 0
+    for m in messages:
+        content = getattr(m, "content", None)
+        if m.role == "assistant" and getattr(content, "type", "") == "function":
+            count += 1
+    return count
 
 
 def make_delegate_tool(
@@ -179,14 +387,17 @@ def make_delegate_tool(
             return ToolOutput.fail("delegate 需要运行在支持帧栈的 Runner 上")
         if getattr(context, "thread", None) is None:
             return ToolOutput.fail("delegate 需要绑定 thread 的 Runner")
+        denied = check_delegation_allowed(context, sub_spec, name)
+        if denied is not None:
+            return ToolOutput.fail(denied)
 
         frame = await build_sub_frame(context, name, sub_spec)
         context.push_frame(frame)
         try:
-            answer = await run_sub_agent(context, name, task)
+            result = await run_sub_agent(context, name, task, sub_spec)
         finally:
             await context.pop_frame()
-        return ToolOutput.succeed(answer or f"子 agent {name!r} 未产出文本答复")
+        return ToolOutput.succeed(result.to_json())
 
     resolved_name = tool_name or f"delegate_to_{name}"
     resolved_desc = description or (
@@ -243,14 +454,17 @@ def make_subagent_tool(subs: dict[str, SubAgentSpec]) -> FunctionTool:
         if sub_spec is None:
             available = ", ".join(names) or "（无）"
             return ToolOutput.fail(f"未知子 agent type={type!r}；可用：{available}")
+        denied = check_delegation_allowed(context, sub_spec, type)
+        if denied is not None:
+            return ToolOutput.fail(denied)
 
         frame = await build_sub_frame(context, type, sub_spec)
         context.push_frame(frame)
         try:
-            answer = await run_sub_agent(context, type, task)
+            result = await run_sub_agent(context, type, task, sub_spec)
         finally:
             await context.pop_frame()
-        return ToolOutput.succeed(answer or f"子 agent {type!r} 未产出文本答复")
+        return ToolOutput.succeed(result.to_json())
 
     catalog = "\n".join(
         f"- {name}: {(spec.system or '').strip() or '（无描述）'}"
