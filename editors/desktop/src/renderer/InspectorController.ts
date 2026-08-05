@@ -262,7 +262,7 @@ export class InspectorController {
     if (!host) return;
     const plan = thread?.plan;
     if (!plan) {
-      host.innerHTML = `<div class="inspector-empty">当前任务还没有计划</div>`;
+      host.innerHTML = `<div class="inspector-empty"><span class="inspector-empty-icon">${renderIcon("file-text")}</span><span>当前任务还没有计划</span></div>`;
       return;
     }
     const steps = plan.steps
@@ -303,7 +303,7 @@ export class InspectorController {
         };
       });
     if (!changes.length) {
-      host.innerHTML = `<div class="inspector-empty">暂无文件变更</div>`;
+      host.innerHTML = `<div class="inspector-empty"><span class="inspector-empty-icon">${renderIcon("code-xml")}</span><span>暂无文件变更</span></div>`;
       return;
     }
     host.innerHTML = `<ul class="inspector-changes">${changes
@@ -323,7 +323,7 @@ export class InspectorController {
     if (!host) return;
     const run = thread?.activeRun;
     if (!run) {
-      host.innerHTML = `<div class="inspector-empty">当前任务没有活动运行</div>`;
+      host.innerHTML = `<div class="inspector-empty"><span class="inspector-empty-icon">${renderIcon("server")}</span><span>当前任务没有活动运行</span></div>`;
       return;
     }
     const elapsed = Math.max(0, Math.round((Date.now() - run.startedAt) / 1000));

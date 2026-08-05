@@ -60,3 +60,25 @@ pinnable, Escape closes non-pinned, focus returns to the trigger.
 - ❌ glass blur, big shadows, nested cards, purple-pink gradients, decorative
   animation, emoji-as-icon, body text < 12px, mixing Codicons and Lucide at
   the same level
+
+## Component state specs (design-system skill, 2026-08-06)
+
+Every control family defines Default / Hover / Active / Disabled
+explicitly; states use tokens only (no raw hex in components).
+
+| Family | Default | Hover | Active | Disabled |
+|---|---|---|---|---|
+| Tab button | transparent, text-secondary | fg 5% bg | fg 9% bg | opacity .45 |
+| Primary (new-task, Send) | primary bg | opacity .92 | translateY(.5px), .85 | opacity .45 |
+| Icon button (28px) | subtle bg, shadow-border | (existing) | scale(.94) | opacity .45 |
+| File tree row | transparent | fg 5% bg | fg 8% bg | — |
+| Approval / composer actions | per-variant | (existing) | scale(.97) | opacity .45 |
+| Pill / chip | transparent | fg 6% bg | scale(.97) | — |
+| New-session card | subtle, shadow | lift -1px, text-primary | (active: primary ring) | opacity .5, not-allowed |
+| Thread row | transparent, 2px border-left | primary 6% | — | — |
+| Terminal line | mono 12px/1.6 | — | — | — |
+
+Motion: press feedback is `transform: scale(.94–.97)` only (D3.5 rule);
+`prefers-reduced-motion` disables all press transforms.  Focus: global
+`:focus-visible` ring (primary 55% at 2px, offset 2px) — never removed
+silently.
