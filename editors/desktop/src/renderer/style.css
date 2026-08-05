@@ -4531,6 +4531,90 @@ html:has(.desktop-shell.macos) .sonner-toaster {
 .thread-row:hover .thread-row-delete { opacity: 0.4; }
 .thread-row-delete:hover { opacity: 1 !important; color: var(--error, #dc2626); }
 
+/* ── D3.1: Project → Thread 导航 ─────────────────────────────── */
+
+.thread-search {
+  position: relative;
+  margin: 0 10px 6px;
+}
+.thread-search-icon {
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 12px;
+  opacity: 0.4;
+  pointer-events: none;
+}
+.thread-search-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 5px 8px 5px 26px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--foreground) 4%, transparent);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: inherit;
+  outline: none;
+  transition: border-color 120ms;
+}
+.thread-search-input:focus {
+  border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+}
+.thread-search-input::placeholder { opacity: 0.4; }
+
+.project-group { margin-bottom: 2px; }
+.project-group-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  opacity: 0.75;
+}
+.project-group-header:hover { opacity: 1; }
+.project-chevron { font-size: 11px; opacity: 0.6; flex-shrink: 0; }
+.project-group-name {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.project-group-count {
+  font-size: 10px;
+  opacity: 0.45;
+  font-weight: 500;
+}
+.project-pin {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 11px;
+  opacity: 0;
+  padding: 1px 2px;
+}
+.project-group-header:hover .project-pin { opacity: 0.45; }
+.project-pin:hover { opacity: 1 !important; }
+
+/* D3.1 状态：running / review / error */
+.thread-status.review {
+  background: #eab308;
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.15);
+}
+.thread-status.error { background: #ef4444; }
+.thread-review-badge {
+  font-size: 10px;
+  font-weight: 600;
+  color: #eab308;
+  letter-spacing: 0.2px;
+}
+
 /* ── Composer ─────────────────────────────────────────────────────── */
 
 .composer {
