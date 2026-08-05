@@ -88,6 +88,8 @@ VALID_COMMANDS = frozenset(
         "artifact/reject",
         "artifact/complete",
         "artifact/validate",
+        # P3: HPC 提交记录查询（Desktop Inspector 任务页）
+        "hpc/submissions",
     }
 )
 
@@ -113,6 +115,8 @@ SERVER_EVENTS = frozenset(
         # G1: Plan / Artifact 领域状态事件（全量状态，CLI 与 Desktop 共用）
         "plan/state",
         "artifact/state",
+        # P3: HPC 提交记录（任务页）
+        "hpc/submissions",
     }
 )
 

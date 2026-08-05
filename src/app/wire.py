@@ -3172,6 +3172,27 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
             emit_error(str(exc), where=cmd)
         return runner
 
+    # ── P3: HPC 提交记录查询（Desktop Inspector 任务页）───────────────
+    if cmd == "hpc/submissions":
+        thread_id = command.get("thread_id") or state.get("thread_id", "")
+        try:
+            from electromind.hpc import SubmissionStore
+
+            store = SubmissionStore()
+            records = store.find_by_thread(thread_id) if thread_id else store.all()
+            _emit_jsonrpc(
+                "hpc/submissions",
+                {
+                    "thread_id": thread_id,
+                    "submissions": [
+                        r.to_dict() for r in sorted(records, key=lambda r: r.created_at)
+                    ],
+                },
+            )
+        except Exception as exc:  # noqa: BLE001 — 查询失败不算协议错误
+            emit_error(f"hpc/submissions 查询失败: {exc}", where=cmd)
+        return runner
+
     # ── Slash commands: intercepted BEFORE opening a runner ────────────
     # Known slash commands are read-only local capabilities; /help and
     # /sessions must work even without an open runner (no sandbox wake).

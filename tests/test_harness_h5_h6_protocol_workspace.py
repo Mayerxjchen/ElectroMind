@@ -64,6 +64,14 @@ def test_valid_commands():
     assert "initialize" in VALID_COMMANDS
 
 
+def test_p3_hpc_submissions_command_and_event_declared():
+    """P3: hpc/submissions 查询命令 + 响应事件进入 v2 协议。"""
+    from electromind.harness.protocol_v2 import SERVER_EVENTS
+
+    assert "hpc/submissions" in VALID_COMMANDS
+    assert "hpc/submissions" in SERVER_EVENTS
+
+
 # ============================================================================
 # Idempotency
 # ============================================================================

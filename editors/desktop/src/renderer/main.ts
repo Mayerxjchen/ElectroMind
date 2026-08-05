@@ -41,6 +41,7 @@ import type {
   EnvironmentCheck,
   ArtifactPreview,
   ArtifactSummary,
+  HpcSubmissionsPayload,
   MentionFile,
   MentionSource,
   NewSessionOptions,
@@ -1734,6 +1735,7 @@ async function start(): Promise<void> {
     skills: [] as Skill[],
     skillsState: null as SkillsStatePayload | null,
     executionContextState: null as ExecutionContextStatePayload | null,
+    hpcSubmissions: [] as HpcSubmissionsPayload["submissions"],
     runtime: initialRuntime,
   };
   const historyDockButton = findRequired<HTMLButtonElement>("[data-history-dock]");
@@ -2674,6 +2676,62 @@ async function start(): Promise<void> {
     skillsList.innerHTML = html;
   }
 
+  /** P3.8: 渲染 HPC 提交记录（Inspector 任务页）。 */
+  function renderJobsView(): void {
+    const body = document.querySelector<HTMLElement>('[data-inspector-view="jobs"]');
+    if (!body) {
+      return;
+    }
+    const subs = uiState.hpcSubmissions;
+    if (subs.length === 0) {
+      body.innerHTML = `
+        <div class="inspector-placeholder">暂无 HPC 任务记录。
+          <div class="hpc-hint">提交经 hpc-submit skill 后，这里会显示 job 状态、rsess 会话与恢复信息。</div>
+        </div>`;
+      return;
+    }
+    const rows = subs.map((s) => {
+      const stateCls = jobStateClass(s.state);
+      const stateLabel = s.state || "unknown";
+      return `
+        <div class="hpc-job-card">
+          <div class="hpc-job-head">
+            <span class="hpc-job-id" title="${escapeHtml(s.submission_id)}">${escapeHtml(s.job_id || s.submission_id)}</span>
+            <span class="hpc-job-state ${stateCls}">${escapeHtml(stateLabel)}</span>
+          </div>
+          <div class="hpc-job-meta">
+            <div><span class="hpc-label">run</span> ${escapeHtml(s.run_id)}</div>
+            <div><span class="hpc-label">rsess</span> ${escapeHtml(s.rsess_session || "—")}</div>
+            <div><span class="hpc-label">workdir</span> ${escapeHtml(s.remote_workdir || "—")}</div>
+            <div><span class="hpc-label">stdout</span> ${escapeHtml(s.stdout_path || "—")}</div>
+            ${s.script_sha256 ? `<div><span class="hpc-label">script</span> <code>${escapeHtml(s.script_sha256.slice(0, 12))}…</code></div>` : ""}
+            ${s.input_sha256 ? `<div><span class="hpc-label">input</span> <code>${escapeHtml(s.input_sha256.slice(0, 12))}…</code></div>` : ""}
+          </div>
+          ${s.state === "unknown" || !s.state ? `<div class="hpc-unknown-note">状态未知（查询失败或未 reconcile），未猜测为成功/失败。</div>` : ""}
+        </div>`;
+    }).join("");
+    body.innerHTML = `
+      <div class="file-panel-header"><span class="file-panel-title">HPC 任务</span></div>
+      <div class="hpc-jobs-list">${rows}</div>`;
+  }
+
+  function jobStateClass(state: string): string {
+    switch (state) {
+      case "completed":
+        return "hpc-state-ok";
+      case "failed":
+      case "timeout":
+      case "oom":
+        return "hpc-state-bad";
+      case "running":
+        return "hpc-state-run";
+      case "queued":
+        return "hpc-state-queue";
+      default:
+        return "hpc-state-unknown";
+    }
+  }
+
   function toggleSkillsPanel(show: boolean): void {
     if (show) {
       sessionList.hidden = true;
@@ -3330,6 +3388,12 @@ async function start(): Promise<void> {
       uiState.executionContextState =
         transition.kind === "clear" ? null : transition.state;
       renderExecutionContext();
+    }
+
+    if (event.method === "hpc/submissions") {
+      const payload = event.params as unknown as HpcSubmissionsPayload;
+      uiState.hpcSubmissions = payload?.submissions ?? [];
+      renderJobsView();
     }
 
     if (event.method === "ToolCallBegin") {
@@ -4195,6 +4259,15 @@ async function start(): Promise<void> {
     if (tab === "runtime") {
       void ensureSandboxPanelLoaded();
     }
+    if (tab === "jobs") {
+      void refreshHpcSubmissions();
+    }
+  }
+
+  /** P3.8: 打开任务页时向 wire 请求该 thread 的 HPC 提交记录。 */
+  async function refreshHpcSubmissions(): Promise<void> {
+    const tid = uiState.runtime.currentThreadId ?? "";
+    await window.desktop.sendWireCommand({ cmd: "hpc/submissions", thread_id: tid });
   }
 
   const inspectorController = new InspectorController({

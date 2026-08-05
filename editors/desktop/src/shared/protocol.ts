@@ -260,7 +260,9 @@ export type WireCommand =
   | { cmd: "artifact/accept"; thread_id?: string; artifact_id: string; who?: string }
   | { cmd: "artifact/reject"; thread_id?: string; artifact_id: string; reason?: string }
   | { cmd: "artifact/complete"; thread_id?: string; artifact_id: string }
-  | { cmd: "artifact/validate"; thread_id?: string; artifact_id: string; parser: string };
+  | { cmd: "artifact/validate"; thread_id?: string; artifact_id: string; parser: string }
+  // P3: HPC 提交记录查询（Inspector 任务页）
+  | { cmd: "hpc/submissions"; thread_id?: string };
 
 // ── G1: Plan 领域状态（镜像后端 PlanState，见 execution/plan.py）─────
 
@@ -327,6 +329,28 @@ export type ArtifactManifest = {
   created_at: number;
   scheduler: string;
   job_id: string;
+};
+
+// ── P3: HPC 提交记录（镜像后端 SubmissionRecord）───────────────────
+
+export type HpcSubmission = {
+  submission_id: string;
+  thread_id: string;
+  run_id: string;
+  rsess_session: string;
+  remote_workdir: string;
+  script_sha256: string;
+  input_sha256: string;
+  job_id: string;
+  state: string;
+  stdout_path: string;
+  created_at: number;
+  updated_at: number;
+};
+
+export type HpcSubmissionsPayload = {
+  thread_id: string;
+  submissions: HpcSubmission[];
 };
 
 export type DesktopApi = {
