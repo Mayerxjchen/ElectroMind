@@ -226,9 +226,9 @@ rewrite of the Timeline.
 ### Acceptance (data layer)
 
 - [x] Consecutive tool calls aggregated (pure projection, tests 1–3)
-- [ ] Completed Activity collapses by default (D3.4 visuals)
-- [ ] Failed Activity auto-expands (D3.4 visuals)
-- [ ] Approval operable inline (D3.4; ApprovalItem projected now)
+- [x] Completed Activity collapses by default (D3.4 visuals)
+- [x] Failed Activity auto-expands (D3.4 visuals)
+- [x] Approval operable inline (D3.4; ApprovalItem projected now)
 - [x] Job status updates the same item (projection test 9)
 - [x] Artifact click opens Inspector (D3.2 attrs preserved via adapter)
 - [x] 5000 items: no visible perf regression (full < 100ms, step < 5ms)
@@ -283,13 +283,13 @@ Codex-style info hierarchy: `＋  Local▾  Plan▾  Ask▾  Model▾  ↑/■`.
 
 ### Acceptance
 
-- [ ] Target / mode / permission / model visible at a glance
-- [ ] Send switches to Stop while running
-- [ ] Permission not conveyed by ambiguous icons
-- [ ] Attachment menu keyboard-accessible
-- [ ] Input focus survives Timeline updates
-- [ ] Errors shown near the Composer
-- [ ] Options persist across restarts as expected
+- [x] Target / mode / permission / model visible at a glance
+- [x] Send switches to Stop while running
+- [x] Permission not conveyed by ambiguous icons
+- [x] Attachment menu keyboard-accessible
+- [x] Input focus survives Timeline updates
+- [x] Errors shown near the Composer
+- [x] Options persist across restarts as expected
 
 ---
 

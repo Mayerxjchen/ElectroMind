@@ -24,8 +24,26 @@
     "job_state_in_place": true,
     "recovery_visible_quiet": true,
     "5000_virtuallist_bounded": true,
-    "projection_tests_green": true
+    "projection_tests_green": true,
+    "composer": {
+      "target_mode_permission_model_at_glance": true,
+      "send_switches_to_stop": true,
+      "permission_text_not_ambiguous_icons": true,
+      "attachment_menu_keyboard_accessible": true,
+      "input_focus_survives_timeline_updates": true,
+      "errors_near_composer": true,
+      "options_persist_across_restarts": true
+    },
+    "cdp_composer_checks": "14/14",
+    "cdp_inspector_regression": "22/22",
+    "unit_tests": 153
   },
+  "composer_root_causes_fixed": [
+    "dual-bundle ThreadStore split (renderer.js vs react-shell.js each inlined its own singleton) — fixed by window.__electromindStore + sharedThreadStore() (ecc3e6a)",
+    "useActiveThreadSnapshot returned a fresh object per call → React useSyncExternalStore 'getSnapshot should be cached' crash → useShallow (a1714a0)",
+    "boot init race: single optional call could miss __initReactShell__ → poll-based init (ecc3e6a)",
+    "window opened at 900px height vs ~638px macOS work area → composer hidden behind the dock → workArea clamp in createWindow (second agent)"
+  ],
   "design_basis": [
     "ui-ux-pro-max ux domain: prefers-reduced-motion (High severity)",
     "ui-ux-pro-max ux domain: 4.5:1 contrast for normal text",
