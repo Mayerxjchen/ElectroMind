@@ -59,6 +59,20 @@ export function useActiveThread(): ThreadState | null {
   });
 }
 
+/** Reactive per-thread snapshot — a NEW object every store emit, so
+ *  components re-render when the active thread's fields change in place
+ *  (ThreadStore mutates the thread object; its stable ref would otherwise
+ *  make ``useActiveThread`` skip re-render).  The Composer uses this so
+ *  mode/model/autonomy selects, the permission readout and the error
+ *  surface update live.  Shallow — nested arrays/maps keep their refs. */
+export function useActiveThreadSnapshot(): ThreadState | null {
+  return useAppStore((s) => {
+    const id = s.activeThreadId;
+    const t = id ? (s.threads[id] ?? null) : null;
+    return t ? { ...t } : null;
+  });
+}
+
 export function useThread(id: ThreadId): ThreadState | undefined {
   return useAppStore((s) => s.threads[id]);
 }

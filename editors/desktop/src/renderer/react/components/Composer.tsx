@@ -10,7 +10,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useActiveThread, useActivityState, useBridgeActive } from "../useStore";
+import { useActiveThreadSnapshot, useActivityState, useBridgeActive } from "../useStore";
 import {
   autonomyIsRisky,
   isRiskDismissed,
@@ -68,7 +68,10 @@ export const Composer: React.FC<Props> = ({
   onModelChange,
   onAutonomyChange,
 }) => {
-  const thread = useActiveThread();
+  // Reactive snapshot: ThreadStore mutates the thread in place, so the
+  // stable ref from useActiveThread would never re-render on field changes
+  // (mode/model/autonomy selects, permission readout, error surface).
+  const thread = useActiveThreadSnapshot();
   const activity = useActivityState();
   const [text, setText] = useState("");
   const [enqueueNext, setEnqueueNext] = useState(false);
