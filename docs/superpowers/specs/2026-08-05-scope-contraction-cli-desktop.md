@@ -133,6 +133,11 @@ editors/desktop/
 
 ```text
 src/app/http_server.py
+```
+
+**已删除（2026-08-05，见第 11 节更新记录）：**
+
+```text
 editors/web/
 editors/vscode/
 ```
@@ -175,7 +180,19 @@ non-blocking（不阻断）: http / web / vscode
 
 ## 10. 不做的事（本阶段）
 
-- 不删除 HTTP / Web / VS Code 代码与测试
+- 不删除 HTTP 代码与测试（Web / VS Code 已于 2026-08-05 按用户决定删除，见下）
 - 不给新功能同步适配 experimental 入口
 - 不把 Wire / HTTP 作为公开 API 承诺兼容（Wire 仅作 Desktop 内部传输层）
 - 暂不落地真实 CI 流水线（先落文档契约）
+
+## 11. 更新记录
+
+**2026-08-05（用户决定）：删除 Web 与 VS Code。**
+
+- `editors/web/`、`editors/vscode/` 整体删除（`git rm -r`，历史版本可从 git 找回）。
+- 本节原「不删除」表述作废：范围收缩进入第二阶段——不再是"标记 experimental 保留"，
+  而是直接移除不使用的入口。
+- 同步更新：README（支持级别/目录/章节）、AGENTS.md（布局与支持级别）。
+- 仍在 maintenance-only 的 experimental 入口：`src/app/http_server.py`（HTTP），保留代码与测试。
+- 影响面：无运行时代码引用这两个目录（wire/cli 注释中的「插件/前端」泛指已不指向具体产品）；
+  三端一致性验收项从验收范围移除。

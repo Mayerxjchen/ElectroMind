@@ -9,9 +9,10 @@ AI Agent —— async Python 库（Agent + Runner + Sandbox + Skills）+ 终端 
 - **正式支持**：CLI（`src/app/cli*` `src/app/repl*`）与 Desktop（`editors/desktop/`）。
   CLI 是完整功能入口与参考实现；Desktop 是 CLI 能力的图形化呈现。
 - **Wire（--wire）**：Desktop 的**内部传输层**，不做公开 API 兼容承诺，仅服务 Desktop。
-- **Experimental / maintenance-only**：`src/app/http_server.py`、`editors/web/`、`editors/vscode/`。
-  不删除、不新适配功能、不承诺兼容；既有测试保留以防腐化。
-- 新功能改动核心时只要求 CLI + Desktop + Wire 保持一致；不验收 HTTP/Web/VS Code 一致性。
+- **Experimental / maintenance-only**：`src/app/http_server.py`。不删除、不新适配功能、
+  不承诺兼容；既有测试保留以防腐化。
+- **已删除**（2026-08-05）：`editors/web/`、`editors/vscode/`（历史版本可从 git 找回）。
+- 新功能改动核心时只要求 CLI + Desktop + Wire 保持一致；不验收 HTTP 一致性。
 
 ## 仓库布局
 
@@ -42,7 +43,7 @@ src/app/                    CLI / REPL 应用层（`uv run electromind` 入口�
   http_server.py            --http SSE 后端（experimental / maintenance-only）
   sessions.py setup.py     会话管理 / 首次 API Key 引导
   commands/ output/ tui/   子命令、输出渲染、TUI 组件
-editors/                    desktop（Electron，正式支持）/ vscode、web（experimental）
+editors/                    desktop（Electron，正式支持）
 skills/                     内建科学计算技能包（CP2K / VASP / LAMMPS / DeepMD / MCMC），
                             经 uv_build data 打进安装产物
 tests/                      pytest（应用 / 库 / sandbox / 协议）
