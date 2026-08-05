@@ -48,8 +48,17 @@
   <script src="./react-shell.js"></script>
   <script>
     // Initialize React shell after vanilla renderer mounts, passing the
-    // live SessionManager so thread operations are not no-ops.
-    window.__initReactShell__?.(window.__electromindSM);
+    // live SessionManager so thread operations are not no-ops.  Poll
+    // until the bundle has defined the entry — evaluation can be
+    // delayed on slow loads / reloads, and a no-op call would leave the
+    // React UI unmounted.
+    (function initReactShell() {
+      if (typeof window.__initReactShell__ === "function") {
+        window.__initReactShell__(window.__electromindSM);
+        return;
+      }
+      setTimeout(initReactShell, 100);
+    })();
   </script>
 </body>
 

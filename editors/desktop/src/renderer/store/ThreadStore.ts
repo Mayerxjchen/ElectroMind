@@ -167,7 +167,7 @@ interface ThreadStateInternal extends ThreadState {
 // The store
 // ---------------------------------------------------------------------------
 
-class ThreadStore {
+export class ThreadStore {
   private state: AppState;
   private listeners: Set<Listener> = new Set();
 

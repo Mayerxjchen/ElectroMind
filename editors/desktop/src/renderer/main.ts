@@ -1,6 +1,14 @@
 import { getThreadStore } from "./store/ThreadStore";
 import { SessionManager } from "./store/SessionManager";
 import { InspectorController } from "./InspectorController";
+
+// D3.4-2: the renderer and react-shell bundles each bundle their own copy
+// of ThreadStore — without a shared instance the React side would read a
+// never-updated store (empty sessions, stale bridge state).  Expose the
+// vanilla store here (module level, before react-shell.js evaluates) so
+// the React side binds to the SAME singleton (single source of truth).
+(window as unknown as Record<string, unknown>).__electromindStore =
+  getThreadStore();
 import { isInspectorTab, type InspectorTab } from "./inspector-model";
 import { timelineProjectionEnabled } from "./timeline-projection";
 import { MessageRenderer } from "./MessageRenderer";

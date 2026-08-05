@@ -7,7 +7,7 @@
  */
 
 import { create } from "zustand";
-import { getThreadStore } from "../store/ThreadStore";
+import { getThreadStore, type ThreadStore } from "../store/ThreadStore";
 import type {
   AppState,
   ExecutionContextState,
@@ -31,14 +31,24 @@ export type {
 
 // ── Store binding ────────────────────────────────────────────────────
 
+/** The vanilla shell exposes its ThreadStore singleton on window
+ *  (renderer.js sets __electromindStore at module level).  The two
+ *  esbuild bundles each inline their own copy of ThreadStore — without
+ *  sharing the instance, the React side would subscribe to a store that
+ *  nothing ever updates.  Falls back to the local copy pre-activation. */
+export function sharedThreadStore(): ThreadStore {
+  const w = window as unknown as { __electromindStore?: ThreadStore };
+  return w.__electromindStore ?? getThreadStore();
+}
+
 function snapshot(): AppState {
-  return getThreadStore().getState();
+  return sharedThreadStore().getState();
 }
 
 export const useAppStore = create<AppState>(() => snapshot());
 
-// Keep the Zustand store in sync with the vanilla ThreadStore
-getThreadStore().subscribe((state) => {
+// Keep the Zustand store in sync with the shared ThreadStore
+sharedThreadStore().subscribe((state) => {
   useAppStore.setState({ ...state }, true);
 });
 
