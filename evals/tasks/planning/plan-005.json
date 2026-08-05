@@ -1,0 +1,11 @@
+{
+  "id": "plan-005",
+  "category": "planning",
+  "title": "批准→执行→完成全流程",
+  "input": "为任务生成并执行计划（plan-005）",
+  "driver": "plan_complete_flow",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

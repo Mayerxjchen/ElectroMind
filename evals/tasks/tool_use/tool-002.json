@@ -1,0 +1,50 @@
+{
+  "id": "tool-002",
+  "category": "tool_use",
+  "title": "写入文件",
+  "input": "任务 tool-002：写入文件",
+  "system": "你是严格的确定性助手。请按用户要求调用工具，完成后用简短文本回复。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "write_file",
+          "arguments": {
+            "path": "out.txt",
+            "content": "written by eval"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "写入完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "write_file"
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "out.txt",
+        "contains": [
+          "written by eval"
+        ]
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

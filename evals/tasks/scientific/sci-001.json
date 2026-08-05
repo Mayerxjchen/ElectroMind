@@ -1,0 +1,11 @@
+{
+  "id": "sci-001",
+  "category": "scientific",
+  "title": "数值带单位与来源",
+  "input": "科学计算任务 sci-001：数值带单位与来源",
+  "driver": "units_and_sources",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

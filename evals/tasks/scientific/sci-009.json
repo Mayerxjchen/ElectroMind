@@ -1,0 +1,64 @@
+{
+  "id": "sci-009",
+  "category": "scientific",
+  "title": "写读往返",
+  "input": "任务 sci-009：写读往返",
+  "system": "你是严格的计算助手。请执行工具，保留单位与来源。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "write_file",
+          "arguments": {
+            "path": "copy.txt",
+            "content": "往返数据"
+          }
+        }
+      ]
+    },
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "copy.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "write_file"
+      },
+      {
+        "name": "read_file"
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "copy.txt",
+        "contains": [
+          "往返数据"
+        ]
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

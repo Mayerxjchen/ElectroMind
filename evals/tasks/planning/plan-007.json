@@ -1,0 +1,11 @@
+{
+  "id": "plan-007",
+  "category": "planning",
+  "title": "状态与指纹矩阵",
+  "input": "为任务生成并执行计划（plan-007）",
+  "driver": "plan_status_matrix",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

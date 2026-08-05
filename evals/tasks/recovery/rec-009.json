@@ -1,0 +1,11 @@
+{
+  "id": "rec-009",
+  "category": "recovery",
+  "title": "连续 Run 身份唯一",
+  "input": "恢复任务 rec-009：连续 Run 身份唯一",
+  "driver": "run_identity",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 20
+  }
+}

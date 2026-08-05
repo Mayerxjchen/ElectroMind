@@ -1,0 +1,11 @@
+{
+  "id": "plan-008",
+  "category": "planning",
+  "title": "内容指纹稳定性",
+  "input": "为任务生成并执行计划（plan-008）",
+  "driver": "fingerprint_stability",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

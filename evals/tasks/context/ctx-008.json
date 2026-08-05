@@ -1,0 +1,27 @@
+{
+  "id": "ctx-008",
+  "category": "context",
+  "title": "特殊字符保留",
+  "input": "任务 ctx-008：保留 𝝺 与 ΔG 与 𝞅 单位。约束：必须使用 UTF-8 编码。",
+  "system": "你是严格的确定性助手。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "text",
+      "content": "完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "constraints": [
+      "𝝺",
+      "ΔG",
+      "𝞅"
+    ]
+  }
+}

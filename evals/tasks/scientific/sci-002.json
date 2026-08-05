@@ -1,0 +1,11 @@
+{
+  "id": "sci-002",
+  "category": "scientific",
+  "title": "ToolCall/ToolResult 配对",
+  "input": "科学计算任务 sci-002：ToolCall/ToolResult 配对",
+  "driver": "pairing",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "rec-008",
+  "category": "recovery",
+  "title": "排队输入按序消费",
+  "input": "恢复任务 rec-008：排队输入按序消费",
+  "driver": "queue_after_run",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 20
+  }
+}

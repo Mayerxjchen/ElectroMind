@@ -1,0 +1,11 @@
+{
+  "id": "sci-011",
+  "category": "scientific",
+  "title": "Artifact 生命周期与 Provenance",
+  "input": "解析产物必须经历 completed→validated→accepted 且不可由创建者自行接受",
+  "driver": "artifact_lifecycle",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "plan-001",
+  "category": "planning",
+  "title": "计划全生命周期",
+  "input": "为任务生成并执行计划（plan-001）",
+  "driver": "plan_lifecycle",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

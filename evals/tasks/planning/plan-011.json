@@ -1,0 +1,11 @@
+{
+  "id": "plan-011",
+  "category": "planning",
+  "title": "证据门强制",
+  "input": "无证据不得完成、无验证器不得验证",
+  "driver": "plan_evidence_gate",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

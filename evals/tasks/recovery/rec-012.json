@@ -1,0 +1,11 @@
+{
+  "id": "rec-012",
+  "category": "recovery",
+  "title": "子 Agent 治理契约",
+  "input": "深度硬限制、工具白名单、结构化结果",
+  "driver": "subagent_governance",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 15
+  }
+}

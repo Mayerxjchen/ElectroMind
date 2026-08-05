@@ -1,0 +1,49 @@
+{
+  "id": "tool-004",
+  "category": "tool_use",
+  "title": "执行命令",
+  "input": "任务 tool-004：执行命令",
+  "system": "你是严格的确定性助手。请按用户要求调用工具，完成后用简短文本回复。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "run_command",
+          "arguments": {
+            "command": "echo hello > cmd.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "执行完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "run_command"
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "cmd.txt",
+        "contains": [
+          "hello"
+        ]
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

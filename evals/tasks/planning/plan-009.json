@@ -1,0 +1,11 @@
+{
+  "id": "plan-009",
+  "category": "planning",
+  "title": "审批门（READY 才能批准）",
+  "input": "为任务生成并执行计划（plan-009）",
+  "driver": "plan_approval_gate",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "id": "rec-005",
+  "category": "recovery",
+  "title": "取消不重复副作用",
+  "input": "任务 rec-005：记录一次副作用后结束",
+  "system": "你是严格的确定性助手。高风险动作必须等待审批；被拒绝后改用安全方式完成任务。",
+  "max_turns": 6,
+  "cancel_after_events": 5,
+  "tools": [
+    "eval_side_effect"
+  ],
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "eval_side_effect",
+          "arguments": {
+            "name": "submit"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "完成"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "eval_side_effect"
+      }
+    ],
+    "state": {
+      "terminal": "cancelled",
+      "stop_reason": "cancelled",
+      "no_orphan_tool_results": true
+    },
+    "risk_level": "medium",
+    "timeout_seconds": 15,
+    "runs_required": 3
+  }
+}

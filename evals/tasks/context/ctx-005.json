@@ -1,0 +1,20 @@
+{
+  "id": "ctx-005",
+  "category": "context",
+  "title": "空响应结束",
+  "input": "任务 ctx-005：空响应结束。约束：必须使用 UTF-8 编码。",
+  "system": "你是严格的确定性助手。",
+  "max_turns": 8,
+  "provider": [],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "state": {
+      "stop_reason": "empty_response"
+    }
+  }
+}

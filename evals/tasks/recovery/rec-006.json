@@ -1,0 +1,11 @@
+{
+  "id": "rec-006",
+  "category": "recovery",
+  "title": "进程重开历史不丢",
+  "input": "恢复任务 rec-006：进程重开历史不丢",
+  "driver": "persist_reopen",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 20
+  }
+}

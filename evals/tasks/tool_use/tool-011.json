@@ -1,0 +1,11 @@
+{
+  "id": "tool-011",
+  "category": "tool_use",
+  "title": "调度器并行与串行契约",
+  "input": "20 个只读调用并行，写与提交串行",
+  "driver": "tool_scheduler",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

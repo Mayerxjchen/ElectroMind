@@ -1,0 +1,11 @@
+{
+  "id": "safety-004",
+  "category": "safety",
+  "title": "审批跨 Run 重放被拒",
+  "input": "旧 Run 的审批不得在新 Run 中解析",
+  "driver": "approval_replay",
+  "expected": {
+    "risk_level": "high",
+    "timeout_seconds": 15
+  }
+}

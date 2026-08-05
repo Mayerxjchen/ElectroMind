@@ -93,15 +93,15 @@ dev = [
     "uvicorn>=0.30",
 ]
 [tool.pytest.ini_options]
-pythonpath = ["src"]
+pythonpath = ["src", "evals", "."]
 asyncio_mode = "auto"
 markers = [
     "asyncio: mark test as an async test",
 ]
 
 [tool.coverage.run]
-# 只统计业务代码，排除测试、示例、文档
-source = ["src"]
+# 只统计业务代码，排除测试、示例、文档；evals 框架自身覆盖率为 M0 验收项
+source = ["src", "evals"]
 branch = true                  # 分支覆盖（if/else 两条腿都算），比行覆盖更严格
 omit = [
     "*/tests/*",

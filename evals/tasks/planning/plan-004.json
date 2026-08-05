@@ -1,0 +1,11 @@
+{
+  "id": "plan-004",
+  "category": "planning",
+  "title": "PlanStore 持久化 round-trip",
+  "input": "将已批准计划持久化并恢复",
+  "driver": "plan_store_roundtrip",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

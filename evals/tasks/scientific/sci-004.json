@@ -1,0 +1,11 @@
+{
+  "id": "sci-004",
+  "category": "scientific",
+  "title": "完成≠已验证≠已接受",
+  "input": "科学计算任务 sci-004：完成≠已验证≠已接受",
+  "driver": "completed_not_validated",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

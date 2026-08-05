@@ -1,0 +1,56 @@
+{
+  "id": "sci-007",
+  "category": "scientific",
+  "title": "确定性输入检查",
+  "input": "任务 sci-007：确定性输入检查",
+  "system": "你是严格的计算助手。请执行工具，保留单位与来源。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "write_file",
+          "arguments": {
+            "path": "check.py",
+            "content": "import sys\ntext = open('energy.out').read()\nassert 'Hartree' in text, '缺少单位'\nassert 'Total Energy' in text, '缺少能量行'\nprint('check ok')"
+          }
+        }
+      ]
+    },
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "run_command",
+          "arguments": {
+            "command": "python3 check.py"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "检查通过"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "energy.out",
+      "content": "Total Energy: -76.4 Hartree\n"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "write_file"
+      },
+      {
+        "name": "run_command"
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

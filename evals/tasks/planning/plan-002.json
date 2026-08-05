@@ -1,0 +1,11 @@
+{
+  "id": "plan-002",
+  "category": "planning",
+  "title": "批准后修订产生新版本",
+  "input": "为任务生成并执行计划（plan-002）",
+  "driver": "plan_revision",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

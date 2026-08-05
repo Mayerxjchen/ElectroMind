@@ -1,0 +1,57 @@
+{
+  "id": "tool-005",
+  "category": "tool_use",
+  "title": "字符串替换",
+  "input": "任务 tool-005：字符串替换",
+  "system": "你是严格的确定性助手。请按用户要求调用工具，完成后用简短文本回复。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "str_replace",
+          "arguments": {
+            "path": "data.txt",
+            "old_string": "hello",
+            "new_string": "goodbye"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "替换完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "str_replace",
+        "args": {
+          "path": "data.txt"
+        }
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "data.txt",
+        "contains": [
+          "goodbye eval"
+        ],
+        "must_not_contain": [
+          "hello eval"
+        ]
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

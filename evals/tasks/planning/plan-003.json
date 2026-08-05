@@ -1,0 +1,11 @@
+{
+  "id": "plan-003",
+  "category": "planning",
+  "title": "步骤依赖图完整",
+  "input": "为任务生成并执行计划（plan-003）",
+  "driver": "plan_dependencies",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

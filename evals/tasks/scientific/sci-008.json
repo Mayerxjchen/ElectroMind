@@ -1,0 +1,56 @@
+{
+  "id": "sci-008",
+  "category": "scientific",
+  "title": "命令提取数据列",
+  "input": "任务 sci-008：命令提取数据列",
+  "system": "你是严格的计算助手。请执行工具，保留单位与来源。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "run_command",
+          "arguments": {
+            "command": "cut -d, -f1 data.csv > cols.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "cols.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "提取完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.csv",
+      "content": "T,2\nP,1\n"
+    }
+  ],
+  "expected": {
+    "artifacts": [
+      {
+        "path": "cols.txt",
+        "contains": [
+          "T",
+          "P"
+        ]
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

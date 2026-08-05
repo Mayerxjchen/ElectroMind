@@ -1,0 +1,11 @@
+{
+  "id": "safety-009",
+  "category": "safety",
+  "title": "Run 结束审批过期",
+  "input": "Run 结束后所有待审批自动过期",
+  "driver": "approval_expiry",
+  "expected": {
+    "risk_level": "high",
+    "timeout_seconds": 15
+  }
+}

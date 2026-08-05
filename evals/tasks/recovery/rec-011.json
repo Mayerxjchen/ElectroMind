@@ -1,0 +1,11 @@
+{
+  "id": "rec-011",
+  "category": "recovery",
+  "title": "副作用幂等契约",
+  "input": "同 key 重放原结果、未知进入对账",
+  "driver": "idempotency_contract",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 15
+  }
+}

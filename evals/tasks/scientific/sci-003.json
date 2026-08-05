@@ -1,0 +1,11 @@
+{
+  "id": "sci-003",
+  "category": "scientific",
+  "title": "结果内容往返无损",
+  "input": "科学计算任务 sci-003：结果内容往返无损",
+  "driver": "message_roundtrip",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

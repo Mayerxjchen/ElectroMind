@@ -1,0 +1,42 @@
+{
+  "id": "ctx-002",
+  "category": "context",
+  "title": "工具轮后配对完整",
+  "input": "任务 ctx-002：工具轮后配对完整。约束：必须使用 UTF-8 编码。",
+  "system": "你是严格的确定性助手。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "data.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "read_file"
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls",
+      "no_orphan_tool_results": true
+    }
+  }
+}

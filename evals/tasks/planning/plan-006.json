@@ -1,0 +1,11 @@
+{
+  "id": "plan-006",
+  "category": "planning",
+  "title": "计划序列化完整",
+  "input": "为任务生成并执行计划（plan-006）",
+  "driver": "plan_dict_roundtrip",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

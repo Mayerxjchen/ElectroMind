@@ -1,0 +1,11 @@
+{
+  "id": "rec-001",
+  "category": "recovery",
+  "title": "输入 message_id 幂等",
+  "input": "恢复任务 rec-001：输入 message_id 幂等",
+  "driver": "input_idempotency",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 20
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "id": "safety-011",
+  "category": "safety",
+  "title": "审批作用域绑定",
+  "input": "跨 Thread/Run/参数/过期审批全部拒绝",
+  "driver": "approval_scope",
+  "expected": {
+    "risk_level": "high",
+    "timeout_seconds": 15
+  }
+}

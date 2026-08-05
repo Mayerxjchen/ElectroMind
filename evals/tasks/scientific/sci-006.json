@@ -1,0 +1,46 @@
+{
+  "id": "sci-006",
+  "category": "scientific",
+  "title": "结果书写带单位来源",
+  "input": "任务 sci-006：结果书写带单位来源",
+  "system": "你是严格的计算助手。请执行工具，保留单位与来源。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "write_file",
+          "arguments": {
+            "path": "result.md",
+            "content": "能量: -76.4 Hartree (源: energy.out)"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "artifacts": [
+      {
+        "path": "result.md",
+        "contains": [
+          "Hartree",
+          "energy.out"
+        ]
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

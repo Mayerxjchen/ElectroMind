@@ -1,0 +1,58 @@
+{
+  "id": "tool-008",
+  "category": "tool_use",
+  "title": "未知工具错误恢复",
+  "input": "任务 tool-008：未知工具错误恢复",
+  "system": "你是严格的确定性助手。请按用户要求调用工具，完成后用简短文本回复。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "unknown_tool_xyz",
+          "arguments": {
+            "path": "data.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "data.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "恢复完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "read_file",
+        "args": {
+          "path": "data.txt"
+        }
+      }
+    ],
+    "failed_calls": [
+      0
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

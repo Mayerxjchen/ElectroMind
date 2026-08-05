@@ -1,0 +1,11 @@
+{
+  "id": "plan-010",
+  "category": "planning",
+  "title": "步骤状态矩阵与不可变更新",
+  "input": "为任务生成并执行计划（plan-010）",
+  "driver": "plan_step_status",
+  "expected": {
+    "risk_level": "low",
+    "timeout_seconds": 15
+  }
+}

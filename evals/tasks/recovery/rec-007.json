@@ -1,0 +1,11 @@
+{
+  "id": "rec-007",
+  "category": "recovery",
+  "title": "副作用恢复后不重复",
+  "input": "恢复任务 rec-007：副作用恢复后不重复",
+  "driver": "side_effect_once",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 20
+  }
+}

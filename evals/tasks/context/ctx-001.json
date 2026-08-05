@@ -1,0 +1,28 @@
+{
+  "id": "ctx-001",
+  "category": "context",
+  "title": "用户约束完整保留",
+  "input": "任务 ctx-001：用户约束完整保留。约束：必须使用 UTF-8 编码。",
+  "system": "你是严格的确定性助手。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "text",
+      "content": "已完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "data.txt",
+      "content": "hello eval\n第二行\n"
+    }
+  ],
+  "expected": {
+    "constraints": [
+      "必须使用 UTF-8 编码"
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

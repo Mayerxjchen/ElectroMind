@@ -1,9 +1,16 @@
 from collections.abc import AsyncIterator
+from typing import TYPE_CHECKING
 
 from .message import Message, Messages, ToolCall
 from .provider import ProviderProtocol
 from .tool import FunctionTool, to_openai_tools
 from .usage import usage_to_dict
+
+if TYPE_CHECKING:
+    from ..context.manager import ContextInput, ContextManager
+    from .budget import RunBudget
+    from .capabilities import ModelCapabilities
+    from .retry import RetryPolicy
 
 
 class AgentCore:
@@ -14,6 +21,10 @@ class AgentCore:
         system: str | None = None,
         tools: list[FunctionTool] | None = None,
         max_turns: int = 24,
+        budget: "RunBudget | None" = None,
+        retry_policy: "RetryPolicy | None" = None,
+        capabilities: "ModelCapabilities | None" = None,
+        context_manager: "ContextManager | None" = None,
     ):
         self.provider = provider
         self.system = system
@@ -31,6 +42,14 @@ class AgentCore:
             raise ValueError("max_turns must be >= 1")
         self.max_turns = max_turns
         self.last_usage: dict | None = None
+        self.last_retry: dict | None = None
+        # M7：预算 / 重试 / 能力（可选注入，未注入时行为与旧版一致）
+        self.budget = budget
+        self.retry_policy = retry_policy
+        self.capabilities = capabilities
+        # M3：上下文构造器（可选注入；未注入时直发完整历史，与旧版一致）
+        self.context_manager = context_manager
+        self.last_context_budget = None
 
     def replace_runtime_context(
         self,
@@ -64,11 +83,44 @@ class AgentCore:
         messages: Messages,
         **run_kwargs,
     ) -> AsyncIterator[Message]:
-        stream = await self.provider.complete(
-            messages.to_openai(),
-            tools=self.tool_schemas,
-            **run_kwargs,
-        )
+        if self.budget is not None:
+            self.budget.check()  # 超预算 → BudgetExceededError（结构化终止）
+
+        # M3：上下文构造（预算检查 + 压缩）在发送前完成
+        outbound = messages.to_openai()
+        if self.context_manager is not None:
+            prepared = self.context_manager.prepare(
+                ContextInput(
+                    system=self.system or "",
+                    recent_messages=outbound,
+                    pinned_constraints=(
+                        self.context_manager.compactor.pinned_constraints
+                    ),
+                )
+            )
+            outbound = prepared.messages
+            self.last_context_budget = prepared.budget
+
+        if self.retry_policy is not None:
+            from .retry import run_with_retry
+
+            def _open():
+                return self.provider.complete(
+                    outbound,
+                    tools=self.tool_schemas,
+                    **run_kwargs,
+                )
+
+            stream, _ = await run_with_retry(
+                _open, policy=self.retry_policy, on_retry=self._on_provider_retry
+            )
+        else:
+            stream = await self.provider.complete(
+                outbound,
+                tools=self.tool_schemas,
+                **run_kwargs,
+            )
+
         tool_calls_by_idx: dict[int, dict] = {}
         self.last_usage = None
 
@@ -123,6 +175,14 @@ class AgentCore:
 
         for _, tool_call in sorted(tool_calls_by_idx.items()):
             yield Message(role="assistant", content=ToolCall.from_openai(tool_call))
+
+        # M7：模型调用后记账（含未知 usage 的保守估算路径由调用方决定）
+        if self.budget is not None:
+            self.budget.account_model_call(self.last_usage, conservative=False)
+
+    def _on_provider_retry(self, attempt: dict) -> None:
+        """重试回调：记录到 last_retry（结构化 Error Event 的数据源）。"""
+        self.last_retry = attempt
 
 
 # 兼容别名：规范名是 AgentCore；Agent 仅为兼容旧用法保留。

@@ -36,12 +36,24 @@ def func_wants_context(func) -> bool:
 
 
 class FunctionTool:
-    def __init__(self, name, description, parameters, func=None):
+    def __init__(self, name, description, parameters, func=None, effect=None):
         self.name = name
         self.description = description
         self.parameters = parameters
         self.func = func
         self.wants_context = func_wants_context(func)
+        # M4: 副作用声明（None = 未声明，正式 Runner 注册门拒绝）
+        self.effect = effect
+
+    def with_effect(self, effect) -> "FunctionTool":
+        """返回带 effect 声明的副本（不原地修改）。"""
+        return FunctionTool(
+            name=self.name,
+            description=self.description,
+            parameters=self.parameters,
+            func=self.func,
+            effect=effect,
+        )
 
     def to_dict(self):
         return {

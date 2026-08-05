@@ -11,6 +11,8 @@
 """
 
 from .agent import Agent, AgentCore
+from .budget import RunBudget
+from .capabilities import ModelCapabilities, resolve_model_capabilities
 from .events import (
     Event,
     ReasoningDelta,
@@ -46,6 +48,7 @@ from .provider import (
     Sglang,
     Vllm,
 )
+from .retry import RetryableError, RetryPolicy, classify_exception
 from .tool import FunctionTool, ToolOutput, to_openai_tools, tool
 from .turn_result import TurnResult
 
@@ -86,4 +89,10 @@ __all__ = [
     "reply_text",
     "to_openai_tools",
     "tool",
+    "RunBudget",
+    "ModelCapabilities",
+    "resolve_model_capabilities",
+    "RetryPolicy",
+    "RetryableError",
+    "classify_exception",
 ]

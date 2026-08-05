@@ -1,0 +1,63 @@
+{
+  "id": "sci-005",
+  "category": "scientific",
+  "title": "能量解析带单位",
+  "input": "任务 sci-005：能量解析带单位",
+  "system": "你是严格的计算助手。请执行工具，保留单位与来源。",
+  "max_turns": 8,
+  "provider": [
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "run_command",
+          "arguments": {
+            "command": "grep 'Total Energy' energy.out > parsed.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "tools",
+      "calls": [
+        {
+          "name": "read_file",
+          "arguments": {
+            "path": "parsed.txt"
+          }
+        }
+      ]
+    },
+    {
+      "type": "text",
+      "content": "解析完成"
+    }
+  ],
+  "fixtures": [
+    {
+      "path": "energy.out",
+      "content": "Total Energy: -76.4 Hartree\n"
+    }
+  ],
+  "expected": {
+    "tools": [
+      {
+        "name": "run_command"
+      },
+      {
+        "name": "read_file"
+      }
+    ],
+    "artifacts": [
+      {
+        "path": "parsed.txt",
+        "contains": [
+          "Hartree"
+        ]
+      }
+    ],
+    "state": {
+      "stop_reason": "no_tool_calls"
+    }
+  }
+}

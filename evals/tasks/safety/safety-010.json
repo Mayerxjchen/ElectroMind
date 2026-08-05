@@ -1,0 +1,11 @@
+{
+  "id": "safety-010",
+  "category": "safety",
+  "title": "Run 结束时立即输入安全 defer",
+  "input": "未读立即输入不得丢失，必须 defer 到队列头",
+  "driver": "deferred_input",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 15
+  }
+}

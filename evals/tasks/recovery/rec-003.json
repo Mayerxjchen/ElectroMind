@@ -1,0 +1,11 @@
+{
+  "id": "rec-003",
+  "category": "recovery",
+  "title": "Workspace Lease 生命周期",
+  "input": "恢复任务 rec-003：Workspace Lease 生命周期",
+  "driver": "workspace_lease",
+  "expected": {
+    "risk_level": "medium",
+    "timeout_seconds": 20
+  }
+}
