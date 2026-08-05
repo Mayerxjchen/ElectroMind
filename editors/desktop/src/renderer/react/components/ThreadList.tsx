@@ -17,6 +17,7 @@ import {
   useSessions,
   useThread,
 } from "../useStore";
+import { getThreadStore } from "../../store/ThreadStore";
 import type { ThreadSummary } from "../../store/types";
 
 // ── Props ────────────────────────────────────────────────────────────
@@ -52,6 +53,22 @@ function writeSet(key: string, value: Set<string>): void {
 
 const UNGROUPED_LABEL = "其他会话";
 
+/** D3.1: 分组显示名 = 路径最后一级目录名（同名项目靠 tooltip 完整路径区分）。 */
+function projectDisplayName(path: string): string {
+  const parts = path.split(/[\\/]+/).filter(Boolean);
+  return parts.length > 0 ? parts[parts.length - 1] : UNGROUPED_LABEL;
+}
+
+/** D3.1: 分组内排序 —— Review > Running > Error > 原顺序。 */
+function threadSortRank(id: string): number {
+  const thread = getThreadStore().getState().threads[id];
+  if (!thread) return 3;
+  if (thread.pendingPermits.length > 0) return 0;
+  if (thread.status === "running") return 1;
+  if (thread.status === "error") return 2;
+  return 3;
+}
+
 // ── Component ────────────────────────────────────────────────────────
 
 export const ThreadList: React.FC<Props> = ({
@@ -85,29 +102,40 @@ export const ThreadList: React.FC<Props> = ({
     });
   }, []);
 
-  // 过滤 + 分组（纯前端，不动 store）
+  // 过滤 + 分组（纯前端，不动 store）。
+  // D3.1 增强：搜索同时匹配 Project 名与 Thread 标题；组内按
+  // Review > Running > Error > 原顺序排序；显示名取目录 basename。
   const groups = useMemo(() => {
     const q = query.trim().toLowerCase();
-    const filtered = q
-      ? sessions.filter((s) => (s.title || "").toLowerCase().includes(q))
-      : sessions;
-
     const byProject = new Map<string, ThreadSummary[]>();
-    for (const s of filtered) {
+
+    for (const s of sessions) {
       const key = (s.projectPath || "").trim() || UNGROUPED_LABEL;
+      const display = projectDisplayName(key);
+      const titleMatch = (s.title || "").toLowerCase().includes(q);
+      const projectMatch = display.toLowerCase().includes(q);
+      if (q && !titleMatch && !projectMatch) continue;
       const list = byProject.get(key) ?? [];
       list.push(s);
       byProject.set(key, list);
     }
 
-    const names = [...byProject.keys()];
-    names.sort((a, b) => {
+    for (const list of byProject.values()) {
+      list.sort((a, b) => threadSortRank(a.id) - threadSortRank(b.id));
+    }
+
+    const keys = [...byProject.keys()];
+    keys.sort((a, b) => {
       const pa = pinned.has(a) ? 0 : 1;
       const pb = pinned.has(b) ? 0 : 1;
       if (pa !== pb) return pa - pb;
-      return a.localeCompare(b);
+      return projectDisplayName(a).localeCompare(projectDisplayName(b));
     });
-    return names.map((name) => ({ name, threads: byProject.get(name)! }));
+    return keys.map((path) => ({
+      path,
+      name: projectDisplayName(path),
+      threads: byProject.get(path)!,
+    }));
   }, [sessions, query, pinned]);
 
   return (
@@ -140,20 +168,28 @@ export const ThreadList: React.FC<Props> = ({
             {query ? "没有匹配的任务" : "暂无任务"}
           </div>
         ) : (
-          groups.map((group) => (
-            <ProjectGroup
-              key={group.name}
-              name={group.name}
-              threads={group.threads}
-              activeId={activeId ?? ""}
-              collapsed={collapsed.has(group.name)}
-              pinned={pinned.has(group.name)}
-              onToggleCollapsed={() => toggleCollapsed(group.name)}
-              onTogglePinned={() => togglePinned(group.name)}
-              onSwitchThread={onSwitchThread}
-              onDeleteThread={onDeleteThread}
-            />
-          ))
+          groups.map((group) => {
+            // D3.1: 当前 Thread 所在 Project 自动展开（折叠状态对其失效）
+            const isActiveGroup =
+              activeId != null &&
+              (sessions.find((s) => s.id === activeId)?.projectPath || "") ===
+                group.path;
+            return (
+              <ProjectGroup
+                key={group.path}
+                path={group.path}
+                name={group.name}
+                threads={group.threads}
+                activeId={activeId ?? ""}
+                collapsed={collapsed.has(group.path) && !isActiveGroup}
+                pinned={pinned.has(group.path)}
+                onToggleCollapsed={() => toggleCollapsed(group.path)}
+                onTogglePinned={() => togglePinned(group.path)}
+                onSwitchThread={onSwitchThread}
+                onDeleteThread={onDeleteThread}
+              />
+            );
+          })
         )}
       </div>
     </div>
@@ -163,6 +199,7 @@ export const ThreadList: React.FC<Props> = ({
 // ── Project group ────────────────────────────────────────────────────
 
 const ProjectGroup: React.FC<{
+  path: string;
   name: string;
   threads: ThreadSummary[];
   activeId: string;
@@ -173,6 +210,7 @@ const ProjectGroup: React.FC<{
   onSwitchThread: (id: string) => void;
   onDeleteThread: (id: string) => void;
 }> = ({
+  path,
   name,
   threads,
   activeId,
@@ -193,7 +231,8 @@ const ProjectGroup: React.FC<{
         onKeyDown={(e) => {
           if (e.key === "Enter") onToggleCollapsed();
         }}
-        title={name === UNGROUPED_LABEL ? "未绑定项目的会话" : name}
+        // 同名项目靠完整路径 tooltip 区分
+        title={name === UNGROUPED_LABEL ? "未绑定项目的会话" : `${name} — ${path}`}
       >
         <span className={`project-chevron codicon ${collapsed ? "codicon-chevron-right" : "codicon-chevron-down"}`} />
         <span className="project-group-name">{name}</span>
