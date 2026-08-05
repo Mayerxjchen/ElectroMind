@@ -16,7 +16,8 @@
         "start": "npm run compile && electron --no-sandbox --disable-gpu .",
         "package": "node scripts/package.js",
         "generate-icons": "cd assets && python3 -m venv .venv && .venv/bin/pip install -q Pillow && .venv/bin/python3 generate_icons.py",
-        "test:inspector-state": "node --test scripts/inspector-state.test.mjs"
+        "test:inspector-state": "node --test scripts/inspector-state.test.mjs",
+        "test:timeline-projection": "node --test scripts/timeline-projection.test.mjs"
     },
     "devDependencies": {
         "@electron/packager": "^18.3.6",
