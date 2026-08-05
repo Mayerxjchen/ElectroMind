@@ -3564,6 +3564,12 @@ async function start(): Promise<void> {
     skillsButton.click();
   });
 
+  // D3.4-2: manual reconnect entry from the React Composer's disconnected
+  // state (the auto scheduler stops at its attempt ceiling).
+  window.addEventListener("electromind:reconnect", () => {
+    void window.desktop.forceReconnect?.();
+  });
+
   yoloButton.addEventListener("click", () => {
     const next = !uiState.runtime.yoloMode;
     uiState.runtime = { ...uiState.runtime, yoloMode: next };

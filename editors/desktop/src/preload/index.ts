@@ -111,6 +111,9 @@ const desktopApi: DesktopApi = {
   resumeThread(threadId: string) {
     return ipcRenderer.invoke("desktop:resume-thread", threadId);
   },
+  forceReconnect() {
+    return ipcRenderer.invoke("desktop:force-reconnect");
+  },
   deleteThread(threadId: string) {
     return ipcRenderer.invoke("desktop:delete-thread", threadId);
   },

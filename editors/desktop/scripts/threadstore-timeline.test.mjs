@@ -270,4 +270,29 @@ describe("ThreadStore timeline projection", () => {
     const group = t.timeline.filter((i) => i.kind === "activity_group")[0];
     assert.equal(group.actions[0].title, "prep");
   });
+
+  it("composer options persist to localStorage and restore on re-ensure", () => {
+    const ls = {};
+    globalThis.window.localStorage = {
+      getItem: (k) => ls[k] ?? null,
+      setItem: (k, v) => { ls[k] = String(v); },
+    };
+    store.ensureThread("opt-1");
+    store.updateThread("opt-1", { sessionMode: "plan", autonomy: "auto-safe" });
+    const stored = ls["electromind-desktop-thread-opts-opt-1"];
+    assert.ok(stored, "options written to localStorage");
+    const parsed = JSON.parse(stored);
+    assert.equal(parsed.sessionMode, "plan");
+    assert.equal(parsed.autonomy, "auto-safe");
+
+    // Simulated restart: fresh thread with the same id restores opts.
+    resetThreadStore();
+    store = getThreadStore();
+    const restored = store.ensureThread("opt-1");
+    assert.equal(restored.sessionMode, "plan", "mode restored after restart");
+    assert.equal(restored.autonomy, "auto-safe");
+  });
+
 });
+
+  

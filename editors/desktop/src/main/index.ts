@@ -1475,6 +1475,13 @@ ipcMain.handle("desktop:list-project-tree", async () => listProjectTree());
 ipcMain.handle("desktop:clear-last-error", async () => {
   clearLastError();
 });
+ipcMain.handle("desktop:force-reconnect", async () => {
+  // D3.4-2: manual reconnect entry — the auto scheduler stops after its
+  // attempt ceiling; a manual retry resets it and re-spawns the wire.
+  reconnectScheduler.cancel();
+  return ensureBridge();
+});
+
 ipcMain.handle("desktop:resume-thread", async (_event, threadId: string) => {
   clearLastError(false);
   if (!threadId) {

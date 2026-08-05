@@ -287,6 +287,9 @@ class ThreadStore {
     if (!t) {
       t = createThreadState(id, title);
       this.state.threads[id] = t;
+      // D3.4-2: reapply the user's composer options (mode/model/autonomy)
+      // after a restart — the backend snapshot does not carry them.
+      this.restoreThreadOpts(t);
     }
     return t;
   }
@@ -295,7 +298,41 @@ class ThreadStore {
   updateThread(id: ThreadId, patch: Partial<ThreadState>): void {
     const t = this.ensureThread(id);
     Object.assign(t, patch);
+    // D3.4-2: composer options persist across restarts (localStorage,
+    // keyed by the stable thread id).
+    if (patch.sessionMode || patch.model || patch.autonomy) {
+      this.persistThreadOpts(t);
+    }
     this.emit();
+  }
+
+  /** localStorage persistence for composer options (per thread). */
+  private persistThreadOpts(t: ThreadState): void {
+    try {
+      window.localStorage.setItem(
+        `electromind-desktop-thread-opts-${t.id}`,
+        JSON.stringify({
+          sessionMode: t.sessionMode,
+          model: t.model,
+          autonomy: t.autonomy,
+        }),
+      );
+    } catch {
+      /* storage unavailable — persistence is best-effort */
+    }
+  }
+
+  private restoreThreadOpts(t: ThreadState): void {
+    try {
+      const raw = window.localStorage.getItem(`electromind-desktop-thread-opts-${t.id}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Partial<ThreadState>;
+      if (parsed.sessionMode) t.sessionMode = parsed.sessionMode;
+      if (parsed.model) t.model = parsed.model;
+      if (parsed.autonomy) t.autonomy = parsed.autonomy;
+    } catch {
+      /* corrupt or unavailable — keep defaults */
+    }
   }
 
   /** Remove a thread and all its state. */

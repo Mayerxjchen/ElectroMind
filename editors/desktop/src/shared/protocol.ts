@@ -353,6 +353,7 @@ export type DesktopApi = {
     saveProviderSetup(setup: ProviderSetupInput): Promise<string>;
     completeOnboarding(options?: { preferredBackend?: "local" | "container" | "ssh"; skipped?: boolean }): Promise<void>;
     resumeThread(threadId: string): Promise<void>;
+    forceReconnect(): Promise<boolean>;
     deleteThread(threadId: string): Promise<boolean>;
     sendUserInput(text: string, requestId?: string, delivery?: string, mode?: string): Promise<void>;
     clearLastError(): Promise<void>;
