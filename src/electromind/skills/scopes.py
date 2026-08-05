@@ -123,6 +123,7 @@ def _project_source(
     distance: int | None,
     trust_domain: str,
     project_root: Path | None,
+    adopted_targets: tuple[Path, ...] = (),
 ) -> SkillSource:
     return SkillSource(
         source_id=_source_id(scope, dialect, root),
@@ -133,6 +134,7 @@ def _project_source(
         distance_from_cwd=distance,
         trust_domain=trust_domain,
         read_only=False,
+        adopted_targets=adopted_targets,
     )
 
 
@@ -144,6 +146,7 @@ def discover_candidate_sources(
     user_home: Path | None = None,
     admin_root: str | Path | None = None,
     builtin_roots: Sequence[str | Path] | None = None,
+    external_skill_roots: Sequence[str | Path] = (),
 ) -> tuple[SkillSource, ...]:
     """Discover Skill sources across all scopes (RFC section 十).
 
@@ -170,6 +173,10 @@ def discover_candidate_sources(
     proj = (
         Path(project_path).expanduser().resolve() if project_path is not None else None
     )
+    # Explicit external skill roots: a direct-child symlink entry of a
+    # project/user skill root may be adopted when its real target is inside
+    # one of these (or inside the project root / user home).
+    ext_roots = tuple(Path(r).expanduser().resolve() for r in external_skill_roots)
 
     sources: list[SkillSource] = []
 
@@ -207,6 +214,7 @@ def discover_candidate_sources(
         )
 
     # User scope — three fixed directories.
+    user_adopted = tuple([home] + list(ext_roots))
     for dir_name in STANDARD_SKILL_DIRS:
         root = home / dir_name / "skills"
         if root.is_dir():
@@ -218,6 +226,7 @@ def discover_candidate_sources(
                     root=root,
                     trust_domain="user",
                     read_only=False,
+                    adopted_targets=user_adopted,
                 )
             )
 
@@ -225,6 +234,9 @@ def discover_candidate_sources(
     # the flat fixed dirs; no structured <level>/skills bundle).
     ancestor_levels = _ancestor_levels(workdir, proj)
     topmost = ancestor_levels[-1] if ancestor_levels else None
+    # Adopted-root trusted targets for PROJECT scope: the repo/project root
+    # plus any explicitly configured external skill roots.
+    project_adopted = tuple([proj or topmost] + list(ext_roots)) if (proj or topmost) else tuple(ext_roots)
     for distance, level in enumerate(ancestor_levels):
         trust_domain = str(level)
         # Plain grouped root (RFC revision): the REPO/PROJECT root's
@@ -244,6 +256,7 @@ def discover_candidate_sources(
                         distance=distance,
                         trust_domain=trust_domain,
                         project_root=level,
+                        adopted_targets=project_adopted,
                     )
                 )
         for dir_name in STANDARD_SKILL_DIRS:
@@ -257,6 +270,7 @@ def discover_candidate_sources(
                         distance=distance,
                         trust_domain=trust_domain,
                         project_root=level,
+                        adopted_targets=project_adopted,
                     )
                 )
 
@@ -335,11 +349,18 @@ def _source_skill_dirs(source: SkillSource) -> list[Path]:
     up to ``DiscoveryPolicy.max_depth`` levels, stops descending at an atomic
     Skill boundary, skips nested symlinks and ignored dirs, and returns a
     deterministic order.  Grouped layouts like ``skills/procedures/<name>/``
-    are therefore discovered without moving any skill.
+    are therefore discovered without moving any skill.  Direct-child symlink
+    entries whose real target is inside ``source.adopted_targets`` are
+    adopted as sub-roots (entry-symlink policy).
     """
-    from .discovery import discover_skill_dirs
+    from .discovery import DiscoveryPolicy, discover_skill_dirs
 
-    return discover_skill_dirs(source.root)
+    return discover_skill_dirs(
+        source.root,
+        policy=DiscoveryPolicy(
+            adopted_root_targets=frozenset(source.adopted_targets)
+        ),
+    )
 
 
 def _resource_rel_paths(skill_dir: Path) -> list[str]:
@@ -499,12 +520,19 @@ def _load_one_candidate(
 
     diagnostics: list[SkillDiagnostic] = []
 
-    # Symlink / escape safety checks (mirror the legacy loader).
+    # Symlink / escape safety checks (mirror the legacy loader).  A skill is
+    # accepted when its real path is inside the source root OR inside one of
+    # the source's adopted targets (a direct-child entry symlink to an
+    # external/trusted skill collection).
     try:
         resolved = skill_dir.resolve()
-        resolved.relative_to(source.root.resolve())
-    except ValueError:
-        return None  # resolves outside the source root — drop
+    except OSError:
+        return None
+    if not (
+        resolved.is_relative_to(source.root.resolve())
+        or any(resolved.is_relative_to(t.resolve()) for t in source.adopted_targets)
+    ):
+        return None  # resolves outside the source root / adopted targets — drop
     if has_symlinks(resolved):
         return None  # symlinks rejected — drop
 

@@ -141,6 +141,10 @@ class SkillSource:
     distance_from_cwd: int | None = None
     trust_domain: str = ""
     read_only: bool = False
+    # Root-internal discovery may adopt DIRECT-CHILD directory symlinks whose
+    # real target is inside one of these trusted paths (e.g. the project root
+    # or explicitly configured external skill roots).  Empty by default.
+    adopted_targets: tuple[Path, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

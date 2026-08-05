@@ -15,6 +15,7 @@ Public entry points:
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -451,8 +452,22 @@ class DiscoveryPolicy:
     max_depth: int = 6
     stop_at_skill_boundary: bool = True
     follow_directory_symlinks: bool = False
+    # Root-internal discovery may ADOPT a direct-child directory symlink as a
+    # new sub-root ONLY when its real target is inside one of these trusted
+    # paths (project root, user home, or explicitly configured external skill
+    # roots).  Nested symlinks are always skipped.  Empty = no adoption.
+    adopted_root_targets: frozenset[Path] = frozenset()
     ignored_names: frozenset[str] = frozenset(
-        {".git", ".hg", ".svn", ".venv", "__pycache__", "node_modules"}
+        {
+            ".git",
+            ".hg",
+            ".svn",
+            ".venv",
+            "__pycache__",
+            "node_modules",
+            "dist",
+            "build",
+        }
     )
 
 
@@ -471,6 +486,8 @@ def discover_skill_dirs(
     - accepts only the exact filename ``SKILL.md``;
     - skips hidden directories and common generated/vendored dirs;
     - skips nested directory symlinks by default and never escapes the root;
+    - ADOPTS a direct-child directory symlink only when its real target is
+      inside ``policy.adopted_root_targets`` (untrusted/outside → rejected);
     - deterministic (sorted) order — never relies on traversal order.
 
     This is the single traversal engine the scoped discovery consumes,
@@ -478,6 +495,13 @@ def discover_skill_dirs(
     """
     policy = policy or DiscoveryPolicy()
     base = root.resolve(strict=False)
+    adopted = tuple(t.resolve(strict=False) for t in policy.adopted_root_targets)
+
+    def _within_allowed(real: Path) -> bool:
+        if real.is_relative_to(base):
+            return True
+        return any(real.is_relative_to(t) for t in adopted)
+
     results: list[Path] = []
     visited: set[Path] = set()
     stack: list[tuple[Path, int]] = [(base, 0)]
@@ -489,15 +513,22 @@ def discover_skill_dirs(
             real = directory.resolve(strict=True)
         except OSError:
             continue
-        if not real.is_relative_to(base):
-            # Symlink escape — reject.
+        if not _within_allowed(real):
+            # Symlink escape / untrusted adopted target — reject.
             continue
         if real in visited:
             # Already seen through another path / cycle.
             continue
         visited.add(real)
 
-        if (directory / "SKILL.md").is_file():
+        # EXACT filename match: on case-insensitive filesystems (macOS/Windows)
+        # is_file() would accept SKILL.MD / Skill.md — use the actual directory
+        # entry names so only the precise "SKILL.md" registers.
+        try:
+            entries = os.listdir(directory)
+        except OSError:
+            entries = []
+        if "SKILL.md" in entries and (directory / "SKILL.md").is_file():
             results.append(directory)
             if policy.stop_at_skill_boundary:
                 continue
@@ -515,7 +546,19 @@ def discover_skill_dirs(
                 continue
             if child.name.startswith("."):
                 continue
-            if child.is_symlink() and not policy.follow_directory_symlinks:
+            if child.is_symlink():
+                # A DIRECT-CHILD symlink of the root may be an adopted entry
+                # (its real target must be inside an adopted_root_target).
+                if depth == 0 and adopted:
+                    try:
+                        target = child.resolve(strict=True)
+                    except OSError:
+                        continue  # broken link — ignore
+                    if target.is_dir() and any(
+                        target.is_relative_to(t) for t in adopted
+                    ):
+                        stack.append((child, depth + 1))
+                # Nested or unadopted symlink — always skipped.
                 continue
             if child.is_dir():
                 stack.append((child, depth + 1))
