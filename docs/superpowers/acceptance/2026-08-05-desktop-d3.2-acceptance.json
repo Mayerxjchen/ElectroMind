@@ -21,5 +21,32 @@
     "Right resizer inert (element kept as grid spacer).",
     "Real bugs found via CDP GUI smoke and fixed: overlay-mode grid track squeezed chat to 604px; drawer could remain on-screen when opened from closed state (missing explicit per-state transform).",
     "React InspectorShell untouched (not mounted)."
-  ]
+  ],
+  "d3_final": {
+    "milestone": "D3",
+    "status": "pass",
+    "tested_commit": "d2abf75f787951e89a8b6257c1242dc098fbebdf",
+    "working_tree_clean": true,
+    "tests": {
+      "unit": {
+        "passed": 153,
+        "failed": 0
+      },
+      "composer": {
+        "passed": 14,
+        "failed": 0
+      },
+      "window_work_area": {
+        "passed": 6,
+        "failed": 0
+      },
+      "cdp": {
+        "passed": 22,
+        "failed": 0
+      },
+      "typescript": "pass",
+      "work_area_clamp": "pass"
+    },
+    "known_blockers": []
+  }
 }
