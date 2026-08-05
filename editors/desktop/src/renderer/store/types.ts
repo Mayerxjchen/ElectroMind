@@ -241,6 +241,25 @@ export type SidebarState = {
   projectPane: string;
 };
 
+/** D3.2: on-demand Inspector — default closed, contextually triggered,
+ *  pinnable.  The open/close rules live in inspector-model.ts. */
+export type InspectorTab =
+  | "plan"
+  | "changes"
+  | "files"
+  | "artifacts"
+  | "jobs"
+  | "runtime"
+  | "logs";
+
+export type InspectorState = {
+  open: boolean;
+  pinned: boolean;
+  activeTab: InspectorTab;
+  selectedResourceId?: string;
+  triggerId?: string;
+};
+
 export type AppState = {
   /** Currently visible thread id. */
   activeThreadId: ThreadId | null;
@@ -254,6 +273,8 @@ export type AppState = {
   /** Global chrome — same across all threads. */
   theme: "light" | "dark";
   sidebar: SidebarState;
+  /** D3.2 Inspector open/pin/tab state — single source of truth. */
+  inspector: InspectorState;
   activityState: "running" | "sleeping" | "error";
   projectPath: string;
   transport: "wire" | "http";

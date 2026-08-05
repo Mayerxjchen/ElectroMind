@@ -285,17 +285,17 @@ button {
 }
 
 .desktop-workbench {
-    --left-pane-width: 232px;
-    --right-pane-width: 352px;
+    --left-pane-width: 220px;
+    --right-pane-width: 360px;
     --left-gap: 8px;
     --right-gap: 8px;
     grid-area: workbench;
+    position: relative;
     display: grid;
     grid-template-columns:
         var(--left-pane-width) var(--left-gap) minmax(0, 1fr) var(--right-gap) var(--right-pane-width);
     min-height: 0;
     height: 100%;
-    transition: grid-template-columns 560ms cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .pane {
@@ -346,12 +346,6 @@ button {
     transition:
         opacity 220ms ease,
         width 560ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.pane-right .pane-collapsed {
-    --pane-slide: 10px;
-    align-items: flex-end;
-    padding-right: 12px;
 }
 
 .pane-center {
@@ -408,8 +402,7 @@ button {
     background: var(--primary);
 }
 
-.desktop-workbench[data-left-collapsed="true"] .pane-left .pane-expanded,
-.desktop-workbench[data-right-collapsed="true"] .pane-right .pane-expanded {
+.desktop-workbench[data-left-collapsed="true"] .pane-left .pane-expanded {
     opacity: 0;
     pointer-events: none;
 }
@@ -418,12 +411,7 @@ button {
     transform: translateX(-10px);
 }
 
-.desktop-workbench[data-right-collapsed="true"] .pane-right .pane-expanded {
-    transform: translateX(10px);
-}
-
-.desktop-workbench[data-left-collapsed="true"] .pane-left .pane-collapsed,
-.desktop-workbench[data-right-collapsed="true"] .pane-right .pane-collapsed {
+.desktop-workbench[data-left-collapsed="true"] .pane-left .pane-collapsed {
     opacity: 1;
     pointer-events: auto;
     transform: translateX(0);
@@ -431,11 +419,6 @@ button {
 
 .desktop-workbench[data-left-collapsed="true"] .pane-left .pane-collapsed {
     box-shadow: 1px 0 0 0 var(--hairline);
-}
-
-.desktop-workbench[data-right-collapsed="true"] .pane-right .pane-collapsed {
-    box-shadow: -1px 0 0 0 var(--hairline);
-    transform: translateX(0);
 }
 
 .desktop-workbench[data-sidebar-docked="true"] .pane-left,
@@ -3364,7 +3347,6 @@ button {
     border-radius: 8px;
 }
 
-.project-host.preview-open>.project-host-header,
 .artifacts-panel.preview-open>.artifacts-list {
     display: none;
 }
@@ -5752,3 +5734,346 @@ pre:hover .copy-btn,
 .plan-step-failed .plan-step-title { color: #f87171; }
 .plan-empty { padding: 16px; text-align: center; opacity: 0.6; font-size: 12px; }
 .plan-empty-hint { margin-top: 4px; font-size: 11px; opacity: 0.8; }
+
+/* ── D3.2 Inspector: default-closed, contextual, pinnable ────────────────
+ * The right pane is the Inspector.  State lives in the ThreadStore
+ * (AppState.inspector); InspectorController maps it to these dataset
+ * attributes and the pane width vars.
+ */
+
+/* Closed by default: the right pane collapses to a 0-width grid track
+ * (the controller sets --right-pane-width: 0px).  Drop the hairline
+ * shadow so nothing shows at width 0. */
+.desktop-workbench[data-inspector-open="false"] .pane-right {
+    box-shadow: none;
+}
+
+/* The right "resizer" is inert — the Inspector is fixed-width in D3.2. */
+.desktop-workbench [data-resizer="right"] {
+    cursor: default;
+    pointer-events: none;
+}
+
+.desktop-workbench [data-resizer="right"]::after {
+    display: none;
+}
+
+/* Overlay drawer below the push breakpoint (window < 1280px).  The pane
+ * is taken out of the grid flow so the chat keeps full width — no
+ * double horizontal scroll. */
+.desktop-workbench[data-inspector-overlay="true"] .pane-right {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 50;
+    width: min(380px, 100vw);
+    /* transform is defined per state — the drawer must not inherit the
+       closed state's translateX(100%) when the attribute flips. */
+    transform: translateX(0);
+    background: var(--background);
+    box-shadow:
+        -1px 0 0 0 var(--hairline),
+        -8px 0 16px rgba(0, 0, 0, 0.08);
+    transition:
+        transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
+        visibility 0s;
+}
+
+.desktop-workbench[data-inspector-overlay="true"][data-inspector-open="false"] .pane-right {
+    transform: translateX(100%);
+    pointer-events: none;
+    visibility: hidden;
+    /* Exit is faster than enter. */
+    transition:
+        transform 120ms ease-in,
+        visibility 0s 120ms;
+}
+
+/* Topbar actions (pin / close). */
+.right-topbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding-right: 8px;
+}
+
+/* View bodies owned by InspectorController. */
+.inspector-view-body {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 12px 16px;
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.inspector-empty {
+    color: var(--text-tertiary);
+    font-size: 13px;
+    padding: 24px 8px;
+    text-align: center;
+}
+
+/* Plan view. */
+.inspector-plan {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.inspector-plan-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.inspector-plan-meta {
+    color: var(--text-tertiary);
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.inspector-plan-objective {
+    color: var(--text-primary);
+    margin: 0;
+    white-space: pre-wrap;
+}
+
+.inspector-plan-steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.inspector-plan-step {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    background: var(--surface);
+}
+
+.inspector-plan-step-num {
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+
+.inspector-plan-step-title {
+    flex: 1;
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.inspector-plan-details summary {
+    cursor: pointer;
+    color: var(--text-secondary);
+}
+
+.inspector-plan-details ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+    color: var(--text-secondary);
+}
+
+/* Changes view. */
+.inspector-changes {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.inspector-change {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 6px;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.inspector-change:hover {
+    background: var(--surface);
+}
+
+.inspector-change-path {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+.inspector-change-stats {
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+/* Jobs view. */
+.inspector-job-card {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    margin: 12px 16px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+}
+
+.inspector-job-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.inspector-job-elapsed {
+    color: var(--text-tertiary);
+    font-variant-numeric: tabular-nums;
+}
+
+.inspector-job-stats {
+    display: flex;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 13px;
+}
+
+/* Status chips — color is never the only signal (text is present). */
+.inspector-plan-status,
+.inspector-job-phase,
+.inspector-change-status,
+.inspector-plan-step-status {
+    display: inline-flex;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    background: color-mix(in srgb, var(--text-tertiary) 14%, transparent);
+    color: var(--text-secondary);
+}
+
+.status-running,
+.status-done,
+.status-completed,
+.status-ok,
+.status-success,
+.status-accepted,
+.status-added {
+    color: #22c55e;
+}
+
+.status-failed,
+.status-error,
+.status-rejected,
+.status-deleted {
+    color: #ef4444;
+}
+
+.status-pending,
+.status-waiting,
+.status-started,
+.status-modified {
+    color: #f59e0b;
+}
+
+.status-cancelled,
+.status-interrupted,
+.status-idle,
+.status-sleeping {
+    color: var(--text-tertiary);
+}
+
+.inspector-change-status {
+    width: 18px;
+    justify-content: center;
+    padding: 1px 0;
+}
+
+/* Runtime view status header. */
+.runtime-status {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--hairline);
+    background: var(--surface);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.runtime-backend {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 600;
+}
+
+.runtime-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--text-tertiary);
+}
+
+.runtime-dot.alive {
+    background: #22c55e;
+}
+
+.runtime-dot.dead {
+    background: #ef4444;
+}
+
+.runtime-workdir {
+    color: var(--text-tertiary);
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.runtime-target {
+    margin-left: auto;
+    color: var(--text-tertiary);
+}
+
+/* Narrow windows (< 900px): auto-collapse the left sidebar to the rail
+ * unless it is docked away.  Left-pane state itself is untouched. */
+@media (max-width: 899px) {
+    .desktop-workbench[data-sidebar-docked="false"] {
+        --left-pane-width: 44px !important;
+        --left-gap: 0px !important;
+    }
+
+    .desktop-workbench[data-sidebar-docked="false"] .pane-left .pane-expanded {
+        opacity: 0;
+        pointer-events: none;
+    }
+
+    .desktop-workbench[data-sidebar-docked="false"] .pane-left .pane-collapsed {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateX(0);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .desktop-workbench,
+    .desktop-workbench[data-inspector-overlay="true"] .pane-right,
+    .desktop-workbench[data-inspector-overlay="true"][data-inspector-open="false"] .pane-right {
+        transition: none;
+    }
+}

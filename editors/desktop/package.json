@@ -15,7 +15,8 @@
         "test:ipc-contract": "node --test scripts/ipc-contract.test.mjs",
         "start": "npm run compile && electron --no-sandbox --disable-gpu .",
         "package": "node scripts/package.js",
-        "generate-icons": "cd assets && python3 -m venv .venv && .venv/bin/pip install -q Pillow && .venv/bin/python3 generate_icons.py"
+        "generate-icons": "cd assets && python3 -m venv .venv && .venv/bin/pip install -q Pillow && .venv/bin/python3 generate_icons.py",
+        "test:inspector-state": "node --test scripts/inspector-state.test.mjs"
     },
     "devDependencies": {
         "@electron/packager": "^18.3.6",

@@ -183,6 +183,17 @@ export class MessageRenderer {
       }
       default: {
         const el = this.createBlock("assistant-message");
+        // D3.2: contextual Inspector triggers.  file_change items exist
+        // today; plan/artifact items arrive with the D3.3 activity
+        // grouping — the attrs are cheap to carry now.
+        if (item.kind === "plan" || item.kind === "file_change" || item.kind === "artifact") {
+          el.dataset.inspectorTab =
+            item.kind === "plan" ? "plan" : item.kind === "file_change" ? "changes" : "artifacts";
+          el.dataset.inspectorTrigger = item.id;
+          if (item.kind === "artifact") {
+            el.dataset.inspectorResource = String(item.payload.path ?? "");
+          }
+        }
         el.innerHTML = this.markdownToHtml(String(item.payload.text ?? ""));
         installCopyButtons(el);
         return el;

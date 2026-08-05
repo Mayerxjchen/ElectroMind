@@ -24,6 +24,7 @@ import type {
   AppState,
   ExecutionContextState,
   ExecutionState,
+  InspectorState,
   PermitRequest,
   RunState,
   SandboxStatus,
@@ -34,6 +35,7 @@ import type {
   ThreadState,
   ThreadSummary,
 } from "./types.ts";
+import { createInitialInspectorState } from "../inspector-model.ts";
 
 // ---------------------------------------------------------------------------
 // Subscriber type
@@ -150,6 +152,7 @@ class ThreadStore {
       threads: {},
       theme: readStoredTheme(),
       sidebar: initialSidebar(),
+      inspector: createInitialInspectorState(),
       activityState: "sleeping",
       projectPath: "",
       transport: "wire",
@@ -225,6 +228,13 @@ class ThreadStore {
 
   setProjectTreeNodes(nodes: unknown[]): void {
     this.state.projectTreeNodes = nodes;
+    this.emit();
+  }
+
+  /** D3.2: merge a partial update into the Inspector state.  All
+   *  open/pin/tab transitions go through here (single source of truth). */
+  setInspector(patch: Partial<InspectorState>): void {
+    this.state.inspector = { ...this.state.inspector, ...patch };
     this.emit();
   }
 

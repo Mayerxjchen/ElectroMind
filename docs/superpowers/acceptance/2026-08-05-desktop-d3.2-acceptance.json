@@ -1,0 +1,25 @@
+{
+  "milestone": "D3.2",
+  "status": "pass",
+  "date": "2026-08-05",
+  "spec": "docs/superpowers/specs/2026-08-05-desktop-d3-scope-refinement.md",
+  "unit_tests": 84,
+  "cdp_checks": 22,
+  "inspector_default_closed": true,
+  "responsive_modes": {
+    "push": ">=1280",
+    "overlay": "<1280"
+  },
+  "widths": {
+    "1280_to_1535": 360,
+    "1536_plus": 420
+  },
+  "chat_width_at_1280": 684,
+  "notes": [
+    "Deviation from spec's fixed 380px: measured constraint (chat >= 680px at 1280x800 with left 220px + two 8px gaps) caps inspector at 364px; 360px chosen inside spec's 360-420 range.",
+    "Left pane 232 -> 220 per D3.2 layout.",
+    "Right resizer inert (element kept as grid spacer).",
+    "Real bugs found via CDP GUI smoke and fixed: overlay-mode grid track squeezed chat to 604px; drawer could remain on-screen when opened from closed state (missing explicit per-state transform).",
+    "React InspectorShell untouched (not mounted)."
+  ]
+}

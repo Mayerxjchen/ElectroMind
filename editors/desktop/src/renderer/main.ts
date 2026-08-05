@@ -1,5 +1,7 @@
 import { getThreadStore } from "./store/ThreadStore";
 import { SessionManager } from "./store/SessionManager";
+import { InspectorController } from "./InspectorController";
+import { isInspectorTab, type InspectorTab } from "./inspector-model";
 import { MessageRenderer } from "./MessageRenderer";
 import { ContextUsageRing } from "./context-usage";
 import { INSTALL_COMMANDS, bindHealthPanel, renderHealthPanel } from "./environment-health";
@@ -53,14 +55,11 @@ import {
 } from "./execution-context-state";
 
 const INPUT_MAX_HEIGHT_PX = 160;
-const LEFT_PANE_WIDTH_PX = 232;
+const LEFT_PANE_WIDTH_PX = 220;
 const LEFT_COLLAPSED_WIDTH_PX = 44;
-const RIGHT_PANE_WIDTH_PX = 352;
-const RIGHT_COLLAPSED_WIDTH_PX = 44;
 
 type ThemeMode = "dark" | "light";
-type PanelTab = "project" | "sandbox" | "terminal";
-type ProjectPane = "files" | "artifacts";
+type PanelTab = InspectorTab;
 type ActivityState = "running" | "sleeping" | "error";
 type ResourceKind = "cpu" | "memory" | "disk";
 type TerminalEntryKind = "command" | "stdout" | "stderr" | "status";
@@ -1116,71 +1115,85 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           </div>
         </section>
 
-        <div class="pane-resizer" data-resizer="right"></div>
+        <div class="pane-resizer" data-resizer="right" aria-hidden="true"></div>
 
         <aside class="pane pane-right" data-right-pane>
           <div class="pane-expanded">
             <div class="pane-topbar right-topbar">
               <div class="tab-group" role="tablist" aria-label="右侧面板">
-                <button class="tab-button active" type="button" data-tab="project">项目</button>
-                <button class="tab-button" type="button" data-tab="sandbox">沙箱</button>
-                <button class="tab-button" type="button" data-tab="terminal">Log</button>
+                <button class="tab-button" type="button" data-tab="plan">计划</button>
+                <button class="tab-button" type="button" data-tab="changes">变更</button>
+                <button class="tab-button active" type="button" data-tab="files">文件</button>
+                <button class="tab-button" type="button" data-tab="artifacts">产物</button>
+                <button class="tab-button" type="button" data-tab="jobs">任务</button>
+                <button class="tab-button" type="button" data-tab="runtime">运行时</button>
+                <button class="tab-button" type="button" data-tab="logs">日志</button>
+              </div>
+              <div class="right-topbar-actions">
+                <button
+                  class="icon-button inspector-pin-button"
+                  type="button"
+                  data-inspector-pin
+                  title="钉住（切换任务时保持打开）"
+                  aria-pressed="false"
+                >
+                  ${renderIcon("pin-off")}
+                </button>
+                <button
+                  class="icon-button"
+                  type="button"
+                  data-inspector-close
+                  title="关闭面板 (Esc)"
+                  aria-label="关闭面板"
+                >
+                  ${renderIcon("panel-right-close")}
+                </button>
               </div>
             </div>
 
             <div class="right-content">
-              <section class="right-view active" data-view="project">
-                <div class="project-host" data-project-host data-project-pane="files">
-                  <div class="file-panel-header project-host-header">
-                    <div
-                      class="jelly-switch"
-                      data-project-pane-switch
-                      data-pane="files"
-                      role="tablist"
-                      aria-label="项目视图"
-                    >
-                      <span class="jelly-switch-thumb" data-project-pane-thumb aria-hidden="true"></span>
-                      <button
-                        type="button"
-                        class="jelly-switch-option active"
-                        data-project-pane="files"
-                        role="tab"
-                        aria-selected="true"
-                      >
-                        目录
-                      </button>
-                      <button
-                        type="button"
-                        class="jelly-switch-option"
-                        data-project-pane="artifacts"
-                        role="tab"
-                        aria-selected="false"
-                      >
-                        产物
-                        <span class="tab-badge" data-artifact-count>0</span>
-                      </button>
-                    </div>
-                    <button
-                      class="file-panel-refresh"
-                      type="button"
-                      data-refresh-project
-                      title="刷新项目目录"
-                      aria-label="刷新项目目录"
-                    >
-                      ${renderIcon("refresh-cw")}
-                    </button>
-                  </div>
-                  <div class="file-panel project-files-pane" data-project-files>
-                    <div class="file-tree" data-project-tree></div>
-                  </div>
-                  <div class="artifacts-panel project-artifacts-pane" data-artifacts-panel hidden>
-                    <div class="artifacts-list" data-artifacts-list></div>
-                    <div class="artifact-preview" data-artifact-preview hidden></div>
-                  </div>
+              <section class="right-view" data-view="plan">
+                <div class="inspector-view-body" data-inspector-view="plan"></div>
+              </section>
+
+              <section class="right-view" data-view="changes">
+                <div class="inspector-view-body" data-inspector-view="changes"></div>
+              </section>
+
+              <section class="right-view active" data-view="files">
+                <div class="file-panel-header project-host-header">
+                  <span class="file-panel-title">项目文件</span>
+                  <button
+                    class="file-panel-refresh"
+                    type="button"
+                    data-refresh-project
+                    title="刷新项目目录"
+                    aria-label="刷新项目目录"
+                  >
+                    ${renderIcon("refresh-cw")}
+                  </button>
+                </div>
+                <div class="file-panel project-files-pane">
+                  <div class="file-tree" data-project-tree></div>
                 </div>
               </section>
 
-              <section class="right-view" data-view="sandbox">
+              <section class="right-view" data-view="artifacts">
+                <div class="file-panel-header">
+                  <span class="file-panel-title">产物</span>
+                </div>
+                <div class="artifacts-panel" data-artifacts-panel>
+                  <div class="artifacts-list" data-artifacts-list></div>
+                  <div class="artifact-preview" data-artifact-preview hidden></div>
+                </div>
+              </section>
+
+              <section class="right-view" data-view="jobs">
+                <div class="inspector-view-body" data-inspector-view="jobs"></div>
+              </section>
+
+              <section class="right-view" data-view="runtime">
+                <div class="runtime-status" data-runtime-status></div>
                 <div class="file-panel">
                   <div class="file-panel-header">
                     <span>文件系统</span>
@@ -1198,7 +1211,7 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 </div>
               </section>
 
-              <section class="right-view" data-view="terminal">
+              <section class="right-view" data-view="logs">
                 <div class="terminal-panel" data-terminal-panel></div>
               </section>
             </div>
@@ -1221,22 +1234,7 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                   <span class="resource-value" data-resource-value="disk">2.4 GB</span>
                 </div>
               </div>
-              <button class="icon-button collapse-right-button" type="button" data-collapse-right title="折叠右栏">
-                ${renderIcon("panel-right-close")}
-              </button>
             </div>
-          </div>
-
-          <div class="pane-collapsed">
-            <button class="collapsed-icon" type="button" data-tab="project" title="项目">
-              ${renderIcon("folder")}
-            </button>
-            <button class="collapsed-icon" type="button" data-tab="sandbox" title="沙箱">
-              ${renderIcon("folder-tree")}
-            </button>
-            <button class="collapsed-expand collapsed-expand-bottom" type="button" data-expand-right title="展开右栏">
-              ${renderIcon("panel-right-open")}
-            </button>
           </div>
         </aside>
       </div>
@@ -1636,7 +1634,6 @@ async function start(): Promise<void> {
   const artifactsList = findRequired<HTMLElement>("[data-artifacts-list]");
   const artifactsPanel = findRequired<HTMLElement>("[data-artifacts-panel]");
   const artifactPreview = findRequired<HTMLElement>("[data-artifact-preview]");
-  const artifactCount = findRequired<HTMLElement>("[data-artifact-count]");
   const chatLog = findRequired<HTMLElement>("[data-chat-log]");
   const promptInput = findRequired<HTMLTextAreaElement>("#prompt");
   const mentionPopup = findRequired<HTMLElement>("[data-mention-popup]");
@@ -1650,7 +1647,6 @@ async function start(): Promise<void> {
   const sandboxBackendIcon = findRequired<HTMLElement>("[data-sandbox-backend-icon]");
   const sandboxBackend = findRequired<HTMLElement>("[data-sandbox-backend]");
   const sandboxPill = findRequired<HTMLElement>("[data-sandbox-pill]");
-  const resourceStrip = findRequired<HTMLElement>("[data-resource-strip]");
   const rightFooter = findRequired<HTMLElement>("[data-right-footer]");
   const threadMetaModal = findRequired<HTMLElement>("[data-thread-meta-modal]");
   const threadMetaBody = findRequired<HTMLElement>("[data-thread-meta-body]");
@@ -1702,14 +1698,11 @@ async function start(): Promise<void> {
 
   const uiState = {
     theme: readStoredTheme(),
-    activeTab: "project" as PanelTab,
-    projectPane: "files" as ProjectPane,
+    activeTab: "files" as PanelTab,
     leftCollapsed: false,
-    rightCollapsed: false,
     sidebarDocked: false,
     sidebarPinned: readStoredSidebarPinned(),
     leftWidth: LEFT_PANE_WIDTH_PX,
-    rightWidth: RIGHT_PANE_WIDTH_PX,
     activityState: "sleeping" as ActivityState,
     terminalEntries: [] as TerminalEntry[],
     expandedTree: new Set<string>(),
@@ -1736,9 +1729,6 @@ async function start(): Promise<void> {
   const yoloButton = findRequired<HTMLButtonElement>("[data-yolo-toggle]");
   const contextUsageMount = findRequired<HTMLElement>("[data-context-usage-mount]");
   const pinSidebarButton = findRequired<HTMLButtonElement>("[data-pin-sidebar]");
-  const projectHost = findRequired<HTMLElement>("[data-project-host]");
-  const projectPaneSwitch = findRequired<HTMLElement>("[data-project-pane-switch]");
-  const projectFilesPane = findRequired<HTMLElement>("[data-project-files]");
   const refreshProjectButton = findRequired<HTMLButtonElement>("[data-refresh-project]");
   let keepSidebarOpen = false;
   let artifactPreviewPath = "";
@@ -1807,7 +1797,6 @@ async function start(): Promise<void> {
   function applyWorkbenchChrome(): void {
     const leftHidden = uiState.sidebarDocked;
     workbench.dataset.leftCollapsed = String(uiState.leftCollapsed);
-    workbench.dataset.rightCollapsed = String(uiState.rightCollapsed);
     workbench.dataset.sidebarDocked = String(uiState.sidebarDocked);
     workbench.style.setProperty(
       "--left-pane-width",
@@ -1816,17 +1805,11 @@ async function start(): Promise<void> {
         : `${uiState.leftCollapsed ? LEFT_COLLAPSED_WIDTH_PX : uiState.leftWidth}px`,
     );
     workbench.style.setProperty(
-      "--right-pane-width",
-      `${uiState.rightCollapsed ? RIGHT_COLLAPSED_WIDTH_PX : uiState.rightWidth}px`,
-    );
-    workbench.style.setProperty(
       "--left-gap",
       leftHidden || uiState.leftCollapsed ? "0px" : "8px",
     );
-    workbench.style.setProperty(
-      "--right-gap",
-      uiState.rightCollapsed ? "0px" : "8px",
-    );
+    // --right-pane-width / --right-gap are owned by the InspectorController
+    // (D3.2): the Inspector is default-closed and contextually opened.
     historyDockButton.hidden = !uiState.sidebarDocked;
   }
 
@@ -2833,7 +2816,6 @@ async function start(): Promise<void> {
       uiState.artifacts,
       artifactRootPath(uiState.runtime),
     );
-    artifactCount.textContent = String(uiState.artifacts.length);
     if (artifactPreviewPath && !uiState.artifacts.some((item) => item.path === artifactPreviewPath)) {
       closeArtifactPreview();
     }
@@ -2842,7 +2824,6 @@ async function start(): Promise<void> {
   function closeArtifactPreview(): void {
     artifactPreviewPath = "";
     artifactsPanel.classList.remove("preview-open");
-    projectHost.classList.remove("preview-open");
     artifactPreview.hidden = true;
     artifactPreview.innerHTML = "";
   }
@@ -2850,7 +2831,6 @@ async function start(): Promise<void> {
   async function showArtifactPreview(filePath: string): Promise<void> {
     artifactPreviewPath = filePath;
     artifactsPanel.classList.add("preview-open");
-    projectHost.classList.add("preview-open");
     artifactPreview.hidden = false;
     artifactPreview.innerHTML = `<div class="artifact-preview-body artifact-preview-empty">加载中…</div>`;
     const preview = await window.desktop.readArtifact(filePath);
@@ -2860,41 +2840,19 @@ async function start(): Promise<void> {
     artifactPreview.innerHTML = renderArtifactPreview(preview);
   }
 
-  function applyProjectPane(): void {
-    const pane = uiState.projectPane;
-    projectHost.dataset.projectPane = pane;
-    projectPaneSwitch.dataset.pane = pane;
-    projectFilesPane.hidden = pane !== "files";
-    artifactsPanel.hidden = pane !== "artifacts";
-    projectPaneSwitch
-      .querySelectorAll<HTMLButtonElement>("[data-project-pane]")
-      .forEach((button) => {
-        const active = button.dataset.projectPane === pane;
-        button.classList.toggle("active", active);
-        button.setAttribute("aria-selected", active ? "true" : "false");
-      });
-    if (pane === "files") {
-      refreshProjectButton.title = "刷新项目目录";
-      refreshProjectButton.setAttribute("aria-label", "刷新项目目录");
-    } else {
-      refreshProjectButton.title = "刷新产物";
-      refreshProjectButton.setAttribute("aria-label", "刷新产物");
-    }
-    resourceStrip.classList.toggle(
-      "hidden",
-      uiState.activeTab === "project" && pane === "artifacts",
-    );
-  }
-
   function applyRightTab(): void {
     document.querySelectorAll<HTMLElement>("[data-view]").forEach((node) => {
-      node.classList.toggle("active", node.dataset.view === uiState.activeTab);
+      const active = node.dataset.view === uiState.activeTab;
+      node.classList.toggle("active", active);
     });
     document.querySelectorAll<HTMLElement>("[data-tab]").forEach((node) => {
-      node.classList.toggle("active", node.dataset.tab === uiState.activeTab);
+      const active = node.dataset.tab === uiState.activeTab;
+      node.classList.toggle("active", active);
+      if (node instanceof HTMLButtonElement) {
+        node.setAttribute("aria-selected", active ? "true" : "false");
+      }
     });
     rightFooter.dataset.tab = uiState.activeTab;
-    applyProjectPane();
   }
 
   function appendTerminalEntry(kind: TerminalEntryKind, text: string): void {
@@ -3168,23 +3126,21 @@ async function start(): Promise<void> {
     applyTheme();
   }
 
-  function bindResizer(side: "left" | "right"): void {
-    const handle = findRequired<HTMLElement>(`[data-resizer="${side}"]`);
+  /** Left sidebar resizer only — the right pane is a fixed-width
+   *  Inspector owned by InspectorController (D3.2, no resizer). */
+  function bindLeftResizer(): void {
+    const handle = findRequired<HTMLElement>(`[data-resizer="left"]`);
     handle.addEventListener("pointerdown", (event) => {
-      if ((side === "left" && uiState.leftCollapsed) || (side === "right" && uiState.rightCollapsed)) {
+      if (uiState.leftCollapsed) {
         return;
       }
       const startX = event.clientX;
-      const startWidth = side === "left" ? uiState.leftWidth : uiState.rightWidth;
+      const startWidth = uiState.leftWidth;
       handle.setPointerCapture(event.pointerId);
 
       const onMove = (moveEvent: PointerEvent) => {
         const delta = moveEvent.clientX - startX;
-        if (side === "left") {
-          uiState.leftWidth = Math.max(200, Math.min(320, startWidth + delta));
-        } else {
-          uiState.rightWidth = Math.max(300, Math.min(420, startWidth - delta));
-        }
+        uiState.leftWidth = Math.max(200, Math.min(320, startWidth + delta));
         applyWorkbenchChrome();
       };
 
@@ -3722,6 +3678,8 @@ async function start(): Promise<void> {
       refreshArtifacts(),
       ensureProjectPanelLoaded(),
     ]);
+    // D3.2: after picking a project, surface its files in the Inspector.
+    inspectorController.openTab("files");
   });
 
   settingsOpenButton.addEventListener("click", () => {
@@ -3903,73 +3861,25 @@ async function start(): Promise<void> {
     uiState.sidebarDocked = false;
     applyWorkbenchChrome();
   });
-  findRequired<HTMLElement>("[data-collapse-right]").addEventListener("click", () => {
-    uiState.rightCollapsed = true;
-    applyWorkbenchChrome();
-  });
-  findRequired<HTMLElement>("[data-expand-right]").addEventListener("click", () => {
-    uiState.rightCollapsed = false;
-    applyWorkbenchChrome();
-  });
   findRequired<HTMLElement>("[data-open-latest]").addEventListener("click", () => {
     void openLatestSession();
   });
 
+  // D3.2: tab bar clicks go through the InspectorController — the store
+  // is the single source of truth; the controller flips the views.
   document.querySelectorAll<HTMLElement>("[data-tab]").forEach((button) => {
     button.addEventListener("click", () => {
       const tab = button.dataset.tab;
-      if (tab !== "project" && tab !== "sandbox" && tab !== "terminal") {
-        return;
-      }
-      uiState.activeTab = tab;
-      uiState.rightCollapsed = false;
-      applyWorkbenchChrome();
-      applyRightTab();
-      if (tab === "sandbox") {
-        void ensureSandboxPanelLoaded();
-      }
-      if (tab === "project") {
-        if (uiState.projectPane === "files") {
-          void ensureProjectPanelLoaded();
-        } else {
-          void refreshArtifacts();
-        }
+      if (isInspectorTab(tab)) {
+        inspectorController.openTab(tab);
       }
     });
   });
-
-  projectPaneSwitch
-    .querySelectorAll<HTMLButtonElement>("[data-project-pane]")
-    .forEach((button) => {
-      button.addEventListener("click", () => {
-        const pane = button.dataset.projectPane;
-        if (pane !== "files" && pane !== "artifacts") {
-          return;
-        }
-        if (pane === uiState.projectPane) {
-          return;
-        }
-        if (pane === "files") {
-          closeArtifactPreview();
-        }
-        uiState.projectPane = pane;
-        applyProjectPane();
-        if (pane === "files") {
-          void ensureProjectPanelLoaded();
-        } else {
-          void refreshArtifacts();
-        }
-      });
-    });
 
   findRequired<HTMLButtonElement>("[data-refresh-sandbox]").addEventListener("click", () => {
     void forceRefreshSandboxPanel();
   });
   refreshProjectButton.addEventListener("click", () => {
-    if (uiState.projectPane === "artifacts") {
-      void refreshArtifacts();
-      return;
-    }
     void forceRefreshProjectPanel();
   });
 
@@ -4120,8 +4030,7 @@ async function start(): Promise<void> {
       syncComposerDock();
     } else if (event.key === "r" || event.key === "R") {
       event.preventDefault();
-      uiState.rightCollapsed = !uiState.rightCollapsed;
-      applyWorkbenchChrome();
+      inspectorController.toggle();
     } else if (event.key === "k" || event.key === "K") {
       event.preventDefault();
       openShortcutsModal();
@@ -4239,8 +4148,34 @@ async function start(): Promise<void> {
     }
   });
 
-  bindResizer("left");
-  bindResizer("right");
+  bindLeftResizer();
+
+  // D3.2: contextual Inspector — default closed, opens on demand.
+  // The controller owns right-pane chrome, Escape, pin/close, trigger
+  // clicks, focus return and the plan/changes/jobs/runtime views.
+  function handleInspectorTabChange(tab: InspectorTab): void {
+    const changed = uiState.activeTab !== tab;
+    uiState.activeTab = tab;
+    applyRightTab();
+    if (!changed) {
+      return;
+    }
+    if (tab === "files") {
+      void ensureProjectPanelLoaded();
+    }
+    if (tab === "artifacts") {
+      void refreshArtifacts();
+    }
+    if (tab === "runtime") {
+      void ensureSandboxPanelLoaded();
+    }
+  }
+
+  const inspectorController = new InspectorController({
+    workbench,
+    onTabChange: handleInspectorTabChange,
+  });
+  inspectorController.attach();
 
   const disposeAgentEvents = window.desktop.onAgentEvent((message) => {
     if (message.type === "wireEvent") {
@@ -4310,7 +4245,7 @@ async function start(): Promise<void> {
     }
     if (state.projectPath !== previousProjectPath) {
       uiState.projectLoadedPath = "";
-      if (uiState.activeTab === "project") {
+      if (uiState.activeTab === "files") {
         void ensureProjectPanelLoaded();
       }
     }
