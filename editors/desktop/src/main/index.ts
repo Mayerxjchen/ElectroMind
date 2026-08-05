@@ -5,6 +5,7 @@ import {
   dialog,
   ipcMain,
   nativeImage,
+  screen,
   shell,
   type OpenDialogOptions,
 } from "electron";
@@ -1280,11 +1281,22 @@ function requestSandboxStatus(): Promise<SandboxStatusPayload> {
 }
 
 function createWindow(): BrowserWindow {
+  // Fit the window to the primary display's work area (excludes the macOS
+  // menu bar + dock).  A fixed 900-tall default or a 720 min-height can push
+  // the composer/input box behind the dock — the input then appears only in
+  // fullscreen (reported bug).  Clamp both the default and the minimum so the
+  // input box stays on-screen at any window size.
+  const workArea = screen.getPrimaryDisplay().workArea;
+  const defaultWidth = Math.min(1360, workArea.width);
+  const defaultHeight = Math.min(900, workArea.height);
+  const minWidth = Math.min(1100, workArea.width);
+  const minHeight = Math.min(600, workArea.height);
+
   const window = new BrowserWindow({
-    width: 1360,
-    height: 900,
-    minWidth: 1100,
-    minHeight: 720,
+    width: defaultWidth,
+    height: defaultHeight,
+    minWidth,
+    minHeight,
     title: "electromind Desktop",
     backgroundColor: "#0f1115",
     icon: appIconPath(),
