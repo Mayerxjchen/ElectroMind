@@ -23,6 +23,9 @@ ElectroMind 整合了第一性原理计算软件（VASP、CP2K、LAMMPS、DeepMD
 - Wire（stdio NDJSON）内部传输层，驱动 Desktop；HTTP 后端（experimental）
 - 可扩展的 Skills 系统与子 Agent 委托
 - 内建工具：命令执行、文件读写、网页搜索、URL 抓取、计算结果可视化
+- 科学结果最低可信（P2）：确定性 Python CP2K Parser 区分成功 / 未收敛 / 超时 / OOM / 截断；Scheduler COMPLETED ≠ 科学成功，Parser 通过才 VALIDATED，用户确认才 ACCEPTED，仅 ACCEPTED 可进 DeePMD 训练数据
+- HPC 最小稳定闭环（P3）：Desktop → 本地 Agent → rsess Skill → 远端 tmux → hpc-submit Skill → Slurm/PBS；每次提交留 JSON 记录，禁止重复 sbatch，断线后按记录 reconcile（查询失败显示 UNKNOWN，不猜测）
+- 数据完整性（P1）：所有状态文件原子写 + `.bak` 损坏恢复；`electromind doctor --data` 诊断 Thread / 消息 / Artifact SHA / 写权限
 
 ---
 
@@ -218,10 +221,18 @@ electromind --dev                   # 开发模式（数据落在 ./.electromind
 │       ├── thread.toml   # 会话配置（创建时冻结）
 │       ├── metainfo.json # 标题、时间、消息数
 │       ├── messages/     # 对话记录
+│       ├── artifacts.jsonl # 产物 Provenance 记录（SHA-256 版本链）
 │       └── workspaces/   # Sandbox 工作区
+├── hpc/
+│   └── submissions.jsonl # HPC 提交记录（防重复 sbatch、reconcile 依据）
+├── logs/                 # desktop.log / agent.log / wire.log（桌面端）
 ├── skills/               # 用户级 Skills
 └── desktop.json          # 桌面端设置
 ```
+
+关键状态文件（thread.toml / metainfo.json / artifacts.jsonl / messages.jsonl /
+submissions.jsonl / desktop.json）一律**原子写**（临时文件 + rename），崩溃不留
+半写文件；读取时若主文件损坏自动尝试 `.bak`，并把损坏文件改名 `.corrupt` 留存。
 
 ---
 
@@ -262,18 +273,57 @@ npm install
 npm start
 ```
 
-桌面端通过 Wire 协议与 `electromind --wire` 子进程通信，提供三栏工作台（会话列表 / 对话区 / 文件与 Artifacts 预览）。
+桌面端通过 Wire 协议与 `electromind --wire` 子进程通信，提供三栏工作台（会话列表 / 对话区 / 文件与 Artifacts 预览、任务页展示 HPC 提交记录）。
 
-> **安装包状态：** Desktop 打包脚本已提供（`editors/desktop/scripts/package.js`），
-> 预构建安装包**尚未正式发布**（GitHub Releases 暂无产物）。当前请从源码运行
-> Desktop，并确保本机已安装 `electromind` CLI（`uv tool install electromind`）——
-> Desktop 是图形壳，Agent 能力由 CLI 的 `--wire` 子进程提供。
+**Standalone 打包（macOS，P5）：**
+
+```bash
+# 1. 构建 Agent 单文件二进制（PyInstaller）
+scripts/build-standalone.sh
+
+# 2. 打包 Desktop，嵌入内置 Agent（Standalone 模式）
+cd editors/desktop
+node scripts/package.js --agent-bin ../../dist/electromind-<ver>-<plat>
+```
+
+- P5.1：打包必须显式指定 Agent 二进制；缺失 / 版本 / 架构不匹配 → 构建失败。
+- P5.2：找不到 Agent 时**禁止静默降级为 Companion**——除非显式传
+  `--allow-companion`（开发用）。
+- 目前仅 macOS 支持嵌入内置 Agent；Windows / Linux 打包产物暂为 Companion 语义。
+
+**稳定性保障（P4）：** 关闭时终止完整 Agent 进程树（无孤立进程）；Renderer 崩溃
+自动 reload 并从 Agent Snapshot 恢复当前 Thread；`~/.electromind/logs/` 下
+desktop.log / agent.log / wire.log（「日志」页一键打开目录）；单实例锁防双开。
 
 ### Web UI 与 VS Code 扩展（已删除 2026-08-05）
 
 范围收缩后不再使用，代码已从仓库删除（历史版本可从 git 找回）。
 
 
+
+## HPC 主路径（P3）
+
+正式任务统一走 `Desktop → 本地 Agent → rsess Skill → 远端 tmux shell →
+hpc-submit Skill → Slurm/PBS`。Desktop 不直接调用 Scheduler API。
+
+- **rsess**：远端持久 shell（cwd / 环境 / venv 断线不丢），经 `ssh target "tmux …"`
+  控制；`skills/tools/rsess/` 提供 `rsess open/run/send/peek/list/close`。
+- **hpc-submit**：`skills/tools/hpc-submit/` 提供三个入口脚本：
+  - `prepare_submission.py` —— 提交前登记记录（script/input SHA-256），
+    同 thread+run 已有 job_id 时**禁止再次 sbatch**（P3.3）。
+  - `reconcile_job.py` —— 经 rsess 查 `sacct`/`squeue` 更新记录；
+    查询失败 → `UNKNOWN`，**绝不猜测**成功/失败、绝不自动重试（P3.4/P3.6）。
+  - `collect_outputs.py` —— rsync 拉取产物并校验 SHA，不走 tmux 文本传输（P3.7）。
+- 每次提交写入 `~/.electromind/hpc/submissions.jsonl`（字段：submission_id /
+  thread_id / run_id / rsess_session / remote_workdir / script_sha256 /
+  input_sha256 / job_id / state / stdout_path）。原子写 + `.bak` 恢复。
+- Desktop「任务」页展示这些记录；重启后经 rsess 重新查询恢复状态。
+
+## 数据诊断（P1.5）
+
+```bash
+electromind doctor --data     # 逐个 Thread 检查配置 / 消息 / Artifact SHA / 写权限
+```
 
 ## Wire（内部协议）与 HTTP（experimental）
 
@@ -326,7 +376,19 @@ uv run pytest                # 运行测试
 uv run ruff check src/       # 代码检查
 uv run electromind --dev     # 开发模式启动（数据落在 ./.electromind，不污染 ~/.electromind）
 pre-commit install           # 安装 pre-commit hooks
+./scripts/ci-check.sh        # 提交前本地闸门（ruff + format + pytest + coverage + 产物完整性）
 ```
+
+Desktop 单独验证：
+
+```bash
+cd editors/desktop
+npm run check                    # TypeScript 类型检查
+node --test scripts/*.test.mjs   # Desktop 单元测试（含 Agent 进程树 / CDP 冒烟）
+```
+
+CI（`.github/workflows/ci.yml`）跑五层：Python tests → TypeScript check →
+Desktop unit tests → CDP tests → macOS packaged-app smoke。
 
 ### 常见问题
 

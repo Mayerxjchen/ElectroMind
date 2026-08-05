@@ -1,0 +1,119 @@
+# ElectroMind 最小 CI（P5.3）：
+#   1. Python tests (ruff + pytest + coverage)          — 服务端 / 库
+#   2. TypeScript check (tsc --noEmit)                  — Desktop 类型
+#   3. Desktop unit tests (node --test)                 — Desktop 纯逻辑
+#   4. CDP tests (electron --remote-debugging-port)     — Desktop 渲染冒烟
+#   5. macOS packaged-app smoke                          — 打包产物能启动
+#
+# 只跑两条：核心（py + ts + desktop unit + cdp），以及 macOS 打包冒烟。
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: "3.11"
+  NODE_VERSION: "22"
+
+jobs:
+  core:
+    name: Python + TypeScript + Desktop
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install uv + xvfb
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq xvfb
+
+      - name: Python sync
+        run: uv sync --group dev --frozen
+
+      - name: ruff check
+        run: uv run ruff check .
+
+      - name: ruff format --check
+        run: uv run ruff format --check .
+
+      - name: pytest + coverage
+        run: uv run pytest tests/ --cov=src --cov-report=json -q
+        env:
+          COVERAGE_MIN: "78"
+          ELECTROMIND_TEST_CONTAINER_IMAGE: ""
+
+      - name: Desktop deps + compile
+        working-directory: editors/desktop
+        run: |
+          npm ci || npm install
+          npm run compile
+
+      - name: TypeScript check
+        working-directory: editors/desktop
+        run: npm run check
+
+      - name: Desktop unit tests (node --test)
+        working-directory: editors/desktop
+        run: node --test scripts/*.test.mjs
+
+      - name: CDP smoke (electron renderer loads)
+        working-directory: editors/desktop
+        run: |
+          if command -v xvfb-run >/dev/null 2>&1; then
+            xvfb-run -a node --test scripts/cdp-smoke.test.mjs
+          else
+            node --test scripts/cdp-smoke.test.mjs
+          fi
+        env:
+          ELECTROMIND_HOME: /tmp/electromind-ci-smoke
+
+  package-smoke:
+    name: macOS packaged-app smoke
+    runs-on: macos-14
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Desktop deps + compile
+        working-directory: editors/desktop
+        run: |
+          npm ci || npm install
+          npm run compile
+
+      - name: TypeScript check
+        working-directory: editors/desktop
+        run: npm run check
+
+      - name: Desktop unit tests
+        working-directory: editors/desktop
+        run: node --test scripts/*.test.mjs
+
+      # P5.1: 无 --agent-bin 且 dist/ 无产物 → 打包必须失败（禁止静默降级
+      # Companion）。这里用 --allow-companion 显式跑打包冒烟（CI 不构建
+      # PyInstaller agent，属于有意为之的开发验证）。
+      - name: Package (explicit allow-companion)
+        working-directory: editors/desktop
+        run: node scripts/package.js --allow-companion
