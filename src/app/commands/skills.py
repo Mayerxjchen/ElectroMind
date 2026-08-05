@@ -48,7 +48,17 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("paths", help="列出发现的 source roots")
     sub.add_parser("reload", help="重新发现并打印新 generation")
-    sub.add_parser("doctor", help="校验全部候选并给出诊断摘要")
+    doctor_p = sub.add_parser("doctor", help="校验全部候选并给出诊断摘要")
+    doctor_p.add_argument(
+        "--list-blocked",
+        action="store_true",
+        help="逐个列出 trust-blocked Skill（默认聚合为一条摘要）",
+    )
+    doctor_p.add_argument(
+        "--verbose",
+        action="store_true",
+        help="同 --list-blocked（兼容直接调用 skills.run 的场景）",
+    )
 
     install = sub.add_parser("install", help="安装 Skill（用户显式调用，模型不可触发）")
     install_src = install.add_mutually_exclusive_group(required=True)
@@ -79,7 +89,10 @@ def run(argv: list[str]) -> int:
     if action == "reload":
         return _reload()
     if action == "doctor":
-        return _doctor()
+        return _doctor(
+            verbose=args.verbose or args.list_blocked,
+            list_blocked=args.list_blocked,
+        )
     if action == "install":
         return _install(args)
     if action == "uninstall":
@@ -287,19 +300,47 @@ def _reload() -> int:
     return EXIT_OK
 
 
-def _doctor() -> int:
-    """Validate every candidate and summarize diagnostics."""
+def _doctor(verbose: bool = False, list_blocked: bool = False) -> int:
+    """Validate every candidate and summarize diagnostics.
+
+    Trust-blocked project Skills are NOT discovery failures: they are
+    aggregated into one summary (per-skill listing only with
+    ``--list-blocked``) so the output clearly separates:
+
+      not discovered / discovered-but-invalid / discovered-but-shadowed /
+      discovered-but-trust-blocked / available-for-activation
+
+    Trust-blocked candidates still flag the doctor exit (EXIT_CLI) — an
+    untrusted workspace cannot activate its project Skills — but they are
+    not presented as per-skill errors.
+    """
     service = _catalog_service()
     catalog = service.list()
     problems = 0
+    trust_blocked: list = []
     for c in catalog.candidates:
         if c.trust_state == "untrusted":
             problems += 1
-            print(f"✗ {c.skill_id}: untrusted workspace", file=sys.stderr)
+            trust_blocked.append(c)
         if c.enabled_state == "off":
             problems += 1
             print(f"✗ {c.skill_id}: disabled", file=sys.stderr)
     problems += _isolation_violations()
+    if trust_blocked:
+        if verbose:
+            for c in trust_blocked:
+                print(f"✗ {c.skill_id}: untrusted workspace", file=sys.stderr)
+        else:
+            print(
+                f"{len(trust_blocked)} Skills discovered but not activatable "
+                f"because this workspace is untrusted.\n"
+                f"\n"
+                f"Discovery: successful\n"
+                f"Activation: blocked by workspace trust\n"
+                f"Action: trust this workspace to enable its project Skills\n"
+                f"(run `electromind skills doctor --list-blocked` to list them)",
+                file=sys.stderr,
+            )
     print(
         f"{len(catalog.candidates)} candidates, {problems} issues, "
         f"generation {catalog.generation}"

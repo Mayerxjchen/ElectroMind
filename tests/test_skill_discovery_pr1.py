@@ -417,3 +417,60 @@ def test_nested_symlink_is_skipped_even_when_adopted(tmp_path):
     names = [c.descriptor.name for c in candidates]
     assert "outer" in names
     assert "nested-skill" not in names
+
+
+# ── trust: dedup merges provenance, never elevates trust ─────────────
+
+def test_project_builtin_same_file_uses_project_scope(tmp_path):
+    proj = _make_project(tmp_path)
+    _write_skill(proj / "skills" / "tools", "cp2k")
+    builtin = [proj / "skills" / "tools"]  # same physical file also via builtin
+    sources = discover_candidate_sources(
+        str(proj), cwd=str(proj), builtin_roots=builtin
+    )
+    candidates = load_candidates(sources, is_project_trusted=lambda pr: True)
+    cp2k = [c for c in candidates if c.descriptor.name == "cp2k"]
+    assert len(cp2k) == 1
+    assert cp2k[0].source.scope == "project"  # project wins over builtin
+    assert {s.scope for s in cp2k[0].discovery_sources} == {"project", "builtin"}
+
+
+def test_project_builtin_same_file_requires_workspace_trust(tmp_path):
+    proj = _make_project(tmp_path)
+    _write_skill(proj / "skills" / "tools", "cp2k")
+    builtin = [proj / "skills" / "tools"]
+    sources = discover_candidate_sources(
+        str(proj), cwd=str(proj), builtin_roots=builtin
+    )
+    candidates = load_candidates(sources, is_project_trusted=lambda pr: False)
+    cp2k = [c for c in candidates if c.descriptor.name == "cp2k"]
+    assert len(cp2k) == 1
+    assert cp2k[0].trust_state == "untrusted", "project skill needs workspace trust"
+
+
+def test_builtin_provenance_does_not_elevate_project_trust(tmp_path):
+    proj = _make_project(tmp_path)
+    _write_skill(proj / "skills" / "tools", "cp2k")
+    builtin = [proj / "skills" / "tools"]
+    sources = discover_candidate_sources(
+        str(proj), cwd=str(proj), builtin_roots=builtin
+    )
+    candidates = load_candidates(sources, is_project_trusted=lambda pr: False)
+    cp2k = [c for c in candidates if c.descriptor.name == "cp2k"]
+    # Builtin provenance is recorded, but it must NOT grant builtin trust.
+    assert {s.scope for s in cp2k[0].discovery_sources} == {"project", "builtin"}
+    assert cp2k[0].trust_state == "untrusted"
+
+
+def test_packaged_builtin_skill_remains_trusted(tmp_path):
+    """A PURE builtin candidate (no project overlap) keeps builtin trust."""
+    builtin = tmp_path / "packaged"
+    _write_skill(builtin / "tools", "vasp")
+    sources = discover_candidate_sources(
+        None, cwd=str(tmp_path), builtin_roots=[builtin / "tools"]
+    )
+    candidates = load_candidates(sources, is_project_trusted=lambda pr: False)
+    vasp = [c for c in candidates if c.descriptor.name == "vasp"]
+    assert len(vasp) == 1
+    assert vasp[0].source.scope == "builtin"
+    assert vasp[0].trust_state == "trusted"
