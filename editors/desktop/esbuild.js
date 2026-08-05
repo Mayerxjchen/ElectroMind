@@ -30,8 +30,9 @@ function copyRendererAssets() {
       path.join(dist, file),
     );
   }
+  // chat.css 曾复用 editors/vscode/media/style.css；vscode 删除后迁入本目录。
   fs.copyFileSync(
-    path.join(root, "..", "vscode", "media", "style.css"),
+    path.join(root, "src", "renderer", "chat.css"),
     path.join(dist, "chat.css"),
   );
   // 与 docs favicon 相同的 logo，给窗口 / 标签页用。
@@ -80,8 +81,6 @@ const rendererOptions = {
   platform: "browser",
   format: "iife",
   target: "chrome128",
-  // renderer 复用 ../vscode/src/webview；裸 import 会从 vscode 目录向上找
-  // node_modules，这里补上 desktop 自己的依赖目录。
   nodePaths: [path.join(root, "node_modules")],
   alias: {
     marked: path.join(root, "node_modules/marked/lib/marked.esm.js"),
