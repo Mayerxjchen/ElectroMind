@@ -11,6 +11,7 @@
 // ---------------------------------------------------------------------------
 
 import type { ArtifactManifest, PlanState } from "../../shared/protocol";
+import type { TimelineItem } from "../timeline-types";
 
 export type ThreadId = string;
 
@@ -219,6 +220,10 @@ export type ThreadState = {
   scrollTop: number;
   /** Whether the user has scrolled up (pause auto-scroll). */
   userScrolledUp: boolean;
+
+  /** D3.3: projected task timeline — single source of truth for the
+   *  renderer.  Deterministic projection of items + domain state. */
+  timeline: TimelineItem[];
 
   /** Protocol v2: last known event seq (for snapshot recovery). */
   lastEventSeq?: number;

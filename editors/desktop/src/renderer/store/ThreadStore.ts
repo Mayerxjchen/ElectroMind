@@ -36,6 +36,13 @@ import type {
   ThreadSummary,
 } from "./types.ts";
 import { createInitialInspectorState } from "../inspector-model.ts";
+import {
+  createProjectionState,
+  reduceTimeline,
+  type TimelineProjectionState,
+  type TimelineSource,
+  type TimelineSourceKind,
+} from "../timeline-projection.ts";
 
 // ---------------------------------------------------------------------------
 // Subscriber type
@@ -67,6 +74,15 @@ function readStored(key: string, fallback: boolean): boolean {
   } catch {
     return fallback;
   }
+}
+
+/** Stable plan key for timeline ids (fingerprint > plan_id > version). */
+function planTimelineKey(plan: {
+  fingerprint?: string;
+  plan_id?: string;
+  version?: number;
+}): string {
+  return plan.fingerprint || plan.plan_id || `v${plan.version ?? 0}`;
 }
 
 function readStoredTheme(): "light" | "dark" {
@@ -106,9 +122,13 @@ export function createThreadState(
     artifacts: [],
     scrollTop: 0,
     userScrolledUp: false,
+    // D3.3: projected task timeline
+    timeline: [],
     // Protocol v2 fields
     lastEventSeq: -1,
     seenEventIds: new Set(),
+    timelineLog: [],
+    timelineState: createProjectionState(id),
     toolCallIndex: {},
     openItems: {},
   };
@@ -124,6 +144,12 @@ interface ThreadStateInternal extends ThreadState {
   lastEventSeq: number;
   /** Event IDs already rendered (for client-side dedup). */
   seenEventIds: Set<string>;
+  /** D3.3: append-only source log for the timeline projection (the
+   *  projection state is rebuilt from it on demand). */
+  timelineLog: TimelineSource[];
+  /** D3.3: incremental projection state (maps are not serializable —
+   *  rebuilt via rebuildTimeline after snapshot restore). */
+  timelineState: TimelineProjectionState;
   /** tool_call_id → ThreadItem id (for ToolResult pairing). */
   toolCallIndex: Record<string, string>;
   /** Open streaming items for TextDelta/ReasoningDelta accumulation,
@@ -309,7 +335,63 @@ class ThreadStore {
   appendThreadItem(id: ThreadId, item: ThreadItem): void {
     const t = this.ensureThread(id);
     t.items = [...t.items, item];
+    this.feedTimeline(id, {
+      id: item.id,
+      kind: item.kind as TimelineSourceKind,
+      threadId: item.threadId,
+      timestamp: item.timestamp,
+      payload: item.payload,
+    });
     this.emit();
+  }
+
+  // ── D3.3: task timeline projection ─────────────────────────────────
+
+  /** Feed one source event into the thread's incremental projection.
+   *  The reducer is O(affected) — safe on every wire event. */
+  private feedTimeline(threadId: ThreadId, source: TimelineSource): void {
+    const t = this.ensureThread(threadId) as ThreadStateInternal;
+    t.timelineLog.push(source);
+    t.timelineState = reduceTimeline(t.timelineState, source);
+    t.timeline = t.timelineState.timeline;
+  }
+
+  /** Full replay from persisted state (items + plan/artifacts domain
+   *  state) — used after snapshot restore / history replay.  Converges
+   *  with the incremental feed: same inputs → same timeline. */
+  private rebuildTimeline(threadId: ThreadId): void {
+    const t = this.ensureThread(threadId) as ThreadStateInternal;
+    let state = createProjectionState(threadId);
+    for (const item of t.items) {
+      state = reduceTimeline(state, {
+        id: item.id,
+        kind: item.kind as TimelineSourceKind,
+        threadId: item.threadId,
+        timestamp: item.timestamp,
+        payload: item.payload,
+      });
+    }
+    if (t.plan) {
+      state = reduceTimeline(state, {
+        id: `plan:${planTimelineKey(t.plan)}`,
+        kind: "plan",
+        threadId,
+        timestamp: Number(t.plan.created_at ?? 0) || 0,
+        payload: t.plan as unknown as Record<string, unknown>,
+      });
+    }
+    for (const artifact of t.artifacts) {
+      state = reduceTimeline(state, {
+        id: `artifact:${artifact.path || artifact.artifact_id}`,
+        kind: "artifact",
+        threadId,
+        timestamp: Number(artifact.created_at ?? 0) || 0,
+        payload: artifact as unknown as Record<string, unknown>,
+      });
+    }
+    t.timelineState = state;
+    t.timeline = state.timeline;
+    t.timelineLog = [];
   }
 
   /** Accumulate a streaming delta into the run's open item (creating one
@@ -332,6 +414,13 @@ class ThreadStore {
       if (item) {
         const prev = String(item.payload.text ?? "");
         item.payload = { ...item.payload, text: prev + text };
+        this.feedTimeline(threadId, {
+          id: item.id,
+          kind,
+          threadId: item.threadId,
+          timestamp: item.timestamp,
+          payload: item.payload,
+        });
         this.emit();
         return;
       }
@@ -369,19 +458,31 @@ class ThreadStore {
     const existing = t.items.find((it) => it.id === requestId);
     if (existing) {
       existing.payload = { text, state: "accepted" };
+      this.feedTimeline(threadId, {
+        id: existing.id,
+        kind: "user_message",
+        threadId,
+        timestamp: existing.timestamp,
+        payload: existing.payload,
+      });
       this.emit();
       return;
     }
-    t.items = [
-      ...t.items,
-      {
-        id: requestId,
-        kind: "user_message",
-        threadId,
-        timestamp: Date.now(),
-        payload: { text, state: "accepted" },
-      },
-    ];
+    const item: ThreadItem = {
+      id: requestId,
+      kind: "user_message",
+      threadId,
+      timestamp: Date.now(),
+      payload: { text, state: "accepted" },
+    };
+    t.items = [...t.items, item];
+    this.feedTimeline(threadId, {
+      id: item.id,
+      kind: item.kind,
+      threadId: item.threadId,
+      timestamp: item.timestamp,
+      payload: item.payload,
+    });
     this.emit();
   }
 
@@ -512,12 +613,27 @@ class ThreadStore {
           pendingApprovals: [],
         });
         this.updateThread(threadId, { status: "running" });
+        this.feedTimeline(threadId, {
+          id: `run:${runId}`,
+          kind: "run_begin",
+          threadId,
+          timestamp: Date.now(),
+          payload: { run_id: runId },
+        });
         return true;
       }
       case "run/completed": {
+        const runId = String(params.run_id ?? "");
         this.updateThread(threadId, {
           activeRun: null,
           status: "idle",
+        });
+        this.feedTimeline(threadId, {
+          id: `run:${runId || "end"}`,
+          kind: "run_end",
+          threadId,
+          timestamp: Date.now(),
+          payload: { run_id: runId },
         });
         return true;
       }
@@ -583,6 +699,18 @@ class ThreadStore {
           };
           const t2 = this.ensureThread(threadId);
           t2.pendingPermits = [...t2.pendingPermits, permit];
+          this.feedTimeline(threadId, {
+            id: `approval:${toolCallId}`,
+            kind: "approval",
+            threadId,
+            timestamp: permit.timestamp,
+            payload: {
+              tool_call_id: toolCallId,
+              name: permit.toolName,
+              arguments: permit.arguments,
+              status: "pending",
+            },
+          });
           this.emit();
         }
         return true;
@@ -593,6 +721,20 @@ class ThreadStore {
         t3.pendingPermits = t3.pendingPermits.filter(
           (p) => p.toolCallId !== resolvedToolCallId,
         );
+        this.feedTimeline(threadId, {
+          id: `approval:${resolvedToolCallId}`,
+          kind: "approval",
+          threadId,
+          timestamp: Date.now(),
+          payload: {
+            tool_call_id: resolvedToolCallId,
+            status:
+              String(params.status ?? params.allowed ?? "approved") === "denied" ||
+              String(params.allowed ?? "") === "false"
+                ? "denied"
+                : "approved",
+          },
+        });
         this.emit();
         return true;
       }
@@ -601,6 +743,15 @@ class ThreadStore {
       case "plan/state": {
         const rawPlan = params.plan as Record<string, unknown> | null | undefined;
         t.plan = rawPlan ? (rawPlan as ThreadState["plan"]) : null;
+        if (t.plan) {
+          this.feedTimeline(threadId, {
+            id: `plan:${planTimelineKey(t.plan)}`,
+            kind: "plan",
+            threadId,
+            timestamp: Number(t.plan.created_at ?? 0) || 0,
+            payload: t.plan as unknown as Record<string, unknown>,
+          });
+        }
         this.emit();
         return true;
       }
@@ -609,6 +760,15 @@ class ThreadStore {
         t.artifacts = Array.isArray(rawArtifacts)
           ? (rawArtifacts as ThreadState["artifacts"])
           : [];
+        for (const artifact of t.artifacts) {
+          this.feedTimeline(threadId, {
+            id: `artifact:${artifact.path || artifact.artifact_id}`,
+            kind: "artifact",
+            threadId,
+            timestamp: Number(artifact.created_at ?? 0) || 0,
+            payload: artifact as unknown as Record<string, unknown>,
+          });
+        }
         this.emit();
         return true;
       }
@@ -629,6 +789,13 @@ class ThreadStore {
           pendingApprovals: [],
         });
         this.updateThread(threadId, { status: "running" });
+        this.feedTimeline(threadId, {
+          id: `run:${runId}`,
+          kind: "run_begin",
+          threadId,
+          timestamp: Date.now(),
+          payload: { run_id: runId },
+        });
         return true;
       }
       case "TextDelta": {
@@ -656,6 +823,9 @@ class ThreadStore {
             tool_call_id: toolCallId,
             name: String(params.name ?? ""),
             arguments: String(params.arguments ?? ""),
+            // run_id is persisted so a snapshot rebuild binds the group
+            // to the same run id as the live projection.
+            run_id: String(params.run_id ?? ""),
             status: "running",
           },
         });
@@ -674,6 +844,13 @@ class ThreadStore {
             duration_seconds: Number(params.duration_seconds ?? 0),
           };
           delete t.toolCallIndex[toolCallId];
+          this.feedTimeline(threadId, {
+            id: item.id,
+            kind: "tool_call",
+            threadId: item.threadId,
+            timestamp: item.timestamp,
+            payload: item.payload,
+          });
           this.emit();
         }
         return true;
@@ -698,6 +875,13 @@ class ThreadStore {
             status: "idle",
           });
         }
+        this.feedTimeline(threadId, {
+          id: `run:${runId || "end"}`,
+          kind: "run_end",
+          threadId,
+          timestamp: Date.now(),
+          payload: { run_id: runId },
+        });
         this.emit();
         return true;
       }
@@ -722,6 +906,7 @@ class ThreadStore {
           );
           t.toolCallIndex = {};
           t.openItems = {};
+          this.rebuildTimeline(threadId);
         }
         this.emit();
         return true;
@@ -768,6 +953,7 @@ class ThreadStore {
             tool_call_id: String(m.tool_call_id ?? ""),
             name: String(m.name ?? ""),
             arguments: String(m.arguments ?? ""),
+            run_id: String(m.run_id ?? ""),
             status: "done",
           },
         };
@@ -899,6 +1085,10 @@ class ThreadStore {
     t.status =
       String(params.status ?? "") === "running" ? "running" : "idle";
 
+    // D3.3: converge the projection with the restored state (the batched
+    // events above fed incrementally; the restored plan/artifacts/items
+    // replay here so the timeline is identical after resume).
+    this.rebuildTimeline(threadId);
     this.emit();
   }
 
