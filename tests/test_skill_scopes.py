@@ -46,8 +46,8 @@ def _make_structured(root: Path) -> None:
 
 class TestDiscoverCandidateSources:
     def test_project_structured_and_standard(self, tmp_path):
-        """A+ W5: repo-root structured bundle no longer discovered — only the
-        flat fixed dirs."""
+        """RFC revision: repo-root grouped skills/ IS a project root, scanned
+        with bounded recursion — alongside the flat fixed dirs."""
         proj = tmp_path / "proj"
         proj.mkdir()
         _make_structured(proj / "skills")
@@ -57,15 +57,15 @@ class TestDiscoverCandidateSources:
         sources = discover_candidate_sources(str(proj), cwd=str(proj))
 
         roots = {s.root for s in sources if s.scope == "project"}
-        assert (proj / "skills").resolve() not in roots
+        assert (proj / "skills").resolve() in roots  # grouped skills/ is a root
         assert (proj / ".agents" / "skills").resolve() in roots
         assert (proj / ".claude" / "skills").resolve() in roots
 
     def test_ancestor_discovery_from_subdir(self, tmp_path):
-        """从仓库子目录启动可发现仓库根 Skill（A+ W5：各层仅检查固定目录）。"""
+        """从仓库子目录启动可发现仓库根 Skill（含 grouped skills/）。"""
         proj = tmp_path / "repo"
         proj.mkdir()
-        _make_structured(proj / "skills")  # 不再被发现的 structured bundle
+        _make_structured(proj / "skills")  # repo-root grouped skills/ → project root
         (proj / ".git").mkdir()  # repo marker
         _write_skill(proj / ".agents" / "skills", "repo-helper", "r", "b\n")
         subdir = proj / "packages" / "water"
@@ -75,16 +75,18 @@ class TestDiscoverCandidateSources:
         sources = discover_candidate_sources(str(proj), cwd=str(subdir))
         project_sources = [s for s in sources if s.scope == "project"]
 
-        # 子层 .electromind + 仓库根 .agents 都被发现（structured 不参与）。
-        assert len(project_sources) == 2
+        # 子层 .electromind + 仓库根 skills + 仓库根 .agents 都被发现。
+        assert len(project_sources) == 3
         # Nearest project (distance 0) is the subdir level.
         nearest = [s for s in project_sources if s.distance_from_cwd == 0]
         assert len(nearest) == 1
         assert nearest[0].root == (subdir / ".electromind" / "skills").resolve()
-        # Repo-root flat dir is at a larger distance.
+        # Repo-root grouped skills/ + flat dir are at a larger distance.
         repo_level = [s for s in project_sources if s.distance_from_cwd == 2]
-        assert len(repo_level) == 1
-        assert repo_level[0].root == (proj / ".agents" / "skills").resolve()
+        assert len(repo_level) == 2
+        roots = {s.root for s in repo_level}
+        assert (proj / ".agents" / "skills").resolve() in roots
+        assert (proj / "skills").resolve() in roots
 
     def test_ancestor_walk_only_fixed_dirs(self, tmp_path):
         """Non-fixed dirs at ancestor levels are never scanned."""
@@ -204,8 +206,8 @@ class TestCandidatesAndTrust:
         assert len(helper) == 1
         assert helper[0].skill_id == f"project:{proj.name}:agents:my-helper"
 
-    def test_name_directory_mismatch_drops_candidate(self, tmp_path):
-        """A+ W3：目录名 ≠ frontmatter name → invalid skill，不进 catalog。"""
+    def test_name_directory_mismatch_warns_but_registers(self, tmp_path):
+        """RFC revision：frontmatter name ≠ 目录名 → warning，仍注册。"""
         proj = tmp_path / "proj"
         proj.mkdir()
         _write_skill(proj / ".agents" / "skills", "good", "g", "b\n")
@@ -219,8 +221,11 @@ class TestCandidatesAndTrust:
         candidates = load_candidates(sources)
         names = [c.descriptor.name for c in candidates]
         assert "good" in names
-        assert "other-name" not in names
-        assert "mismatched" not in names
+        assert "other-name" in names  # registered despite the mismatch
+        warned = [c for c in candidates if c.descriptor.name == "other-name"]
+        assert warned
+        codes = {d.code for c in warned for d in c.diagnostics}
+        assert "skill_name_directory_mismatch" in codes
 
     def test_untrusted_project_candidates_marked(self, tmp_path):
         """未信任项目的候选标记为 untrusted，且不进入模型 Catalog。"""

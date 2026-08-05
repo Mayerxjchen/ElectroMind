@@ -432,3 +432,92 @@ def _source_priority_for(skill: Skill, sources: tuple[SkillSource, ...]) -> int:
         if src.id == skill.source_id:
             return src.priority
     return 999
+
+
+# ---------------------------------------------------------------------------
+# Bounded recursive discovery (SKILL-2 RFC revision)
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True, slots=True)
+class DiscoveryPolicy:
+    """Safety/semantics knobs for root-internal skill discovery.
+
+    Root-internal discovery is BOUNDED recursion, not ``rglob("SKILL.md")``.
+    An atomic Skill (a directory with an exact ``SKILL.md``) is registered and
+    NOT descended into further, so reference/sample ``SKILL.md`` files inside
+    ``references/`` / ``scripts/`` / source trees are never mis-registered.
+    """
+
+    max_depth: int = 6
+    stop_at_skill_boundary: bool = True
+    follow_directory_symlinks: bool = False
+    ignored_names: frozenset[str] = frozenset(
+        {".git", ".hg", ".svn", ".venv", "__pycache__", "node_modules"}
+    )
+
+
+def discover_skill_dirs(
+    root: Path,
+    *,
+    policy: DiscoveryPolicy | None = None,
+) -> list[Path]:
+    """Skill directories under *root* via bounded recursive discovery.
+
+    Returns every directory (deterministically ordered) that contains an
+    exact ``SKILL.md``.  Constraints:
+
+    - descends at most ``policy.max_depth`` levels;
+    - stops descending after an atomic Skill (``STOP_AT_SKILL_BOUNDARY``);
+    - accepts only the exact filename ``SKILL.md``;
+    - skips hidden directories and common generated/vendored dirs;
+    - skips nested directory symlinks by default and never escapes the root;
+    - deterministic (sorted) order — never relies on traversal order.
+
+    This is the single traversal engine the scoped discovery consumes,
+    replacing the one-level ``iterdir`` scan.
+    """
+    policy = policy or DiscoveryPolicy()
+    base = root.resolve(strict=False)
+    results: list[Path] = []
+    visited: set[Path] = set()
+    stack: list[tuple[Path, int]] = [(base, 0)]
+
+    while stack:
+        directory, depth = stack.pop()
+
+        try:
+            real = directory.resolve(strict=True)
+        except OSError:
+            continue
+        if not real.is_relative_to(base):
+            # Symlink escape — reject.
+            continue
+        if real in visited:
+            # Already seen through another path / cycle.
+            continue
+        visited.add(real)
+
+        if (directory / "SKILL.md").is_file():
+            results.append(directory)
+            if policy.stop_at_skill_boundary:
+                continue
+
+        if depth >= policy.max_depth:
+            continue
+
+        try:
+            children = sorted(directory.iterdir(), key=lambda p: p.name, reverse=True)
+        except OSError:
+            continue
+
+        for child in children:
+            if child.name in policy.ignored_names:
+                continue
+            if child.name.startswith("."):
+                continue
+            if child.is_symlink() and not policy.follow_directory_symlinks:
+                continue
+            if child.is_dir():
+                stack.append((child, depth + 1))
+
+    return results

@@ -181,7 +181,10 @@ class SkillCandidate:
     Attributes:
         skill_id: Qualified skill id (e.g. ``project:repo-root:agents:cp2k``).
         descriptor: The specific version's content.
-        source: Where it was found.
+        source: The EFFECTIVE source (highest priority after physical-file
+            dedup across overlapping roots).
+        discovery_sources: Every source that produced this same physical
+            skill (dedup provenance).  Empty when only one root found it.
         enabled_state: on / name_only / manual_only / off.
         trust_state: trusted / untrusted / blocked.
         diagnostics: Non-fatal issues specific to this candidate.
@@ -190,6 +193,7 @@ class SkillCandidate:
     skill_id: str
     descriptor: SkillDescriptor
     source: SkillSource
+    discovery_sources: tuple[SkillSource, ...] = ()
     enabled_state: EnabledState = "on"
     trust_state: TrustState = "trusted"
     diagnostics: tuple[SkillDiagnostic, ...] = ()

@@ -33,6 +33,7 @@ from pathlib import Path
 from typing import Callable, Sequence
 
 from .candidate import SkillCandidate, SkillSource, make_skill_id
+from .discovery import SkillDiagnostic
 from .discovery import SkillSource as LegacySkillSource
 
 # Fixed skill directories checked at every ancestor level.
@@ -222,8 +223,29 @@ def discover_candidate_sources(
 
     # Project scope — ancestor walk over fixed dirs per level (A+ W5: only
     # the flat fixed dirs; no structured <level>/skills bundle).
-    for distance, level in enumerate(_ancestor_levels(workdir, proj)):
+    ancestor_levels = _ancestor_levels(workdir, proj)
+    topmost = ancestor_levels[-1] if ancestor_levels else None
+    for distance, level in enumerate(ancestor_levels):
         trust_domain = str(level)
+        # Plain grouped root (RFC revision): the REPO/PROJECT root's
+        # ``skills/`` is scanned with BOUNDED recursion, so grouped layouts
+        # such as skills/procedures/<name>/SKILL.md are discovered without
+        # moving any skill.  Only the topmost level — NOT every intermediate
+        # ancestor, so a stray <sub>/skills is never picked up.  Physical-file
+        # dedup in load_candidates collapses overlap with the builtin roots.
+        if level == topmost:
+            plain_root = level / "skills"
+            if plain_root.is_dir():
+                sources.append(
+                    _project_source(
+                        "project",
+                        "electromind",
+                        plain_root,
+                        distance=distance,
+                        trust_domain=trust_domain,
+                        project_root=level,
+                    )
+                )
         for dir_name in STANDARD_SKILL_DIRS:
             root = level / dir_name / "skills"
             if root.is_dir():
@@ -307,16 +329,17 @@ def fingerprint_source(source: SkillSource) -> str:
 
 
 def _source_skill_dirs(source: SkillSource) -> list[Path]:
-    """The skill directories under *source* — the single flat model (A+ W5).
+    """The skill directories under *source* — bounded recursive discovery.
 
-    Every source root is a plain flat skill root: direct children that
-    contain ``SKILL.md``.  There is no structured-root variant.
+    Replaces the old one-level flat scan (A+ W5).  A source root is scanned
+    up to ``DiscoveryPolicy.max_depth`` levels, stops descending at an atomic
+    Skill boundary, skips nested symlinks and ignored dirs, and returns a
+    deterministic order.  Grouped layouts like ``skills/procedures/<name>/``
+    are therefore discovered without moving any skill.
     """
-    return [
-        entry
-        for entry in sorted(source.root.iterdir())
-        if entry.is_dir() and (entry / "SKILL.md").is_file()
-    ]
+    from .discovery import discover_skill_dirs
+
+    return discover_skill_dirs(source.root)
 
 
 def _resource_rel_paths(skill_dir: Path) -> list[str]:
@@ -326,18 +349,38 @@ def _resource_rel_paths(skill_dir: Path) -> list[str]:
     return [rel for rel in collect_resources(skill_dir) if rel != "SKILL.md"]
 
 
+def _file_identity(skill_dir: Path) -> tuple[Path, int, int]:
+    """Physical-file identity for dedup: resolved SKILL.md + (dev, inode).
+
+    The same physical skill found through overlapping roots (e.g. project
+    ``skills/`` AND builtin ``procedures``/``tools``) must collapse to ONE
+    candidate — dedup precedes name-conflict resolution.
+    """
+    try:
+        md = (skill_dir / "SKILL.md").resolve()
+        st = md.stat()
+        return (md, st.st_dev, st.st_ino)
+    except OSError:
+        return (skill_dir.resolve(), -1, -1)
+
+
 def load_candidates(
     sources: tuple[SkillSource, ...],
     *,
     is_project_trusted: Callable[[Path | None], bool] | None = None,
 ) -> tuple[SkillCandidate, ...]:
-    """Load every source into ``SkillCandidate`` tuples — **per directory**.
+    """Load every source into ``SkillCandidate`` tuples.
 
     Unlike the legacy ``load_skill_catalog`` (first-wins, drops same-name
     duplicates within a source), this loader:
 
-    - keeps **every** skill directory as a candidate, including same-source
-      same-name duplicates;
+    - **deduplicates the same physical file** found through overlapping
+      roots (project ``skills/`` + builtin roots): one candidate, effective
+      scope = highest-priority source, all sources kept in
+      ``candidate.discovery_sources``;
+    - reports **same-scope same-name** collisions (different physical files)
+      as deterministic ``error`` diagnostics — never order-dependent;
+    - warns when frontmatter ``name`` differs from the parent directory;
     - preserves the **full frontmatter** in the descriptor;
     - produces **unique qualified ids** (add-dir roots and same-source
       collisions get a stable locator hash segment).
@@ -350,26 +393,90 @@ def load_candidates(
     """
 
     evaluator = is_project_trusted or (lambda _project_root: True)
-    candidates: list[SkillCandidate] = []
-    used_ids: set[str] = set()
 
+    # 1. Load every (source, skill_dir) pair, keeping provenance.
+    loaded: list[tuple[SkillSource, Path, SkillCandidate]] = []
     for source in sources:
         for skill_dir in _source_skill_dirs(source):
-            candidate = _load_one_candidate(
-                source,
-                skill_dir,
-                evaluator=evaluator,
-            )
+            candidate = _load_one_candidate(source, skill_dir, evaluator=evaluator)
             if candidate is None:
                 continue
-            # Ensure a globally-unique qualified id.
-            skill_id = candidate.skill_id
-            if skill_id in used_ids:
-                locator = _locator_hash(skill_dir)
-                parts = skill_id.split(":")
-                skill_id = ":".join(parts[:-1] + [locator, parts[-1]])
-            used_ids.add(skill_id)
-            candidates.append(replace(candidate, skill_id=skill_id))
+            loaded.append((source, skill_dir, candidate))
+
+    # 2. Physical-file dedup — collapse the same file found via overlapping
+    #    roots; effective source = highest priority; keep all provenance.
+    by_identity: dict[tuple[Path, int, int], list[int]] = {}
+    for idx, (source, skill_dir, _cand) in enumerate(loaded):
+        by_identity.setdefault(_file_identity(skill_dir), []).append(idx)
+
+    merged: list[tuple[SkillSource, Path, SkillCandidate]] = []
+    for idxs in by_identity.values():
+        entries = [loaded[i] for i in idxs]
+        entries.sort(key=lambda e: source_rank(e[0]))
+        best_source, best_dir, best_cand = entries[0]
+        if len(entries) > 1:
+            best_cand = replace(
+                best_cand,
+                discovery_sources=tuple(e[0] for e in entries),
+            )
+        merged.append((best_source, best_dir, best_cand))
+
+    # 3. Same-scope duplicate names (different physical files) — index.
+    by_scope_name: dict[tuple[str, str], list[int]] = {}
+    for idx, (_src, _dir, cand) in enumerate(merged):
+        by_scope_name.setdefault(
+            (cand.source.scope, cand.descriptor.name), []
+        ).append(idx)
+
+    # 4. Build final candidates: conflict/warning diagnostics + unique ids.
+    candidates: list[SkillCandidate] = []
+    used_ids: set[str] = set()
+    for idx, (source, skill_dir, cand) in enumerate(merged):
+        extra: list[SkillDiagnostic] = list(cand.diagnostics)
+
+        siblings = by_scope_name.get((cand.source.scope, cand.descriptor.name), [])
+        if len(siblings) > 1:
+            # Builtin scope may legitimately hold the SAME installed bundle in
+            # several roots (.venv + repo skills/) — that is a tolerated
+            # warning, not a user conflict.  All other scopes: a same-scope
+            # same-name collision between different physical files is an error
+            # (deterministic, never order-dependent).
+            severity = "error" if cand.source.scope != "builtin" else "warning"
+            for other_idx in siblings:
+                if other_idx == idx:
+                    continue
+                _os, other_dir, _oc = merged[other_idx]
+                extra.append(
+                    SkillDiagnostic(
+                        code="duplicate_skill_name",
+                        message=(
+                            f'Duplicate skill "{cand.descriptor.name}" in '
+                            f"{cand.source.scope} scope: {skill_dir} vs {other_dir}."
+                            if severity == "error"
+                            else (
+                                f'Skill "{cand.descriptor.name}" appears in multiple '
+                                f"builtin roots ({skill_dir} vs {other_dir}) — "
+                                "installed bundle duplication, tolerated."
+                            )
+                        ),
+                        path=str(skill_dir),
+                        severity=severity,
+                    )
+                )
+
+        # name ≠ directory mismatch is emitted by _load_one_candidate as a
+        # warning on the candidate (kept here — do not duplicate).
+        cand = replace(cand, diagnostics=tuple(extra))
+
+        # Ensure a globally-unique qualified id.
+        skill_id = cand.skill_id
+        if skill_id in used_ids:
+            locator = _locator_hash(skill_dir)
+            parts = skill_id.split(":")
+            skill_id = ":".join(parts[:-1] + [locator, parts[-1]])
+        used_ids.add(skill_id)
+        candidates.append(replace(cand, skill_id=skill_id))
+
     return tuple(candidates)
 
 
@@ -436,22 +543,23 @@ def _load_one_candidate(
                 severity="error",
             )
         )
-    # A+ W3: the directory name must equal the frontmatter `name`.  A
-    # mismatch makes the skill invalid (hard error, not a warning) — the
-    # candidate is not registered.
+    # RFC revision: frontmatter `name` ≠ directory name is a WARNING, not a
+    # hard error.  The candidate is still registered (migration compatibility);
+    # the mismatch diagnostic is carried on the candidate.  (Agent Skills
+    # standard: name SHOULD match the parent directory — not MUST.)
     if name and name != skill_dir.name:
         diagnostics.append(
             SkillDiagnostic(
                 code="skill_name_directory_mismatch",
                 message=(
-                    f"frontmatter name {name!r} does not match directory "
-                    f"{skill_dir.name!r}"
+                    f'Skill name "{name}" does not match directory '
+                    f'"{skill_dir.name}". Accepted for compatibility but may '
+                    "reduce portability."
                 ),
                 path=str(skill_dir),
-                severity="error",
+                severity="warning",
             )
         )
-        return None
 
     resources = tuple(rel for rel in collect_resources(skill_dir) if rel != "SKILL.md")
     content_digest = hash_content(body, description, *sorted(resources))
