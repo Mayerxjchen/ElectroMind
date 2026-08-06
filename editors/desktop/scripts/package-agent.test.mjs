@@ -3,23 +3,55 @@
  * - detectAgentArch 能识别本机 arm64 / x64 二进制（Mach-O CIGAM 兼容）。
  * - embedAgent 找不到 Agent 时默认抛错（禁止静默降级 Companion），
  *   显式 --allow-companion 才放行。
+ *
+ * 自包含：样例二进制用 process.execPath（node 本体，真实 Mach-O），
+ * 发现目录用临时 dir（不依赖仓库根 dist/ 或 .venv 等环境残留）。
  */
 
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
-import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { test } from "node:test";
 
 const require = createRequire(import.meta.url);
 
-// package.js 用 CJS；本机 Python 是 thin arm64 Mach-O，适合验证。
+// package.js 用 CJS；node 本体是真实 Mach-O（macOS）或 ELF（Linux）。
 const { detectAgentArch, embedAgent } = require("../scripts/package.js");
 
-test("detectAgentArch recognizes a real Mach-O binary", () => {
-  const arch = detectAgentArch(".venv/bin/python");
+const SAMPLE_BIN = process.execPath;
+
+// 合成最小 Mach-O 头（MH_MAGIC_64 + cputype），架构检测不依赖机器上
+// 同时存在 arm64/x64 二进制，任何 Runner 上都可复现。
+const MH_MAGIC_64 = 0xfeedfacf;
+const CPU_ARM64 = 0x0100000c;
+const CPU_X86_64 = 0x01000007;
+
+function syntheticMachO(cputype) {
+  const buf = Buffer.alloc(8);
+  buf.writeUInt32LE(MH_MAGIC_64, 0);
+  buf.writeInt32LE(cputype, 4);
+  return buf;
+}
+
+test("detectAgentArch recognizes a real binary", () => {
+  const arch = detectAgentArch(SAMPLE_BIN);
   assert.ok(arch === "arm64" || arch === "x64", `unexpected arch ${arch}`);
+});
+
+test("detectAgentArch reads synthetic Mach-O cputype", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "agent-synth-"));
+  try {
+    const arm = join(tmpDir, "arm-bin");
+    const x64 = join(tmpDir, "x64-bin");
+    require("node:fs").writeFileSync(arm, syntheticMachO(CPU_ARM64));
+    require("node:fs").writeFileSync(x64, syntheticMachO(CPU_X86_64));
+    assert.equal(detectAgentArch(arm), "arm64");
+    assert.equal(detectAgentArch(x64), "x64");
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
 });
 
 test("detectAgentArch returns null for a non-binary file", () => {
@@ -30,7 +62,12 @@ test("embedAgent throws when no agent and not allow-companion", () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "agent-missing-"));
   try {
     const appDir = join(tmpDir, "app");
-    assert.throws(() => embedAgent(appDir, "", false), /P5\.2|禁止静默降级/);
+    const emptyDist = join(tmpDir, "empty-dist");
+    mkdirSync(emptyDist, { recursive: true });
+    assert.throws(
+      () => embedAgent(appDir, "", false, emptyDist),
+      /P5\.2|禁止静默降级/,
+    );
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
@@ -40,7 +77,9 @@ test("embedAgent allows companion when explicitly requested", () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "agent-comp-"));
   try {
     const appDir = join(tmpDir, "app");
-    const ok = embedAgent(appDir, "", true);
+    const emptyDist = join(tmpDir, "empty-dist");
+    mkdirSync(emptyDist, { recursive: true });
+    const ok = embedAgent(appDir, "", true, emptyDist);
     assert.equal(ok, false); // Companion 包，不嵌入
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
@@ -52,7 +91,7 @@ test("embedAgent embeds an explicit agent binary", () => {
   try {
     const appDir = join(tmpDir, "app");
     const agentSrc = join(tmpDir, "agent-bin");
-    copyFileSync(".venv/bin/python", agentSrc);
+    copyFileSync(SAMPLE_BIN, agentSrc);
     const ok = embedAgent(appDir, agentSrc, false);
     assert.equal(ok, true);
     // .app bundle 路径：appDir/<productName>.app/Contents/Resources/agent/electromind
@@ -67,14 +106,24 @@ test("embedAgent throws on arch mismatch", () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "agent-arch-"));
   try {
     const appDir = join(tmpDir, "app");
+    // 合成与打包架构相反 cputype 的 Mach-O → 必然触发架构不匹配
+    const opposite = process.arch === "arm64" ? CPU_X86_64 : CPU_ARM64;
     const agentSrc = join(tmpDir, "agent-bin");
-    copyFileSync(".venv/bin/python", agentSrc); // 本机 arm64
-    const detected = detectAgentArch(agentSrc);
-    // 强行以不匹配的 arch 调用（arch 是模块级变量，这里直接断言逻辑分支
-    // 由 detectAgentArch 的返回值驱动——若本机是 arm64，arch='x64' 必抛）。
-    // 为稳妥，测试仅验证"显式指定不存在的二进制"会抛。
-    assert.ok(detected);
-    assert.throws(() => embedAgent(appDir, join(tmpDir, "missing-bin"), false), /不存在/);
+    require("node:fs").writeFileSync(agentSrc, syntheticMachO(opposite));
+    assert.throws(() => embedAgent(appDir, agentSrc, false), /架构/);
+  } finally {
+    rmSync(tmpDir, { recursive: true, force: true });
+  }
+});
+
+test("embedAgent rejects explicit missing binary", () => {
+  const tmpDir = mkdtempSync(join(tmpdir(), "agent-missingbin-"));
+  try {
+    const appDir = join(tmpDir, "app");
+    assert.throws(
+      () => embedAgent(appDir, join(tmpDir, "missing-bin"), false),
+      /不存在/,
+    );
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
