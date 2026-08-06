@@ -109,11 +109,18 @@ jobs:
       - name: CDP smoke (electron renderer loads)
         working-directory: editors/desktop
         run: |
+          set +e
           if command -v xvfb-run >/dev/null 2>&1; then
-            xvfb-run -a node --test scripts/cdp-smoke.test.mjs
+            xvfb-run -a node --test scripts/cdp-smoke.test.mjs 2>&1 | tee /tmp/cdp.log
           else
-            node --test scripts/cdp-smoke.test.mjs
+            node --test scripts/cdp-smoke.test.mjs 2>&1 | tee /tmp/cdp.log
           fi
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -n -A 40 '^not ok' /tmp/cdp.log | tr '\n' '%0A' | head -c 4000 > /tmp/cdp-fail.txt
+            echo "::error file=editors/desktop,title=cdp smoke failures::$(cat /tmp/cdp-fail.txt)"
+          fi
+          exit "$code"
         env:
           ELECTROMIND_HOME: /tmp/electromind-ci-smoke
 
@@ -157,7 +164,15 @@ jobs:
 
       - name: CDP smoke (electron renderer loads)
         working-directory: editors/desktop
-        run: node --test scripts/cdp-smoke.test.mjs
+        run: |
+          set +e
+          node --test scripts/cdp-smoke.test.mjs 2>&1 | tee /tmp/cdp.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            grep -n -A 40 '^not ok' /tmp/cdp.log | tr '\n' '%0A' | head -c 4000 > /tmp/cdp-fail.txt
+            echo "::error file=editors/desktop,title=cdp smoke failures::$(cat /tmp/cdp-fail.txt)"
+          fi
+          exit "$code"
         env:
           ELECTROMIND_HOME: /tmp/electromind-ci-smoke-mac
 
