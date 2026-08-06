@@ -61,8 +61,18 @@ jobs:
       - name: Build container test image
         run: docker build -t electromind:latest -f src/app/Dockerfile src/app
 
+      # 失败时把 pytest 输出尾部以 ::error:: 注解发布（run 页面与
+      # checks API 均可见，PR 上直接显示失败原因），避免盲查日志。
       - name: pytest + coverage
-        run: uv run pytest tests/ --cov=src --cov-report=json -q
+        run: |
+          set +e
+          uv run pytest tests/ --cov=src --cov-report=json -q 2>&1 | tee /tmp/pytest.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            tail -n 40 /tmp/pytest.log | tr '\n' '%0A' | head -c 4000 > /tmp/pytest-fail.txt
+            echo "::error file=tests/,title=pytest failures::$(cat /tmp/pytest-fail.txt)"
+          fi
+          exit "$code"
         env:
           COVERAGE_MIN: "78"
           ELECTROMIND_TEST_CONTAINER_IMAGE: "electromind:latest"
@@ -79,7 +89,15 @@ jobs:
 
       - name: Desktop unit tests (node --test)
         working-directory: editors/desktop
-        run: node --test scripts/*.test.mjs
+        run: |
+          set +e
+          node --test scripts/*.test.mjs 2>&1 | tee /tmp/unit.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            tail -n 40 /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
+            echo "::error file=editors/desktop,title=desktop unit failures::$(cat /tmp/unit-fail.txt)"
+          fi
+          exit "$code"
 
       - name: CDP smoke (electron renderer loads)
         working-directory: editors/desktop
@@ -116,7 +134,15 @@ jobs:
 
       - name: Desktop unit tests
         working-directory: editors/desktop
-        run: node --test scripts/*.test.mjs
+        run: |
+          set +e
+          node --test scripts/*.test.mjs 2>&1 | tee /tmp/unit.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            tail -n 40 /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
+            echo "::error file=editors/desktop,title=desktop unit failures::$(cat /tmp/unit-fail.txt)"
+          fi
+          exit "$code"
 
       # P5.1: 无 --agent-bin 且 dist/ 无产物 → 打包必须失败（禁止静默降级
       # Companion）。这里用 --allow-companion 显式跑打包冒烟（CI 不构建
