@@ -207,6 +207,47 @@ test("command palette: Cmd+K opens, filters, executes via registry", async () =>
       "执行后 Palette 关闭",
     );
 
+    // ── P5: Composer 状态 chip + Model Picker（点击 chip 打开）──────
+    const chips = await cdpEval(
+      page,
+      `(() => {
+        const modeChip = document.querySelector('[data-composer-react] [data-mode-chip]')?.textContent;
+        const modelChip = document.querySelector('[data-composer-react] [data-model-chip]')?.textContent;
+        const statusChip = document.querySelector('[data-composer-react] [data-status-chip]')?.textContent;
+        return JSON.stringify({ modeChip, modelChip, statusChip });
+      })()`,
+    );
+    const chipState = JSON.parse(chips);
+    assert.ok(chipState.modeChip && chipState.modeChip.trim().length > 0, `模式 chip 应存在（${chips}）`);
+    assert.ok(chipState.modelChip && chipState.modelChip.includes("Auto"), `模型 chip 应含 Auto（${chips}）`);
+    assert.ok(chipState.statusChip && chipState.statusChip.includes("Prompt"), `状态 chip 应含权限（${chips}）`);
+    // 点击模型 chip → Picker 打开；选择 Best → 写回 Thread 的 ModelSelection
+    await cdpEval(
+      page,
+      `(() => {
+        const s = window.__electromindStore;
+        s.ensureThread('picker-t', 'P'); s.setActiveThread('picker-t');
+        document.querySelector('[data-composer-react] [data-model-chip]').click();
+        return true;
+      })()`,
+    );
+    await waitFor(page, "!!document.querySelector('[data-model-picker]')", "Model Picker 打开");
+    await cdpEval(
+      page,
+      `(() => {
+        const items = Array.from(document.querySelectorAll('[data-model-picker] .model-picker-item'));
+        const best = items.find(i => i.querySelector('.model-picker-label')?.textContent === 'Best');
+        best.click();
+        return true;
+      })()`,
+    );
+    await sleep(200);
+    const modelAfter = await cdpEval(
+      page,
+      `JSON.stringify(window.__electromindStore.getThread('picker-t')?.model)`,
+    );
+    assert.match(modelAfter, /"profile":"best"/, `选择 Best 应写回 ModelSelection（${modelAfter}）`);
+
     // ── 未知命令不执行（registry 层拒绝）────────────────────────
     const unknown = await cdpEval(
       page,

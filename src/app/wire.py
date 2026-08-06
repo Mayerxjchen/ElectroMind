@@ -659,7 +659,9 @@ def _emit_model_resolved(
         {
             "thread_id": thread_id,
             "model_policy": policy_label(policy),
-            "effective_model": res.effective_model if res is not None else config.resolved_model(),
+            "effective_model": res.effective_model
+            if res is not None
+            else config.resolved_model(),
             "reason": res.reason if res is not None else "resolve-failed",
             "phase": phase,
         },
@@ -1841,7 +1843,12 @@ async def _activate_skill_for_run(runner, skill_name: str, thread_id: str) -> bo
     if catalog is None:
         _emit_jsonrpc(
             "skills/activated",
-            {"thread_id": thread_id, "name": skill_name, "ok": False, "error": "无可用 Skill catalog"},
+            {
+                "thread_id": thread_id,
+                "name": skill_name,
+                "ok": False,
+                "error": "无可用 Skill catalog",
+            },
         )
         return False
 
@@ -1862,7 +1869,9 @@ async def _activate_skill_for_run(runner, skill_name: str, thread_id: str) -> bo
         items_dir=PrivateSnapshotStore().root.parent / "activations",
         resolution=catalog.resolution,
     )
-    target = _resolve_invocation_skill_id(service, skill_name, capabilities=capabilities)
+    target = _resolve_invocation_skill_id(
+        service, skill_name, capabilities=capabilities
+    )
     if target is None:
         _emit_jsonrpc(
             "skills/activated",
@@ -1944,7 +1953,6 @@ async def run_user_turn(
     # ── P3: Run 开始时解析一次 Auto Model，并把解析结果广播给客户端。
     # Run 开始后不因普通重试切换（解析结果已冻结在 RunSnapshot）。
     try:
-
         _emit_model_resolved(config, requested_mode, thread_id, phase="plan")
     except (Exception, SystemExit):  # noqa: BLE001 — 解析失败不阻断本轮
         log("[wire] model/resolved emission failed (non-fatal)")

@@ -1,6 +1,5 @@
 """P3 ModelResolver 单元测试 —— 修订版文档 §7 初始规则与固定规则。"""
 
-
 from electromind.model_resolver import (
     AUTO_POLICY,
     DEFAULT_AVAILABLE_MODELS,
@@ -36,7 +35,10 @@ class TestParsePolicy:
         assert policy_label(AUTO_POLICY) == "Auto"
         assert policy_label(parse_model_policy("best")) == "Best"
         assert policy_label(parse_model_policy("plan-execute")) == "Plan→Execute"
-        assert policy_label(parse_model_policy("deepseek-v4-flash")) == "named:deepseek-v4-flash"
+        assert (
+            policy_label(parse_model_policy("deepseek-v4-flash"))
+            == "named:deepseek-v4-flash"
+        )
 
 
 class TestResolveRules:
@@ -57,7 +59,9 @@ class TestResolveRules:
         assert r.reason == "session-mode:agent:balanced"
 
     def test_profile_best(self):
-        r = resolve_model(ModelPolicy(kind="profile", profile="best"), session_mode="ask")
+        r = resolve_model(
+            ModelPolicy(kind="profile", profile="best"), session_mode="ask"
+        )
         assert r.reason.startswith("policy:profile:best")
 
     def test_named_fixed(self):
@@ -80,7 +84,11 @@ class TestPlanExecuteHybrid:
     默认路由表（fast→flash / balanced→pro / best→pro）下两阶段模型相同；
     用三档路由表证明阶段逻辑：best→pro，balanced→flash。"""
 
-    ROUTE = {"fast": "deepseek-v4-flash", "balanced": "deepseek-v4-flash", "best": "deepseek-v4-pro"}
+    ROUTE = {
+        "fast": "deepseek-v4-flash",
+        "balanced": "deepseek-v4-flash",
+        "best": "deepseek-v4-pro",
+    }
 
     def test_plan_phase_best(self):
         r = resolve_model(
@@ -108,7 +116,9 @@ class TestAvailability:
 
     def test_route_target_missing_falls_back_in_available(self):
         # 可用列表只有 flash —— best 路由目标 pro 不可用 → 降级到可用里最高档
-        r = resolve_model(AUTO_POLICY, session_mode="plan", available_models=("deepseek-v4-flash",))
+        r = resolve_model(
+            AUTO_POLICY, session_mode="plan", available_models=("deepseek-v4-flash",)
+        )
         assert r.effective_model == "deepseek-v4-flash"
 
     def test_named_must_be_available(self):

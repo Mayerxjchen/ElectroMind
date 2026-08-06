@@ -42,7 +42,9 @@ def _fake_catalog(disable_model_invocation: bool = False):
 
 
 def test_catalog_payload_invocation_both(monkeypatch):
-    payload = wire._skills_catalog_payload(_fake_catalog(disable_model_invocation=False))
+    payload = wire._skills_catalog_payload(
+        _fake_catalog(disable_model_invocation=False)
+    )
     assert payload["skills"][0]["invocation"] == "both"
 
 
@@ -78,7 +80,10 @@ def _real_catalog(tmp_path) -> "object":
 
     root = Path(tmp_path) / "cp2k"
     root.mkdir(parents=True, exist_ok=True)
-    (root / "SKILL.md").write_text("---\nname: cp2k\ndescription: CP2K\n---\n\nActivate the `cp2k` skill.\n", encoding="utf-8")
+    (root / "SKILL.md").write_text(
+        "---\nname: cp2k\ndescription: CP2K\n---\n\nActivate the `cp2k` skill.\n",
+        encoding="utf-8",
+    )
     source = SkillSource(
         source_id="builtin-cp2k",
         scope="builtin",  # type: ignore[arg-type]
@@ -88,7 +93,9 @@ def _real_catalog(tmp_path) -> "object":
         distance_from_cwd=None,
         trust_domain="builtin",
     )
-    skill_id = make_skill_id(scope="builtin", name="cp2k", dialect="agents", project_dir=None)
+    skill_id = make_skill_id(
+        scope="builtin", name="cp2k", dialect="agents", project_dir=None
+    )
     descriptor = SkillDescriptor(
         name="cp2k",
         description="CP2K",
@@ -117,7 +124,9 @@ async def test_activate_skill_for_run_unresolved_emits_failure(monkeypatch, tmp_
         capabilities=(),
         mounter=None,
     )
-    runner = SimpleNamespace(skill_runtime=skill_runtime, agent=SimpleNamespace(system="sys"))
+    runner = SimpleNamespace(
+        skill_runtime=skill_runtime, agent=SimpleNamespace(system="sys")
+    )
     ok = await wire._activate_skill_for_run(runner, "no-such-skill", "t1")
     assert ok is False
     captured = [json.loads(line) for line in lines]
@@ -126,7 +135,9 @@ async def test_activate_skill_for_run_unresolved_emits_failure(monkeypatch, tmp_
     assert runner.agent.system == "sys"
 
 
-async def test_activate_skill_for_run_success_injects_and_broadcasts(monkeypatch, tmp_path):
+async def test_activate_skill_for_run_success_injects_and_broadcasts(
+    monkeypatch, tmp_path
+):
     """可信 Skill 解析成功 → payload 注入 agent 系统提示 + 广播成功。"""
     lines = _capture(monkeypatch)
     catalog = _real_catalog(tmp_path)
@@ -135,7 +146,9 @@ async def test_activate_skill_for_run_success_injects_and_broadcasts(monkeypatch
         capabilities=(),
         mounter=None,
     )
-    runner = SimpleNamespace(skill_runtime=skill_runtime, agent=SimpleNamespace(system="sys"))
+    runner = SimpleNamespace(
+        skill_runtime=skill_runtime, agent=SimpleNamespace(system="sys")
+    )
     ok = await wire._activate_skill_for_run(runner, "cp2k", "t1")
     assert ok is True
     captured = [json.loads(line) for line in lines]
