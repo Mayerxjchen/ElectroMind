@@ -923,19 +923,29 @@ function renderTerminalEntries(entries: TerminalEntry[]): string {
   `;
 }
 
-function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
-  const root = document.querySelector<HTMLDivElement>("#app");
-  if (!root) {
-    return;
-  }
+/**
+ * Shell 槽位片段 + 单一布局所有者（P0）。
+ *
+ * React AppShell 渲染外壳骨架；renderShell 把下列片段填进槽位
+ * （[data-slot=...] / [data-composer-dock] / [data-overlay-layer]）。
+ * 若 React 外壳缺失，回退到 legacyShellTemplate（完整 vanilla 模板）。
+ * 片段与 legacy 模板字节级同源：legacy 由同一批片段拼装而成。
+ */
 
-  root.innerHTML = `
-    <div class="desktop-root">
-    <div class="desktop-shell ${platformClass(appInfo)}" data-shell>
-      <div class="execution-risk-bar" data-execution-risk-bar hidden>
+/** React 外壳就绪前最多等待的轮数（每轮 80ms；与 entry.tsx 挂载重试一致）。 */
+const SHELL_WAIT_ATTEMPTS = 25;
+
+function shellRiskBarTemplate(): string {
+  return `
+    <div class="execution-risk-bar" data-execution-risk-bar hidden>
         <span class="execution-risk-icon" aria-hidden="true">⚠</span>
         <span class="execution-risk-text" data-execution-risk-text>本地执行：命令直接以当前用户权限运行，无隔离。</span>
       </div>
+  `;
+}
+
+function shellTitlebarTemplate(): string {
+  return `
       <div class="desktop-titlebar">
         <div class="titlebar-left">
           <div class="titlebar-switch" data-titlebar-switch role="button" tabindex="0" title="切换主题" aria-label="切换主题">
@@ -962,9 +972,12 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           </button>
         </div>
       </div>
-      <div class="desktop-workbench" data-workbench>
-        <aside class="pane pane-left" data-left-pane>
-          <div class="pane-expanded">
+  `;
+}
+
+function leftPaneExpandedTemplate(appInfo: AppInfo): string {
+  return `
+
             <div class="pane-topbar">
               <button class="new-task-button" type="button" data-new-task>新建任务</button>
             </div>
@@ -1043,8 +1056,13 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 </button>
               </div>
             </div>
-          </div>
-          <div class="pane-collapsed">
+          
+  `;
+}
+
+function leftPaneCollapsedTemplate(appInfo: AppInfo): string {
+  return `
+
             <button class="collapsed-expand" type="button" data-expand-left title="展开左栏">
               ${renderIcon("panel-left-open")}
             </button>
@@ -1069,13 +1087,13 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 <span class="user-avatar small">${escapeHtml(appInfo.userName.charAt(0).toUpperCase())}</span>
               </button>
             </div>
-          </div>
-        </aside>
+          
+  `;
+}
 
-        <div class="pane-resizer" data-resizer="left"></div>
+function centerTopbarTemplate(runtime: RuntimeState): string {
+  return `
 
-        <section class="pane pane-center">
-          <div class="pane-topbar center-topbar">
             <div class="center-title" data-task-title>新建任务</div>
             <div class="center-header-side">
               <button class="center-pill center-pill-button" type="button" data-select-project title="${escapeHtml(runtime.projectPath)}">
@@ -1087,14 +1105,22 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 <span data-sandbox-backend>${sandboxBackendLabel(runtime)}</span>
               </span>
             </div>
-          </div>
-          <div class="chat-log" data-chat-log></div>
-          <div class="composer-dock" data-composer-dock>
+          
+  `;
+}
+
+function composerDockMentionTemplate(): string {
+  return `
             <div class="mention-popup" data-mention-popup hidden></div>
             <!-- D3.4-2: the React Composer mounts here.  It stays hidden
                  until entry.tsx signals readiness (data-composer-react);
                  the vanilla composer remains the live one until then. -->
-            <div class="composer-react" data-composer-react></div>
+
+  `;
+}
+
+function composerFloatingTemplate(): string {
+  return `
             <div class="composer composer-floating">
               <textarea id="prompt" placeholder="给 electromind 下达任务，输入 @ 引用文件"></textarea>
               <div class="composer-actions">
@@ -1148,13 +1174,12 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 </div>
               </div>
             </div>
-          </div>
-        </section>
+  `;
+}
 
-        <div class="pane-resizer" data-resizer="right" aria-hidden="true"></div>
+function rightPaneTemplate(): string {
+  return `
 
-        <aside class="pane pane-right" data-right-pane>
-          <div class="pane-expanded">
             <div class="pane-topbar right-topbar">
               <div class="tab-group" role="tablist" aria-label="右侧面板">
                 <button class="tab-button" type="button" data-tab="plan">计划</button>
@@ -1277,10 +1302,12 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
                 </div>
               </div>
             </div>
-          </div>
-        </aside>
-      </div>
-    </div>
+          
+  `;
+}
+
+function overlayTemplate(): string {
+  return `
       <div class="desktop-modal setup-guard-modal" data-onboarding-modal hidden>
         <div class="desktop-modal-backdrop setup-guard-backdrop" data-onboarding-close aria-hidden="true"></div>
         <section class="desktop-modal-card onboarding-modal-card" role="dialog" aria-modal="true" aria-labelledby="onboarding-title">
@@ -1517,10 +1544,107 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
           <span class="tree-context-item-label">复制项目相对路径</span>
         </button>
       </div>
+  `;
+}
+
+function legacyShellTemplate(appInfo: AppInfo, runtime: RuntimeState): string {
+  return `
+    <div class="desktop-root">
+    <div class="desktop-shell ${platformClass(appInfo)}" data-shell>
+      ${shellRiskBarTemplate()}
+      ${shellTitlebarTemplate()}
+      <div class="desktop-workbench" data-workbench>
+        <aside class="pane pane-left" data-left-pane>
+          <div class="pane-expanded">${leftPaneExpandedTemplate(appInfo)}</div>
+          <div class="pane-collapsed">${leftPaneCollapsedTemplate(appInfo)}</div>
+        </aside>
+        <div class="pane-resizer" data-resizer="left"></div>
+        <section class="pane pane-center">
+          <div class="pane-topbar center-topbar">${centerTopbarTemplate(runtime)}</div>
+          <div class="chat-log" data-chat-log></div>
+          <div class="composer-dock" data-composer-dock>
+            ${composerDockMentionTemplate()}
+            <div class="composer-react" data-composer-react></div>
+            ${composerFloatingTemplate()}
+          </div>
+        </section>
+        <div class="pane-resizer" data-resizer="right" aria-hidden="true"></div>
+        <aside class="pane pane-right" data-right-pane>
+          <div class="pane-expanded">${rightPaneTemplate()}</div>
+        </aside>
+      </div>
+    </div>
+    ${overlayTemplate()}
     </div>
   `;
 }
 
+function waitForShellSlot(attempt = 0): Promise<HTMLElement | null> {
+  const shell = document.querySelector<HTMLElement>(".desktop-shell[data-shell]");
+  if (shell) {
+    return Promise.resolve(shell);
+  }
+  if (attempt >= SHELL_WAIT_ATTEMPTS) {
+    return Promise.resolve(null);
+  }
+  return new Promise((resolve) => {
+    window.setTimeout(() => {
+      resolve(waitForShellSlot(attempt + 1));
+    }, 80);
+  });
+}
+
+/** 把 vanilla 面板内容填进 React AppShell 的槽位。
+ *  - [data-slot=titlebar / left-pane-expanded / left-pane-collapsed /
+ *    center-topbar / right-pane]：innerHTML 直接填充；
+ *  - [data-composer-dock]：追加 mention 弹层 + vanilla 兜底 composer
+ *    （entry.tsx 挂载 React Composer 并置 ready 后由 CSS 隐藏）；
+ *  - [data-overlay-layer]：模态 / 右键菜单等 fixed 浮层。
+ */
+function fillShellSlots(shell: HTMLElement, appInfo: AppInfo, runtime: RuntimeState): void {
+  const fill = (slot: string, html: string): void => {
+    const el = shell.querySelector<HTMLElement>(`[data-slot="${slot}"]`);
+    if (el) {
+      el.innerHTML = html;
+    }
+  };
+  fill("titlebar", shellTitlebarTemplate());
+  fill("left-pane-expanded", leftPaneExpandedTemplate(appInfo));
+  fill("left-pane-collapsed", leftPaneCollapsedTemplate(appInfo));
+  fill("center-topbar", centerTopbarTemplate(runtime));
+  fill("right-pane", rightPaneTemplate());
+
+  const dock = shell.querySelector<HTMLElement>("[data-composer-dock]");
+  if (dock) {
+    dock.insertAdjacentHTML(
+      "beforeend",
+      `${composerDockMentionTemplate()}${composerFloatingTemplate()}`,
+    );
+  }
+
+  const overlay = shell.querySelector<HTMLElement>("[data-overlay-layer]");
+  if (overlay) {
+    overlay.innerHTML = overlayTemplate();
+  }
+}
+
+async function renderShell(appInfo: AppInfo, runtime: RuntimeState): Promise<void> {
+  const root = document.querySelector<HTMLDivElement>("#app");
+  if (!root) {
+    return;
+  }
+
+  const shell = await waitForShellSlot();
+  if (shell) {
+    // React 外壳已就位 → 只填槽位，绝不重写 #app.innerHTML
+    //（重写会摧毁 React 根，导致两个布局系统互相覆盖）。
+    fillShellSlots(shell, appInfo, runtime);
+    return;
+  }
+
+  // React 外壳缺失（bundle 未加载/渲染失败）→ 回退到完整 vanilla 模板。
+  root.innerHTML = legacyShellTemplate(appInfo, runtime);
+}
 function resizePrompt(prompt: HTMLTextAreaElement): void {
   prompt.style.height = "0px";
   prompt.style.height = `${Math.min(prompt.scrollHeight, INPUT_MAX_HEIGHT_PX)}px`;
@@ -1661,7 +1785,7 @@ async function start(): Promise<void> {
     window.desktop.getRuntimeState(),
     window.desktop.getOnboardingState(),
   ]);
-  renderShell(appInfo, initialRuntime);
+  await renderShell(appInfo, initialRuntime);
   mountToaster();
 
   const workbench = findRequired<HTMLElement>("[data-workbench]");

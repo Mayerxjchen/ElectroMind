@@ -223,6 +223,22 @@ button {
     min-height: 0;
 }
 
+/* P0: OverlayLayer —— 模态 / 右键菜单等 fixed 浮层的宿主（React AppShell
+   提供）。absolute + inset:0 覆盖整个视口但不参与 .desktop-shell 网格
+   （若放进网格会隐式新建一行）；不设 z-index，因此不创建层叠上下文，
+   子元素（modal 100 / context-menu 90 等）继续在根上下文参与层级，
+   与旧 DOM 树一致。pointer-events:none 让空层完全不拦截点击。 */
+.desktop-overlay-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.desktop-overlay-layer>.desktop-modal,
+.desktop-overlay-layer>.tree-context-menu {
+    pointer-events: auto;
+}
+
 .desktop-shell {
     height: 100%;
     display: grid;
@@ -2700,18 +2716,18 @@ button {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
-    padding: 24px 24px 120px;
-    scroll-padding-bottom: 120px;
+    /* P0: Composer 已进入主列正常文档流（不再 absolute 浮层），
+       无需再为浮层预留 120px 底部空隙。 */
+    padding: 24px 24px 16px;
+    scroll-padding-bottom: 16px;
     background: transparent;
     scrollbar-gutter: stable;
 }
 
+/* P0: Composer 是 MainColumn 文档流的最后一行 —— 不得使用
+   position: fixed / absolute（浮层定位会让审批卡等被遮挡）。 */
 .composer-dock {
-    position: absolute;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    z-index: 2;
+    position: static;
     display: flex;
     justify-content: center;
     padding: 0 16px 12px;

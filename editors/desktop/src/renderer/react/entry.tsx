@@ -1,33 +1,39 @@
 /** React entry point — bootstraps the React shell.
  *
- *  Bundled separately, loaded after ``renderer.js``.  The vanilla
- *  renderer calls ``window.__initReactShell__()`` once the DOM and
- *  ThreadStore are ready.
+ *  Bundled separately, loaded after ``renderer.js``.  At module
+ *  evaluation it renders the AppShell (the React-owned shell skeleton)
+ *  into ``#app``, then mounts the Composer into the dock's
+ *  ``[data-composer-react]`` once the shared ThreadStore is available.
  *
- *  React components mount into existing DOM containers.  If a
- *  container doesn't exist yet (vanilla renderer still loading),
- *  we create it and append to the app root.
+ *  Ownership model (P0「单一 Shell 布局所有者」):
+ *  - React owns the SHELL skeleton (AppShell: titlebar / workbench /
+ *    composer dock / overlay layer slots).
+ *  - The vanilla renderer fills content slots (session list, topbar,
+ *    inspector, modals) — its renderShell waits for ``[data-shell]``
+ *    and only falls back to the full vanilla template if React never
+ *    mounts.
+ *  - The vanilla composer stays inside the dock as a pre-ready
+ *    fallback; CSS swaps it out once ``data-composer-react="ready"``.
  */
 
 import { createRoot } from "react-dom/client";
-import { ThreadList } from "./components/ThreadList";
+import { AppShell } from "./components/AppShell";
 import { Composer } from "./components/Composer";
-import { InspectorShell } from "./components/InspectorShell";
 import { SessionManager } from "../store/SessionManager";
 import type { ThreadStore } from "../store/ThreadStore";
 import { sharedThreadStore } from "./useStore";
 
-let _sessionManager: SessionManager | null = null;
-
-function ensureContainer(id: string, parentId = "app"): HTMLElement {
-  let el = document.getElementById(id);
-  if (!el) {
-    el = document.createElement("div");
-    el.id = id;
-    const parent = document.getElementById(parentId);
-    if (parent) parent.appendChild(el);
-  }
-  return el;
+/** Render the AppShell skeleton.  Called once at module evaluation.
+ *  Guard: if the vanilla fallback already rendered its own shell
+ *  (React shell never mounted), do not stack a second one. */
+function mountAppShell(): void {
+  const app = document.getElementById("app");
+  if (!app || document.querySelector(".desktop-shell")) return;
+  const el = document.createElement("div");
+  el.id = "react-appshell-root";
+  el.style.height = "100%";
+  app.appendChild(el);
+  createRoot(el).render(<AppShell />);
 }
 
 /** Render the Composer into a given container with the wire-bridge props. */
@@ -65,14 +71,15 @@ function mountComposerAt(el: HTMLElement, store: ThreadStore): void {
   );
 }
 
-/** D3.4: mount the Composer into the dock's [data-composer-react] container
- *  and, only then, advertise readiness.
+/** Mount the Composer into the dock's [data-composer-react] container and,
+ *  only then, advertise readiness.
  *
- *  The vanilla shell creates the dock AFTER an await in start(), so this
- *  retries briefly.  A premature "ready" + an off-layout fallback mount would
- *  hide the vanilla composer while the React composer sits elsewhere — the
- *  input box disappears (reported bug).  Falls back to a standalone root only
- *  on non-desktop hosts where the dock never exists. */
+ *  In the React-shell path the dock exists from the moment AppShell
+ *  renders (module evaluation), so this resolves immediately.  In the
+ *  legacy fallback path the dock is created by the vanilla template
+ *  after start()'s first await, so this retries briefly — a premature
+ *  "ready" + an off-layout fallback mount would hide the vanilla
+ *  composer while the React composer sits elsewhere (input disappears). */
 function mountComposerIntoDock(store: ThreadStore, attempt = 0): void {
   const dockContainer = document.querySelector<HTMLElement>("[data-composer-react]");
   if (dockContainer) {
@@ -87,58 +94,26 @@ function mountComposerIntoDock(store: ThreadStore, attempt = 0): void {
     return;
   }
   if (attempt < 25) {
-    // Dock not rendered yet (renderShell runs after the first await in
-    // start()).  Retry ~80ms for up to ~2s before giving up.
     window.setTimeout(() => mountComposerIntoDock(store, attempt + 1), 80);
     return;
   }
-  const fallback = ensureContainer("react-composer-root");
-  if (fallback) mountComposerAt(fallback, store);
+  // Neither shell path produced a dock — nothing to mount into.  The
+  // vanilla composer (if any) remains the live input.
 }
 
-function mountReactShell(): void {
-  // D3.4-2: bind to the VANILLA shell's ThreadStore singleton (the two
-  // bundles each inline their own copy — sharing is mandatory).
-  const store = sharedThreadStore();
-  const sm = _sessionManager;
-
-  // ── Left sidebar: Thread list ──────────────────────────────────
-  // Mount into a dedicated container under #app.  (The vanilla shell
-  // owns [data-session-list] via innerHTML, so React must not share it.)
-  const leftEl = ensureContainer("react-thread-list-root");
-  if (leftEl) {
-    createRoot(leftEl).render(
-      <ThreadList
-        onSwitchThread={(id) => sm?.switchThread(id)}
-        onNewThread={() => sm?.newThread()}
-        onDeleteThread={(id) => sm?.closeThread(id)}
-      />,
-    );
-  }
-
-  // ── Bottom: Composer (D3.4) ────────────────────────────────────
-  // Mounts into the dock's [data-composer-react] once it exists and only
-  // then signals ready (see mountComposerIntoDock).  Retries so the input
-  // box never disappears behind a premature vanilla→React swap.
-  mountComposerIntoDock(store);
-
-  // ── Right sidebar: Inspector ───────────────────────────────────
-  const rightEl = ensureContainer("react-inspector-root");
-  if (rightEl) {
-    createRoot(rightEl).render(<InspectorShell />);
-  }
-
-  // Theme sync
-  store.subscribe((state) => {
-    document.documentElement.dataset.theme = state.theme;
-  });
-}
+/** Module evaluation: React owns the shell from the first paint.  The
+ *  store singleton is created by renderer.js at module level, so the
+ *  composer can subscribe immediately. */
+mountAppShell();
+mountComposerIntoDock(sharedThreadStore());
 
 // ── Public API ─────────────────────────────────────────────────────
 
+/** Kept for react-init.js compatibility.  The SessionManager will be
+ *  consumed by later phases (thread list swap, command palette); the
+ *  shell and composer are already live at this point. */
 (window as unknown as Record<string, unknown>).__initReactShell__ = (
   sessionManager?: SessionManager,
 ) => {
-  if (sessionManager) _sessionManager = sessionManager;
-  mountReactShell();
+  void sessionManager;
 };
