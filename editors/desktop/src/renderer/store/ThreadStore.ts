@@ -648,6 +648,26 @@ export class ThreadStore {
         });
         return true;
 
+      // ── P4: skills/activated —— 用户 /skill 调用结果（Timeline 记录）──
+      case "skills/activated": {
+        const name = String(params.name ?? "");
+        if (!name) return true;
+        this.appendThreadItem(threadId, {
+          id: `skill:${name}`,
+          kind: "skill_loaded",
+          threadId,
+          timestamp: Date.now(),
+          payload: {
+            name,
+            source: params.source ?? "",
+            digest: params.digest ?? "",
+            ok: params.ok !== false,
+            error: params.error ?? "",
+          },
+        });
+        return true;
+      }
+
       // ── P3: model/resolved —— Run 开始时后端解析一次的广播 ────────
       case "model/resolved": {
         this.updateThread(threadId, {

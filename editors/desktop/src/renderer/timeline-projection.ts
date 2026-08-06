@@ -37,7 +37,8 @@ export type TimelineSourceKind =
   | "run_end"
   | "run_cancelled"
   | "job"
-  | "recovery";
+  | "recovery"
+  | "skill_loaded";
 
 /** One event into the projection.  A snapshot of a ThreadItem (with
  *  the same id re-emitted when the store mutates payload in place) or
@@ -260,6 +261,31 @@ export function reduceTimeline(
         message: str(source.payload.message ?? "连接已恢复"),
       });
       break;
+    case "skill_loaded": {
+      // P4: /skill 调用记录 —— 同名 Skill upsert（激活/失败更新同一行）。
+      const name = str(source.payload.name ?? "skill");
+      const id = `skill:${name}`;
+      const existingIdx = state.indexById.get(id);
+      const patch = {
+        id,
+        kind: "skill_loaded" as const,
+        threadId: source.threadId,
+        timestamp: source.timestamp,
+        name,
+        source: optStr(source.payload.source),
+        digest: optStr(source.payload.digest),
+        ok: source.payload.ok !== false,
+      };
+      if (existingIdx !== undefined) {
+        const item = state.timeline[existingIdx];
+        if (item && item.kind === "skill_loaded") {
+          mergePatch(item, patch);
+          return state;
+        }
+      }
+      pushItem(state, patch);
+      break;
+    }
     default:
       // Unknown / future kinds are ignored safely (tests pin this).
       break;

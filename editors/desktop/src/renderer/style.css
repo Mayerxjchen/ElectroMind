@@ -538,6 +538,35 @@ button {
     color: var(--text-tertiary);
 }
 
+/* ── Skill Loaded 记录行（P4）─────────────────────────────────────── */
+
+.skill-loaded-row {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    padding: 6px 10px;
+    margin: 4px 0;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border-soft);
+    background: color-mix(in srgb, var(--success) 6%, var(--surface));
+    font-size: var(--text-xs);
+}
+
+.skill-loaded-row.failed {
+    border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+    background: color-mix(in srgb, var(--danger) 5%, var(--surface));
+}
+
+.skill-loaded-name {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.skill-loaded-meta {
+    color: var(--text-tertiary);
+    font-family: monospace;
+}
+
 .desktop-shell {
     height: 100%;
     display: grid;

@@ -23,7 +23,7 @@ import { SessionManager } from "../store/SessionManager";
 import type { ThreadStore } from "../store/ThreadStore";
 import { sharedThreadStore } from "./useStore";
 import { getCommandRegistry, type CommandContext } from "./command-registry";
-import { registerCoreCommands } from "./commands";
+import { registerCoreCommands, registerSkillSlashCommands } from "./commands";
 import { modelSelectionFromPolicy } from "./model-policy";
 
 /** Render the AppShell skeleton.  Called once at module evaluation.
@@ -120,6 +120,26 @@ export function commandContext(): CommandContext {
     sessionManager: (window as unknown as Record<string, unknown>).__electromindSM,
   };
 }
+
+// ── P4: Skill 命令随 catalog 动态刷新 ───────────────────────────────
+// 可信且可用户调用的 Skill → /<name> 命令（SKILLS 分组）。
+// catalog 变化（skills/list / reload）→ 重建命令集（registry 内
+// unregisterByPrefix 后重注册，不会出现重复命令）。
+let lastSkillFingerprint = "";
+sharedThreadStore().subscribe((state) => {
+  const id = state.activeThreadId;
+  const skills = id ? state.threads[id]?.skillsState : null;
+  const fingerprint = skills ? `${skills.generation}:${skills.digest}` : "";
+  if (fingerprint === lastSkillFingerprint) return;
+  lastSkillFingerprint = fingerprint;
+  registerSkillSlashCommands(
+    commandRegistry,
+    (skills?.skills ?? []).map((s) => ({
+      ...s,
+      trust_state: (s as { trust_state?: string }).trust_state,
+    })),
+  );
+});
 
 // ── Public API ─────────────────────────────────────────────────────
 

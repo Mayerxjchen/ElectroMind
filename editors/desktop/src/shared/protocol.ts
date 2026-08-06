@@ -387,7 +387,7 @@ export type DesktopApi = {
     resumeThread(threadId: string): Promise<void>;
     forceReconnect(): Promise<boolean>;
     deleteThread(threadId: string): Promise<boolean>;
-    sendUserInput(text: string, requestId?: string, delivery?: string, mode?: string, model?: string): Promise<void>;
+    sendUserInput(text: string, requestId?: string, delivery?: string, mode?: string, model?: string, skill?: string): Promise<void>;
     clearLastError(): Promise<void>;
     resetSession(options?: ResetSessionOptions): Promise<void>;
     requestHistoryReplay(): Promise<void>;

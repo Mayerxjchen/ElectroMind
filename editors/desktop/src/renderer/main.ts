@@ -3369,6 +3369,7 @@ async function start(): Promise<void> {
     text: string,
     delivery: string,
     mode: string,
+    skill?: string,
   ): Promise<void> {
     if (!text.trim()) return;
     // Propagate the session mode so the backend freezes it in RunSnapshot
@@ -3391,7 +3392,15 @@ async function start(): Promise<void> {
       const modelPolicy = modelPolicyString(
         getThreadStore().getActiveThread()?.model,
       );
-      await window.desktop.sendUserInput(text, requestId, delivery, mode, modelPolicy);
+      // P4: /skill 调用 —— skill 名随行（后端确定性激活）
+      await window.desktop.sendUserInput(
+        text,
+        requestId,
+        delivery,
+        mode,
+        modelPolicy,
+        skill,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (threadId) {
@@ -4701,8 +4710,10 @@ async function start(): Promise<void> {
     const text = String(detail.text ?? "");
     const delivery = String(detail.delivery ?? "auto");
     const mode = String(detail.mode ?? "agent");
+    // P4: /skill 调用 —— skill 名随行（sendUserInput 的 skill 字段）
+    const skill = String(detail.skill ?? "");
     if (!text.trim()) return;
-    void sendComposerInput(text, delivery, mode);
+    void sendComposerInput(text, delivery, mode, skill || undefined);
   };
   const handleComposerStop = (): void => {
     void cancelRun();

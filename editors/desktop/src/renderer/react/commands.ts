@@ -639,3 +639,74 @@ export function registerCoreCommands(registry: CommandRegistry): void {
     registry.register(spec);
   }
 }
+
+/** Skill 命令 id 前缀（动态命令集刷新用）。 */
+export const SKILL_COMMAND_PREFIX = "skill.";
+
+/** P4: 为可信且允许用户调用的 Skill 动态生成 /<name> 命令。
+ *
+ * 规则（修订版文档 §8）：
+ *   - 只生成 可信（trust_state=trusted）且 invocation ∈ {manual, both}
+ *     的 Skill；未信任 Skill 不出现在可执行列表；
+ *   - 执行：以任务文本启动 Agent Run 并携带 skill（input/send 的
+ *     skill 字段 —— 后端确定性激活，不走模型猜测）；
+ *   - Slash 调用不绕过 Trust/审批/Sandbox/幂等/HPC record/Artifact
+ *     Validation（激活只注入上下文，工具调用仍走权限模式）。
+ * catalog 变化时先 unregisterByPrefix(SKILL_COMMAND_PREFIX) 再重建。
+ */
+export function registerSkillSlashCommands(
+  registry: CommandRegistry,
+  skills: readonly {
+    name: string;
+    description: string;
+    source: string;
+    sha256: string;
+    status: string;
+    invocation?: "model" | "manual" | "both";
+    trust_state?: string;
+  }[],
+): void {
+  registry.unregisterByPrefix(SKILL_COMMAND_PREFIX);
+  for (const skill of skills) {
+    // 可信 + 可用户调用（manual / both）才生成命令。
+    // trust_state 是唯一信任依据；旧数据无 trust_state 字段时才回退
+    // status（loaded/available 视为可用）—— 显式 untrusted 不得通过。
+    const trusted =
+      skill.trust_state === "trusted" ||
+      (skill.trust_state === undefined &&
+        (skill.status === "loaded" || skill.status === "available"));
+    if (!trusted) continue;
+    const invocation = skill.invocation ?? "both";
+    if (invocation === "model") continue;
+    const name = skill.name.trim();
+    if (!name) continue;
+    const id = `${SKILL_COMMAND_PREFIX}${name}`;
+    registry.register(
+      agent({
+        id,
+        title: `调用 Skill：${name}`,
+        description: skill.description || "加载 Skill 并作为本次任务上下文",
+        category: "skills",
+        slash: [name],
+        usage: `/${name} <task>`,
+        available: (ctx) => Boolean(ctx.store.getState().bridgeActive),
+        execute: (ctx, args) => {
+          const threadId = activeThreadId(ctx);
+          if (!threadId) return { ok: false, error: "没有活动会话" };
+          const text = String(args.text ?? "").trim();
+          if (!text) {
+            return { ok: false, error: `需要任务描述（/${name} <task>）` };
+          }
+          // 携带 skill 名 + 任务文本；后端确定性激活（不绕过权限模式）
+          dispatch("electromind:user-input", {
+            text,
+            delivery: "auto",
+            mode: "agent",
+            skill: name,
+          });
+          return { ok: true, message: `已启动 ${name} 任务（Skill 激活注入上下文）` };
+        },
+      }),
+    );
+  }
+}

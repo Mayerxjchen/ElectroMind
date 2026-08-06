@@ -420,3 +420,18 @@ test("20. run_id binds a group; a new run opens a fresh group", async () => {
   assert.equal(groups[1].runId, "r-2");
   assert.equal(groups[1].id, "group:r-2");
 });
+
+test("21. skill_loaded upserts by skill name (P4)", async () => {
+  const { reduceTimeline, createProjectionState } = await getModule();
+  let s = createProjectionState(THREAD);
+  s = reduceTimeline(s, src("s1", "skill_loaded", { name: "cp2k", source: "builtin", digest: "abc123", ok: true }, THREAD, 1000));
+  const items = s.timeline.filter((i) => i.kind === "skill_loaded");
+  assert.equal(items.length, 1);
+  assert.equal(items[0].name, "cp2k");
+  assert.equal(items[0].digest, "abc123");
+  // 同名更新（激活失败 → 同一行 upsert，不重复）
+  s = reduceTimeline(s, src("s2", "skill_loaded", { name: "cp2k", ok: false }, THREAD, 2000));
+  const after = s.timeline.filter((i) => i.kind === "skill_loaded");
+  assert.equal(after.length, 1, "同名 Skill 记录 upsert 不重复");
+  assert.equal(after[0].ok, false);
+});

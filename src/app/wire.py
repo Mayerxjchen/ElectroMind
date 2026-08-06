@@ -1001,6 +1001,10 @@ def _skills_catalog_payload(catalog, *, thread_id: str = "") -> dict:
                 "enabled_state": c.enabled_state,
                 "trust_state": c.trust_state,
                 "content_digest": c.descriptor.content_digest,
+                # P4: manual（仅用户 /skill 调用）/ both（模型与用户均可）
+                "invocation": (
+                    "manual" if c.descriptor.disable_model_invocation else "both"
+                ),
             }
             for c in catalog.candidates
         ],
@@ -1823,6 +1827,102 @@ def _encode_and_emit_event(thread_id, run_id, event, seq, state) -> None:
         emit_line(encode_event_line(event))
 
 
+async def _activate_skill_for_run(runner, skill_name: str, thread_id: str) -> bool:
+    """P4: 用户 /skill 调用 —— 确定性激活。
+
+    - 只消费 runner 当前冻结 catalog（Run 开始后不漂移）；
+    - 解析目标 → SkillActivationService.activate（Trust 检查在内）；
+    - payload 前置注入 agent 系统提示（Skill 作为本次任务上下文）；
+    - 广播 skills/activated（name/source/digest/ok）。
+    """
+    skill_runtime = getattr(runner, "skill_runtime", None)
+    view = getattr(skill_runtime, "_current_view", None) if skill_runtime else None
+    catalog = getattr(view, "catalog", None) if view else None
+    if catalog is None:
+        _emit_jsonrpc(
+            "skills/activated",
+            {"thread_id": thread_id, "name": skill_name, "ok": False, "error": "无可用 Skill catalog"},
+        )
+        return False
+
+    from electromind.skills.activation import (
+        ActivationError,
+        ActivationRequest,
+        SkillActivationService,
+        SkillInput,
+        _resolve_invocation_skill_id,
+    )
+    from electromind.skills.snapstore import PrivateSnapshotStore
+
+    capabilities = tuple(getattr(skill_runtime, "capabilities", ()) or ())
+    service = SkillActivationService(
+        catalog,
+        store=PrivateSnapshotStore(),
+        mounter=getattr(skill_runtime, "mounter", None),
+        items_dir=PrivateSnapshotStore().root.parent / "activations",
+        resolution=catalog.resolution,
+    )
+    target = _resolve_invocation_skill_id(service, skill_name, capabilities=capabilities)
+    if target is None:
+        _emit_jsonrpc(
+            "skills/activated",
+            {
+                "thread_id": thread_id,
+                "name": skill_name,
+                "ok": False,
+                "error": f"无法解析 skill: {skill_name!r}（无可用候选或存在歧义）",
+            },
+        )
+        return False
+    request = ActivationRequest(
+        request_id=f"user-{thread_id}-{skill_name}",
+        thread_id=thread_id,
+        run_id="",
+        skill_id=target,
+        arguments=SkillInput(name=skill_name, arguments=None).as_argument_map(),
+        capabilities=capabilities,
+    )
+    try:
+        result = await service.activate(request)
+    except ActivationError as exc:
+        _emit_jsonrpc(
+            "skills/activated",
+            {
+                "thread_id": thread_id,
+                "name": skill_name,
+                "ok": False,
+                "error": str(exc),
+                "needs_trust": exc.needs_trust,
+            },
+        )
+        return False
+    # 注入上下文：payload 前置到 agent 系统提示（Run 的模型上下文）。
+    agent = getattr(runner, "agent", None)
+    if agent is not None and result.payload:
+        current = str(getattr(agent, "system", "") or "")
+        agent.system = f"{result.payload}\n\n{current}"
+    # 广播（名称/来源/Digest —— Timeline 展示用）
+    source = ""
+    digest = ""
+    for c in catalog.candidates:
+        if c.skill_id == target:
+            source = c.source.source_id
+            digest = c.descriptor.content_digest or ""
+            break
+    _emit_jsonrpc(
+        "skills/activated",
+        {
+            "thread_id": thread_id,
+            "name": skill_name,
+            "skill_id": target,
+            "source": source,
+            "digest": digest,
+            "ok": True,
+        },
+    )
+    return True
+
+
 async def run_user_turn(
     runner,
     text: str,
@@ -1848,6 +1948,24 @@ async def run_user_turn(
         _emit_model_resolved(config, requested_mode, thread_id, phase="plan")
     except (Exception, SystemExit):  # noqa: BLE001 — 解析失败不阻断本轮
         log("[wire] model/resolved emission failed (non-fatal)")
+
+    # ── P4: 用户 /skill 调用 —— 确定性激活（冻结 catalog + 注入上下文 +
+    # skills/activated 广播）。激活失败不阻断本轮（任务照常运行）。
+    pending_skill = state.pop("pending_skill", "")
+    if isinstance(pending_skill, str) and pending_skill.strip():
+        try:
+            await _activate_skill_for_run(runner, pending_skill.strip(), thread_id)
+        except (Exception, SystemExit) as exc:  # noqa: BLE001
+            log(f"[wire] skill activation failed (non-fatal): {exc}")
+            _emit_jsonrpc(
+                "skills/activated",
+                {
+                    "thread_id": thread_id,
+                    "name": pending_skill.strip(),
+                    "ok": False,
+                    "error": f"激活失败: {exc}",
+                },
+            )
     success = False
     stop_reason: str | None = None  # Terminal stop reason from the runner
     cancelled = False  # Explicit user/task cancellation
@@ -3159,6 +3277,11 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
         model_str = command.get("model", "")
         if isinstance(model_str, str) and model_str.strip():
             config = replace(config, model=model_str.strip())
+        # P4: 用户 /skill 调用 —— 技能名随 Run 携带，run_user_turn 确定性激活
+        # （冻结 catalog + 注入上下文 + skills/activated 广播）。
+        skill_str = command.get("skill", "")
+        if isinstance(skill_str, str) and skill_str.strip():
+            state["pending_skill"] = skill_str.strip()
         msg = InputMessage.create(
             thread_id or "default",
             text,

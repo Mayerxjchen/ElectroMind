@@ -35,7 +35,8 @@ export type TimelineItem =
   | JobItem
   | ArtifactItem
   | RecoveryItem
-  | ErrorItem;
+  | ErrorItem
+  | SkillLoadedItem;
 
 /** One discrete action inside an activity group. */
 export type ActivityAction = {
@@ -143,6 +144,18 @@ export type RecoveryItem = {
   threadId: string;
   timestamp: number;
   message: string;
+};
+
+/** P4: 用户 /skill 调用 —— Skill Loaded 记录（名称/来源/Digest）。 */
+export type SkillLoadedItem = {
+  id: string;
+  kind: "skill_loaded";
+  threadId: string;
+  timestamp: number;
+  name: string;
+  source?: string;
+  digest?: string;
+  ok: boolean;
 };
 
 export type ErrorItem = {

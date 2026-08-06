@@ -37,7 +37,12 @@ import {
   showSteerControls,
 } from "../composer-delivery.ts";
 import { parseSlashInput } from "../slash-parser.ts";
-import { completeSlash, slashCandidates, tokensToArgs } from "../slash-candidates.ts";
+import {
+  completeSlash,
+  orderSlashCandidates,
+  slashCandidates,
+  tokensToArgs,
+} from "../slash-candidates.ts";
 import { getCommandRegistry } from "../command-registry.ts";
 import type { CommandSpec } from "../command-registry.ts";
 import { modelPolicyLabel } from "../model-policy.ts";
@@ -148,8 +153,11 @@ export const Composer: React.FC<Props> = ({
       store: sharedThreadStore(),
       sessionManager: (window as unknown as Record<string, unknown>).__electromindSM,
     };
-    return slashCandidates(registry.all(), slash.name, (spec) =>
-      registry.isAvailable(spec.id, ctx),
+    // 菜单展平顺序：COMMON 在前、SKILLS 在后（与 SlashMenu 渲染一致）
+    return orderSlashCandidates(
+      slashCandidates(registry.all(), slash.name, (spec) =>
+        registry.isAvailable(spec.id, ctx),
+      ),
     );
   }, [slash]);
   // 输入 "/" 即打开菜单；输入离开命令形态（非 / 开头）自动关闭

@@ -109,6 +109,34 @@ export class CommandRegistry {
     return this.commands.get(id);
   }
 
+  /** 注销命令（动态命令集刷新用 —— P4 Skill 命令按 catalog 重建）。
+   *  同步清理 slash / shortcut 索引。 */
+  unregister(id: string): void {
+    const spec = this.commands.get(id);
+    if (!spec) return;
+    for (const alias of spec.slash ?? []) {
+      if (this.slashIndex.get(alias.toLowerCase()) === id) {
+        this.slashIndex.delete(alias.toLowerCase());
+      }
+    }
+    if (spec.shortcut) {
+      const key = spec.shortcut.toLowerCase();
+      if (this.shortcutIndex.get(key) === id) {
+        this.shortcutIndex.delete(key);
+      }
+    }
+    this.commands.delete(id);
+  }
+
+  /** 按 id 前缀注销（如 "skill."）。 */
+  unregisterByPrefix(prefix: string): void {
+    for (const id of [...this.commands.keys()]) {
+      if (id.startsWith(prefix)) {
+        this.unregister(id);
+      }
+    }
+  }
+
   all(): CommandSpec[] {
     return [...this.commands.values()];
   }

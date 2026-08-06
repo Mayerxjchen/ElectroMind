@@ -133,8 +133,8 @@ const desktopApi: DesktopApi = {
   deleteThread(threadId: string) {
     return invoke("desktop:delete-thread", threadId);
   },
-  sendUserInput(text: string, requestId?: string, delivery?: string, mode?: string, model?: string) {
-    return invoke("desktop:send-user-input", text, requestId, delivery, mode, model);
+  sendUserInput(text: string, requestId?: string, delivery?: string, mode?: string, model?: string, skill?: string) {
+    return invoke("desktop:send-user-input", text, requestId, delivery, mode, model, skill);
   },
   clearLastError() {
     return invoke("desktop:clear-last-error");

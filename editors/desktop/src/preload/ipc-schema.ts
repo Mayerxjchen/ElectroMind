@@ -27,7 +27,7 @@ export const IPC_PARAM_SHAPES: Record<string, ParamShape> = {
   "desktop:complete-onboarding": ["object"],
   "desktop:resume-thread": ["string"],
   "desktop:delete-thread": ["string"],
-  "desktop:send-user-input": ["string", "string?", "string?", "string?"],
+  "desktop:send-user-input": ["string", "string?", "string?", "string?", "string?", "string?"],
   "desktop:reset-session": ["object?"],
   "desktop:send-wire-command": ["object"],
   "desktop:permit-tool-call": ["object"],

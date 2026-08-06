@@ -119,7 +119,9 @@ export type ThreadItemKind =
   // persisted copy).
   | "run_begin"
   | "run_end"
-  | "run_cancelled";
+  | "run_cancelled"
+  // P4: 用户 /skill 调用 —— Skill Loaded 记录（名称/来源/Digest）。
+  | "skill_loaded";
 
 export type ThreadItem = {
   id: string;
@@ -169,6 +171,8 @@ export type SkillStateItem = {
   source: string;
   sha256: string;
   status: "available" | "loaded" | "unavailable";
+  /** P4: manual（仅用户 /skill 调用）/ both（模型与用户均可）/ model。 */
+  invocation?: "model" | "manual" | "both";
 };
 
 export type SkillDiagnostic = {

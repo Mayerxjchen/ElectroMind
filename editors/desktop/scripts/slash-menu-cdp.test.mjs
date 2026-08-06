@@ -164,6 +164,30 @@ test("slash menu: leading slash opens, filters, executes, never sends unknown", 
       `/sk 应过滤为 /skills /skill-info（实际 ${JSON.stringify(filtered)}）`,
     );
 
+    // ── P4: SKILLS 分组（可信 + 可用户调用的 Skill 动态生成 /cp2k）──
+    await cdpEval(page, SET_INPUT("/"));
+    await sleep(150);
+    const groups = await cdpEval(
+      page,
+      `Array.from(document.querySelectorAll('.slash-menu-group-label')).map(e => e.textContent)`,
+    );
+    assert.ok(
+      groups.includes("SKILLS"),
+      `菜单应有 SKILLS 分组（实际 ${JSON.stringify(groups)}）`,
+    );
+    const skillItems = await cdpEval(
+      page,
+      `(() => {
+        const groups = Array.from(document.querySelectorAll('.slash-menu-group'));
+        const skills = groups.find(g => g.querySelector('.slash-menu-group-label')?.textContent === 'SKILLS');
+        return skills ? Array.from(skills.querySelectorAll('.slash-menu-name')).map(e => e.textContent) : [];
+      })()`,
+    );
+    assert.ok(
+      skillItems.includes("/cp2k"),
+      `SKILLS 分组应含 /cp2k（实际 ${JSON.stringify(skillItems)}）`,
+    );
+
     // ── "/plan <task>" 是命令：切模式 + 清空输入 ─────────────────
     await cdpEval(page, SET_INPUT("/plan 检查当前 CP2K 输入"));
     await sleep(100);

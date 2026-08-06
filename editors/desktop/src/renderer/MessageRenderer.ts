@@ -214,6 +214,21 @@ export class MessageRenderer {
         el.textContent = item.message;
         return el;
       }
+      case "skill_loaded": {
+        // P4: 用户 /skill 调用 —— 紧凑记录行（名称/来源/Digest）。
+        const el = this.createBlock(`skill-loaded-row${item.ok ? "" : " failed"}`);
+        const name = document.createElement("span");
+        name.className = "skill-loaded-name";
+        name.textContent = item.ok ? `Skill Loaded · ${item.name}` : `Skill 加载失败 · ${item.name}`;
+        el.appendChild(name);
+        const meta = document.createElement("span");
+        meta.className = "skill-loaded-meta";
+        meta.textContent = [item.source, item.digest ? `sha256 ${item.digest.slice(0, 8)}` : ""]
+          .filter(Boolean)
+          .join(" · ");
+        el.appendChild(meta);
+        return el;
+      }
     }
   }
 

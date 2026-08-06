@@ -19,7 +19,7 @@ const {
 } = await import(
   new URL("../src/renderer/react/command-registry.ts", import.meta.url)
 );
-const { registerCoreCommands } = await import(
+const { registerCoreCommands, registerSkillSlashCommands } = await import(
   new URL("../src/renderer/react/commands.ts", import.meta.url)
 );
 
@@ -305,6 +305,90 @@ test("core commands: 未接线的确定性命令不可用且不执行", async ()
     assert.equal(reg.isAvailable(id, ctx), false, `${id} 后端未接线应不可用`);
     const res = await reg.execute(id, ctx, {});
     assert.equal(res.ok, false);
+  }
+  resetCommandRegistry();
+});
+
+// ── P4: Skill 动态命令（SKILLS 分组）───────────────────────────────
+
+const skill = (name, extra = {}) => ({
+  name,
+  description: `${name} desc`,
+  source: "builtin",
+  sha256: "abc",
+  status: "available",
+  invocation: "both",
+  trust_state: "trusted",
+  ...extra,
+});
+
+test("skill commands: trusted + invocable skills generate /<name>", () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerSkillSlashCommands(reg, [skill("cp2k"), skill("rsess")]);
+  assert.ok(reg.commandForSlash("cp2k"), "/cp2k 应生成");
+  assert.ok(reg.commandForSlash("rsess"), "/rsess 应生成");
+  const spec = reg.get("skill.cp2k");
+  assert.equal(spec.kind, "agent", "Skill 命令为 agent 类（启动 Run）");
+  assert.equal(spec.category, "skills", "Skill 命令归入 SKILLS 分组");
+  resetCommandRegistry();
+});
+
+test("skill commands: untrusted and model-only skills are excluded", () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerSkillSlashCommands(reg, [
+    skill("untrusted-skill", { trust_state: "untrusted" }),
+    skill("model-only", { invocation: "model" }),
+    skill("ok-skill"),
+  ]);
+  assert.equal(reg.commandForSlash("untrusted-skill"), undefined, "未信任不出现");
+  assert.equal(reg.commandForSlash("model-only"), undefined, "model-only 不出现");
+  assert.ok(reg.commandForSlash("ok-skill"), "both 出现");
+  resetCommandRegistry();
+});
+
+test("skill commands: catalog refresh rebuilds without duplicates", () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerSkillSlashCommands(reg, [skill("cp2k")]);
+  const before = reg.size;
+  // catalog 变化 → 重建（旧命令注销）
+  registerSkillSlashCommands(reg, [skill("cp2k"), skill("vasp")]);
+  assert.equal(reg.commandForSlash("cp2k")?.id, "skill.cp2k", "cp2k 仍在");
+  assert.ok(reg.commandForSlash("vasp"), "vasp 新增");
+  const cp2kCount = reg.all().filter((c) => c.id === "skill.cp2k").length;
+  assert.equal(cp2kCount, 1, "刷新后无重复命令");
+  assert.ok(reg.size >= before, "命令集只增不重复");
+  resetCommandRegistry();
+});
+
+test("skill commands: execute dispatches user-input with skill + task", async () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerSkillSlashCommands(reg, [skill("cp2k")]);
+  const events = [];
+  const storeStub = {
+    getActiveThreadId: () => "t1",
+    getThread: () => ({}),
+    getState: () => ({ bridgeActive: true }),
+    updateThread: () => {},
+    setInspector: () => {},
+  };
+  const prevWindow = globalThis.window;
+  globalThis.window = {
+    dispatchEvent: (e) => events.push({ type: e.type, detail: e.detail }),
+    desktop: {},
+  };
+  try {
+    const res = await reg.execute("skill.cp2k", { store: storeStub }, { text: "跑输入文件" });
+    assert.equal(res.ok, true);
+    const input = events.find((e) => e.type === "electromind:user-input");
+    assert.ok(input, "应派发 user-input");
+    assert.equal(input.detail.skill, "cp2k", "skill 名随行（后端确定性激活）");
+    assert.equal(input.detail.text, "跑输入文件");
+  } finally {
+    globalThis.window = prevWindow;
   }
   resetCommandRegistry();
 });

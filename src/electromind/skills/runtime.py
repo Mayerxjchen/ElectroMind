@@ -306,6 +306,13 @@ class SkillRuntime:
                     ),
                     "enabled_state": c.enabled_state,
                     "trust_state": c.trust_state,
+                    # P4: invocation —— manual（仅用户 /skill 调用）/
+                    # both（模型与用户均可）。disable-model-invocation 的
+                    # Skill（hpc-submit/release/deploy/delete-data 等）默认
+                    # manual，禁止模型自主加载。
+                    "invocation": (
+                        "manual" if c.descriptor.disable_model_invocation else "both"
+                    ),
                 }
             )
 

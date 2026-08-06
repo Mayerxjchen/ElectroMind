@@ -26,6 +26,17 @@ export function completeSlash(spec: CommandSpec): string {
   return `/${alias}`;
 }
 
+/** 菜单展平顺序：COMMON 在前、SKILLS 在后（Composer 的选中索引必须与
+ *  菜单渲染顺序一致）。 */
+export function orderSlashCandidates(
+  candidates: readonly CommandSpec[],
+): CommandSpec[] {
+  return [
+    ...candidates.filter((c) => c.category !== "skills"),
+    ...candidates.filter((c) => c.category === "skills"),
+  ];
+}
+
 /**
  * Slash 参数 tokens → 命令 args（按命令各自的约定）。
  * 未知命令 id 给默认 { text: joined }。
