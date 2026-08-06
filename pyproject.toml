@@ -1,6 +1,6 @@
 [project]
 name = "electromind"
-version = "0.7.20"
+version = "0.8.0"
 description = "Async Python agent library and terminal REPL (OpenAI-compatible Chat Completions + sandbox)."
 readme = "README.md"
 license = "MIT"
