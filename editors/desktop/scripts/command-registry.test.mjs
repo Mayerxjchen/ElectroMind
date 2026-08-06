@@ -189,7 +189,7 @@ test("core commands: kind classification matches the doc", () => {
   registerCoreCommands(reg);
   const kindOf = (id) => reg.get(id)?.kind;
   // UI 命令
-  for (const id of ["help", "status.show", "permissions.set", "target.show", "skills.open", "thread.resume", "logs.open"]) {
+  for (const id of ["help", "status.show", "permissions.set", "target.show", "skills.open", "thread.resume", "logs.open", "model.set", "permissions.prompt", "permissions.safe", "permissions.full", "jobs.show", "artifacts.show", "skills.info"]) {
     assert.equal(kindOf(id), "ui", `${id} 应为 ui`);
   }
   // 确定性命令
@@ -199,6 +199,29 @@ test("core commands: kind classification matches the doc", () => {
   // Agent 命令
   for (const id of ["agent.ask", "agent.plan", "agent.agent"]) {
     assert.equal(kindOf(id), "agent", `${id} 应为 agent`);
+  }
+  resetCommandRegistry();
+});
+
+test("core commands: P2 first-version slash set is registered", () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const expectedSlash = [
+    "new", "resume", "rename", "compact", "status", "stop",
+    "ask", "plan", "agent",
+    "model",
+    "permissions", "prompt", "safe", "full",
+    "target",
+    "skills", "skill-info", "reload-skills", "jobs", "reconcile",
+    "collect", "validate", "artifacts", "doctor", "logs", "help",
+  ];
+  for (const s of expectedSlash) {
+    assert.ok(reg.commandForSlash(s), `/${s} 应注册`);
+  }
+  // 破坏性底层操作不做成 Slash Command
+  for (const s of ["clear", "delete-thread", "delete-artifact", "sbatch", "rm"]) {
+    assert.equal(reg.commandForSlash(s), undefined, `/${s} 不得注册`);
   }
   resetCommandRegistry();
 });

@@ -377,6 +377,81 @@ button {
     font-size: var(--text-sm);
 }
 
+/* ── Slash Menu（P2，Claude Code 风格）────────────────────────────── */
+
+.slash-menu {
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: calc(100% + 6px);
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 30;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-2);
+    padding: 6px;
+    scrollbar-gutter: stable;
+}
+
+.slash-menu-group-label {
+    padding: 6px 10px 4px;
+    font-size: var(--text-xs);
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text-tertiary);
+}
+
+.slash-menu-item {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: var(--radius-md);
+    background: transparent;
+    color: var(--text-primary);
+    text-align: left;
+    cursor: pointer;
+}
+
+.slash-menu-item:hover,
+.slash-menu-item.active {
+    background: var(--accent-soft);
+}
+
+.slash-menu-name {
+    font-family: monospace;
+    font-size: var(--text-sm);
+    color: var(--primary);
+    flex-shrink: 0;
+}
+
+.slash-menu-title {
+    font-size: var(--text-sm);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.slash-menu-usage {
+    margin-left: auto;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    font-family: monospace;
+    flex-shrink: 0;
+}
+
+.slash-menu-empty {
+    padding: 14px;
+    text-align: center;
+    color: var(--text-tertiary);
+    font-size: var(--text-sm);
+}
+
 .desktop-shell {
     height: 100%;
     display: grid;

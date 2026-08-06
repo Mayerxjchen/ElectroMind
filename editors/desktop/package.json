@@ -25,6 +25,7 @@
         "test:composer-permissions": "node --test scripts/composer-permissions.test.mjs",
         "test:composer-delivery": "node --test scripts/composer-delivery.test.mjs",
         "test:command-registry": "node --test scripts/command-registry.test.mjs",
+        "test:slash-parser": "node --test scripts/slash-parser.test.mjs",
         "test:composer-status": "node --test scripts/composer-status.test.mjs",
         "test:parser-unverified": "node --test scripts/parser-unverified.test.mjs",
         "test:agent-process-tree": "node --test scripts/agent-process-tree.test.mjs",

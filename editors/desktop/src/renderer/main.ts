@@ -4720,6 +4720,30 @@ async function start(): Promise<void> {
     applyWorkbenchChrome();
     syncComposerDock();
   });
+  // P2: /full 等危险命令的二次确认 —— Registry 命令经此桥走 vanilla
+  // confirm 模态；结果回发 electromind:confirm-resolved{requestId, ok}。
+  window.addEventListener("electromind:confirm-request", (e) => {
+    const d = (e as CustomEvent).detail as {
+      requestId?: string;
+      title?: string;
+      message?: string;
+      confirmText?: string;
+      cancelText?: string;
+    };
+    if (!d || !d.requestId) return;
+    void openConfirm({
+      title: d.title ?? "确认",
+      message: d.message ?? "",
+      confirmText: d.confirmText,
+      cancelText: d.cancelText,
+    }).then((ok) => {
+      window.dispatchEvent(
+        new CustomEvent("electromind:confirm-resolved", {
+          detail: { requestId: d.requestId, ok },
+        }),
+      );
+    });
+  });
 
   const disposeRuntimeState = window.desktop.onRuntimeState((state) => {
     const previousThreadId = uiState.runtime.currentThreadId;

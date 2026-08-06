@@ -11,6 +11,42 @@
 
 import type { CommandRegistry, CommandSpec, CommandContext } from "./command-registry";
 
+/** /full 等危险命令的二次确认 —— 经事件桥走 vanilla confirm 模态。
+ *  main.ts 监听 electromind:confirm-request，完成后回发
+ *  electromind:confirm-resolved{requestId, ok}。 */
+let confirmSeq = 0;
+function requestConfirm(opts: {
+  title: string;
+  message: string;
+  confirmText: string;
+  cancelText?: string;
+}): Promise<boolean> {
+  const requestId = `confirm-${++confirmSeq}`;
+  return new Promise<boolean>((resolve) => {
+    const onResolved = (e: Event) => {
+      const d = (e as CustomEvent).detail as {
+        requestId?: string;
+        ok?: boolean;
+      };
+      if (d.requestId !== requestId) return;
+      window.removeEventListener("electromind:confirm-resolved", onResolved);
+      resolve(Boolean(d.ok));
+    };
+    window.addEventListener("electromind:confirm-resolved", onResolved);
+    window.dispatchEvent(
+      new CustomEvent("electromind:confirm-request", {
+        detail: {
+          requestId,
+          title: opts.title,
+          message: opts.message,
+          confirmText: opts.confirmText,
+          cancelText: opts.cancelText,
+        },
+      }),
+    );
+  });
+}
+
 // ── 事件 / 能力助手 ─────────────────────────────────────────────────
 
 function dispatch(name: string, detail?: unknown): void {
@@ -190,6 +226,27 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         return { ok: true };
       },
     }),
+    // 后端无 thread/rename 写接口 —— 注册但不可用（P2 不假装能持久化）
+    ui({
+      id: "thread.rename",
+      title: "重命名 Thread",
+      description: "修改会话标题（需后端写接口，尚未接线）",
+      category: "thread",
+      slash: ["rename"],
+      usage: "/rename <title>",
+      available: () => false,
+      execute: () => ({ ok: false, error: "thread/rename 后端写接口尚未接线" }),
+    }),
+    ui({
+      id: "thread.compact",
+      title: "压缩上下文",
+      description: "压缩当前会话上下文（需后端接口，尚未接线）",
+      category: "thread",
+      slash: ["compact"],
+      usage: "/compact [focus]",
+      available: () => false,
+      execute: () => ({ ok: false, error: "compact 后端接口尚未接线" }),
+    }),
 
     // ── Mode ──────────────────────────────────────────────────────
     ui({
@@ -239,6 +296,56 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         return { ok: true, message: `当前权限: ${current}` };
       },
     }),
+    // P2: 短别名 —— /prompt /safe 直接生效；/full 二次确认，只作用于当前 Thread
+    ui({
+      id: "permissions.prompt",
+      title: "权限：Prompt",
+      description: "每次工具调用都询问",
+      category: "permissions",
+      slash: ["prompt"],
+      available: () => true,
+      execute: (ctx) => {
+        const id = activeThreadId(ctx);
+        if (!id) return { ok: false, error: "没有活动会话" };
+        ctx.store.updateThread(id, { autonomy: "prompt" } as never);
+        return { ok: true, message: "权限已切换为 prompt" };
+      },
+    }),
+    ui({
+      id: "permissions.safe",
+      title: "权限：Auto-safe",
+      description: "只读操作自动放行，外部副作用询问",
+      category: "permissions",
+      slash: ["safe"],
+      available: () => true,
+      execute: (ctx) => {
+        const id = activeThreadId(ctx);
+        if (!id) return { ok: false, error: "没有活动会话" };
+        ctx.store.updateThread(id, { autonomy: "auto-safe" } as never);
+        return { ok: true, message: "权限已切换为 auto-safe" };
+      },
+    }),
+    ui({
+      id: "permissions.full",
+      title: "权限：Full access",
+      description: "自动批准（需二次确认，只作用于当前 Thread）",
+      category: "permissions",
+      slash: ["full"],
+      available: () => true,
+      execute: async (ctx) => {
+        const id = activeThreadId(ctx);
+        if (!id) return { ok: false, error: "没有活动会话" };
+        const ok = await requestConfirm({
+          title: "切换到 Full access？",
+          message: "Full access 会自动批准工具调用（含可能的外部副作用）。此设置只作用于当前 Thread，不改变全局默认。",
+          confirmText: "切换到 Full access",
+          cancelText: "取消",
+        });
+        if (!ok) return { ok: false, error: "已取消" };
+        ctx.store.updateThread(id, { autonomy: "full-access" } as never);
+        return { ok: true, message: "权限已切换为 full-access（当前 Thread）" };
+      },
+    }),
 
     // ── Execution ─────────────────────────────────────────────────
     ui({
@@ -247,14 +354,49 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       description: "Local / Docker Sandbox / SSH",
       category: "execution",
       slash: ["target"],
-      usage: "/target",
+      usage: "/target [local|sandbox|ssh]",
+      // 切换目标需要后端 target/switch（尚未接线）；展示恒可用，
+      // 带参数执行时返回明确错误。
       available: () => true,
       execute: (ctx, args) => {
         if (args.target) {
-          // P2 接入后端 target 切换；当前仅展示
-          return { ok: false, error: "执行目标切换由 P2 后端接入（当前仅可查看）" };
+          return { ok: false, error: "执行目标切换需要后端接线（当前仅可查看 /target）" };
         }
         return { ok: true, message: `执行目标: ${targetLabel(activeThread(ctx))}` };
+      },
+    }),
+
+    // ── Model ─────────────────────────────────────────────────────
+    ui({
+      id: "model.set",
+      title: "选择模型",
+      description: "Auto 或指定模型（fast/balanced/best 档位由 P3 Resolver 接入）",
+      category: "execution",
+      slash: ["model"],
+      usage: "/model [auto|fast|balanced|best|plan-execute|<model-id>]",
+      available: () => true,
+      execute: (ctx, args) => {
+        const id = activeThreadId(ctx);
+        if (!id) return { ok: false, error: "没有活动会话" };
+        const modelArg = String(args.model ?? "");
+        if (modelArg) {
+          if (modelArg === "auto") {
+            ctx.store.updateThread(id, { model: { kind: "auto" } } as never);
+            return { ok: true, message: "模型已切换为 Auto" };
+          }
+          if (["fast", "balanced", "best", "plan-execute"].includes(modelArg)) {
+            return {
+              ok: false,
+              error: `${modelArg} 档位由 P3 Auto Model Resolver 接入（当前可用 /model auto 或具体模型 id）`,
+            };
+          }
+          ctx.store.updateThread(id, { model: { kind: "named", modelId: modelArg } } as never);
+          return { ok: true, message: `模型已切换为 ${modelArg}` };
+        }
+        const m = ctx.store.getThread(id)?.model as { kind?: string; modelId?: string } | undefined;
+        const label =
+          m?.kind === "named" ? `named:${m.modelId}` : m?.kind === "auto" ? "auto" : "auto";
+        return { ok: true, message: `当前模型: ${label}` };
       },
     }),
 
@@ -269,6 +411,60 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       execute: () => {
         dispatch("electromind:skills-open");
         return { ok: true };
+      },
+    }),
+    ui({
+      id: "skills.info",
+      title: "查看 Skill 信息",
+      description: "名称 / 来源 / Digest / 状态",
+      category: "skills",
+      slash: ["skill-info"],
+      usage: "/skill-info <name>",
+      available: (ctx) => {
+        const t = activeThread(ctx);
+        return Boolean(t?.skillsState?.skills.length);
+      },
+      execute: (ctx, args) => {
+        const name = String(args.name ?? "").trim().toLowerCase();
+        if (!name) return { ok: false, error: "需要 skill 名称（/skill-info <name>）" };
+        const t = activeThread(ctx);
+        const skill = t?.skillsState?.skills.find(
+          (s) => s.name.toLowerCase() === name,
+        );
+        if (!skill) {
+          return { ok: false, error: `Skill 不存在: ${args.name}` };
+        }
+        return {
+          ok: true,
+          message: `${skill.name} · ${skill.source} · sha256 ${skill.sha256.slice(0, 8)} · ${skill.status}`,
+        };
+      },
+    }),
+    ui({
+      id: "jobs.show",
+      title: "查看 Slurm 作业",
+      description: "打开 Inspector 的 Job 视图并刷新提交记录",
+      category: "diagnostics",
+      slash: ["jobs"],
+      available: (ctx) => Boolean(ctx.store.getState().bridgeActive && window.desktop?.sendWireCommand),
+      execute: (ctx) => {
+        const id = activeThreadId(ctx);
+        if (!id) return { ok: false, error: "没有活动会话" };
+        ctx.store.setInspector({ open: true, activeTab: "jobs" });
+        void window.desktop.sendWireCommand({ cmd: "hpc/submissions", thread_id: id });
+        return { ok: true, message: "作业列表已刷新（Inspector → 任务）" };
+      },
+    }),
+    ui({
+      id: "artifacts.show",
+      title: "查看 Artifacts",
+      description: "打开 Inspector 的产物视图",
+      category: "diagnostics",
+      slash: ["artifacts"],
+      available: () => true,
+      execute: (ctx) => {
+        ctx.store.setInspector({ open: true, activeTab: "artifacts" });
+        return { ok: true, message: "产物视图已打开（Inspector → 产物）" };
       },
     }),
 

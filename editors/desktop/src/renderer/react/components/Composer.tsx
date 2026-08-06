@@ -9,8 +9,13 @@
  * - Steer vs enqueue mode indicator
  */
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useActiveThreadSnapshot, useActivityState, useBridgeActive } from "../useStore";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useActiveThreadSnapshot,
+  useActivityState,
+  useBridgeActive,
+  sharedThreadStore,
+} from "../useStore";
 import {
   autonomyIsRisky,
   isRiskDismissed,
@@ -31,6 +36,11 @@ import {
   deliveryForState,
   showSteerControls,
 } from "../composer-delivery.ts";
+import { parseSlashInput } from "../slash-parser.ts";
+import { completeSlash, slashCandidates, tokensToArgs } from "../slash-candidates.ts";
+import { getCommandRegistry } from "../command-registry.ts";
+import type { CommandSpec } from "../command-registry.ts";
+import { SlashMenu } from "./SlashMenu";
 
 // ── Props ────────────────────────────────────────────────────────────
 
@@ -122,6 +132,66 @@ export const Composer: React.FC<Props> = ({
   const bridgeActive = useBridgeActive();
   const disconnected = !bridgeActive;
   const inputDisabled = composerInputDisabled({ disconnected, awaitingApproval });
+
+  // ── P2: Slash 命令状态（Claude Code 语义）──────────────────────
+  const slash = parseSlashInput(text);
+  const slashActive = slash.kind === "command";
+  const [slashMenuOpen, setSlashMenuOpen] = useState(false);
+  const [slashSelected, setSlashSelected] = useState(0);
+  const [slashError, setSlashError] = useState<string | null>(null);
+  const candidates = useMemo(() => {
+    if (slash.kind !== "command") return [];
+    const registry = getCommandRegistry();
+    const ctx = {
+      store: sharedThreadStore(),
+      sessionManager: (window as unknown as Record<string, unknown>).__electromindSM,
+    };
+    return slashCandidates(registry.all(), slash.name, (spec) =>
+      registry.isAvailable(spec.id, ctx),
+    );
+  }, [slash]);
+  // 输入 "/" 即打开菜单；输入离开命令形态（非 / 开头）自动关闭
+  useEffect(() => {
+    if (slashActive) {
+      setSlashMenuOpen(true);
+      setSlashSelected(0);
+    } else {
+      setSlashMenuOpen(false);
+      setSlashError(null);
+    }
+  }, [slashActive]);
+  // 候选变化时钳制选中项
+  useEffect(() => {
+    setSlashSelected((s) => Math.min(s, Math.max(0, candidates.length - 1)));
+  }, [candidates.length]);
+
+  /** 执行 slash 命令：未知命令绝不发送给模型（提示错误）。 */
+  const executeSlash = useCallback(() => {
+    const current = parseSlashInput(text);
+    if (current.kind !== "command") return;
+    const registry = getCommandRegistry();
+    let spec: CommandSpec | undefined = current.name
+      ? registry.commandForSlash(current.name)
+      : undefined;
+    if (!spec && candidates.length > 0) {
+      spec = candidates[Math.min(slashSelected, candidates.length - 1)];
+    }
+    if (!spec) {
+      setSlashError(`未知命令 /${current.name} — 输入 / 查看可用命令`);
+      return;
+    }
+    setSlashError(null);
+    const ctx = {
+      store: sharedThreadStore(),
+      sessionManager: (window as unknown as Record<string, unknown>).__electromindSM,
+    };
+    void registry.execute(spec.id, ctx, tokensToArgs(spec.id, current.tokens)).then(
+      (res) => {
+        if (!res.ok) setSlashError(res.error);
+      },
+    );
+    setText("");
+  }, [text, candidates, slashSelected]);
 
   const toggleAttach = useCallback(() => {
     setAttachOpen((v) => !v);
@@ -222,19 +292,58 @@ export const Composer: React.FC<Props> = ({
       enqueueNext,
     });
     if (!delivery) return;
+    // P2: 以 / 开头的文本走命令路径，绝不作为消息发送
+    if (parseSlashInput(text).kind === "command") {
+      executeSlash();
+      return;
+    }
     onSend(trimmed, delivery);
     setText("");
     setEnqueueNext(false);
-  }, [text, onSend, enqueueNext, isRunning, disconnected, awaitingApproval]);
+  }, [text, onSend, enqueueNext, isRunning, disconnected, awaitingApproval, executeSlash]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
+      // P2: Slash 命令（Claude Code 语义 —— 只有消息开头的 / 是命令）。
+      // 键盘优先权：命令菜单导航 > 发送。
+      if (slashActive) {
+        if (e.key === "ArrowDown" && candidates.length > 0) {
+          e.preventDefault();
+          setSlashSelected((s) => Math.min(s + 1, candidates.length - 1));
+          return;
+        }
+        if (e.key === "ArrowUp" && candidates.length > 0) {
+          e.preventDefault();
+          setSlashSelected((s) => Math.max(s - 1, 0));
+          return;
+        }
+        if (e.key === "Tab" && candidates.length > 0) {
+          e.preventDefault();
+          const picked = candidates[Math.min(slashSelected, candidates.length - 1)];
+          setText((prev) => {
+            const slash = parseSlashInput(prev);
+            if (slash.kind !== "command") return prev;
+            return `${completeSlash(picked)}${slash.rawArgs ? ` ${slash.rawArgs}` : ""}`;
+          });
+          setSlashSelected(0);
+          return;
+        }
+        if (e.key === "Enter" && !e.shiftKey) {
+          e.preventDefault();
+          executeSlash();
+          return;
+        }
+        if (e.key === "Escape") {
+          setSlashMenuOpen(false);
+          return;
+        }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSend();
       }
     },
-    [handleSend],
+    [slashActive, candidates, slashSelected, executeSlash, handleSend],
   );
 
   const targetLabel = thread?.executionTarget
@@ -247,6 +356,26 @@ export const Composer: React.FC<Props> = ({
 
   return (
     <div className="composer">
+      {/* P2: Slash 命令菜单（Claude Code 风格；SKILLS 分组 P4 加入） */}
+      {slash.kind === "command" && slashMenuOpen && (
+        <SlashMenu
+          candidates={candidates}
+          selected={slashSelected}
+          onMouseEnter={setSlashSelected}
+          onExecute={(spec) => {
+            const ctx = {
+              store: sharedThreadStore(),
+              sessionManager: (window as unknown as Record<string, unknown>).__electromindSM,
+            };
+            void getCommandRegistry()
+              .execute(spec.id, ctx, tokensToArgs(spec.id, slash.tokens))
+              .then((res) => {
+                if (!res.ok) setSlashError(res.error);
+              });
+            setText("");
+          }}
+        />
+      )}
       {/* D3.4: disconnected → disabled input + reconnect entry */}
       {disconnected && (
         <div className="composer-disconnected" role="alert" data-composer-disconnected>
@@ -405,6 +534,22 @@ export const Composer: React.FC<Props> = ({
             aria-label="知道了"
           >
             知道了
+          </button>
+        </div>
+      )}
+
+      {/* P2: slash 命令错误提示（未知命令 / 命令执行失败 —— 不发送给模型） */}
+      {slashError && (
+        <div className="composer-error" role="alert" data-slash-error>
+          <span className="composer-error-icon" aria-hidden="true">⚠</span>
+          <span className="composer-error-text">{slashError}</span>
+          <button
+            type="button"
+            className="composer-error-dismiss"
+            onClick={() => setSlashError(null)}
+            aria-label="关闭错误提示"
+          >
+            ×
           </button>
         </div>
       )}
