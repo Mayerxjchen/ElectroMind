@@ -22,6 +22,8 @@ import { Composer } from "./components/Composer";
 import { SessionManager } from "../store/SessionManager";
 import type { ThreadStore } from "../store/ThreadStore";
 import { sharedThreadStore } from "./useStore";
+import { getCommandRegistry, type CommandContext } from "./command-registry";
+import { registerCoreCommands } from "./commands";
 
 /** Render the AppShell skeleton.  Called once at module evaluation.
  *  Guard: if the vanilla fallback already rendered its own shell
@@ -106,6 +108,22 @@ function mountComposerIntoDock(store: ThreadStore, attempt = 0): void {
  *  composer can subscribe immediately. */
 mountAppShell();
 mountComposerIntoDock(sharedThreadStore());
+
+// ── P1: 统一 Command Registry ───────────────────────────────────────
+// 单例暴露到 window：vanilla keydown（main.ts）与 React 面板共用同一份
+// 命令定义。注册幂等（size>0 跳过）—— renderer reload 后仍只有一份。
+const commandRegistry = getCommandRegistry();
+registerCoreCommands(commandRegistry);
+(window as unknown as Record<string, unknown>).__electromindCommandRegistry =
+  commandRegistry;
+
+/** 构建命令执行上下文（keydown 处理器与面板共用）。 */
+export function commandContext(): CommandContext {
+  return {
+    store: sharedThreadStore(),
+    sessionManager: (window as unknown as Record<string, unknown>).__electromindSM,
+  };
+}
 
 // ── Public API ─────────────────────────────────────────────────────
 

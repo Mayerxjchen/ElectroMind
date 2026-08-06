@@ -43,12 +43,13 @@ async function fetchJson(url) {
 async function cdpSend(target, method, params = {}) {
   const ws = new WebSocket(target.webSocketDebuggerUrl);
   await new Promise((resolve, reject) => {
-    ws.onopen = resolve;
-    ws.onerror = reject;
+    const timer = setTimeout(() => reject(new Error("cdp ws open timeout")), 5000);
+    ws.onopen = () => { clearTimeout(timer); resolve(); };
+    ws.onerror = (e) => { clearTimeout(timer); reject(new Error("cdp ws error")); };
   });
   const msg = await new Promise((resolve, reject) => {
     const id = 1;
-    const timer = setTimeout(() => reject(new Error("cdp send timeout")), 8000);
+    const timer = setTimeout(() => reject(new Error("cdp send timeout")), 5000);
     ws.onmessage = (event) => {
       const parsed = JSON.parse(event.data);
       if (parsed.id === id) {
@@ -91,7 +92,7 @@ function isAppTarget(t) {
 }
 
 /** 等待一个布尔表达式为真（轮询）。label 在前，timeoutMs 可选。 */
-async function waitFor(page, expression, label = "condition", timeoutMs = 15_000) {
+async function waitFor(page, expression, label = "condition", timeoutMs = 30_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {

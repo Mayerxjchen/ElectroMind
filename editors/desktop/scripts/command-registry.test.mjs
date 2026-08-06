@@ -1,0 +1,287 @@
+/** P1 Command Registry 测试 —— 统一命令定义与执行。
+ *
+ *  验收（修订版文档 §5）：
+ *   - Registry 不重复注册（id / slash / 快捷键冲突即抛错）
+ *   - 快捷键、Slash 和菜单执行同一个 Command ID
+ *   - 命令有统一 availability 判断
+ *   - UI 命令不创建 Run；确定性命令不交给 LLM；未知命令不发送给模型
+ *   - Renderer reload 后 Registry 仍只有一份（幂等注册）
+ *   - 8 个文档快捷键全部注册且无冲突
+ */
+
+import { test } from "node:test";
+import assert from "node:assert/strict";
+
+const {
+  CommandRegistry,
+  getCommandRegistry,
+  resetCommandRegistry,
+} = await import(
+  new URL("../src/renderer/react/command-registry.ts", import.meta.url)
+);
+const { registerCoreCommands } = await import(
+  new URL("../src/renderer/react/commands.ts", import.meta.url)
+);
+
+// ── 纯 Registry 机制 ────────────────────────────────────────────────
+
+const mockCtx = { store: null };
+
+function makeSpec(overrides = {}) {
+  return {
+    id: "cmd.test",
+    title: "测试命令",
+    description: "desc",
+    category: "view",
+    kind: "ui",
+    slash: ["test"],
+    shortcut: "meta+t",
+    available: () => true,
+    execute: () => ({ ok: true }),
+    ...overrides,
+  };
+}
+
+test("registry: register + get + size", () => {
+  const r = new CommandRegistry();
+  r.register(makeSpec());
+  assert.equal(r.size, 1);
+  assert.equal(r.get("cmd.test")?.title, "测试命令");
+  assert.equal(r.get("nope"), undefined);
+});
+
+test("registry: duplicate id throws", () => {
+  const r = new CommandRegistry();
+  r.register(makeSpec());
+  assert.throws(() => r.register(makeSpec()), /重复注册/);
+});
+
+test("registry: slash alias conflict throws", () => {
+  const r = new CommandRegistry();
+  r.register(makeSpec());
+  assert.throws(
+    () => r.register(makeSpec({ id: "cmd.other", slash: ["test"] })),
+    /Slash 别名冲突/,
+  );
+  // 同一命令多个别名 OK
+  const r2 = new CommandRegistry();
+  r2.register(makeSpec({ slash: ["test", "t2"] }));
+  assert.equal(r2.commandForSlash("T2")?.id, "cmd.test");
+});
+
+test("registry: shortcut conflict throws", () => {
+  const r = new CommandRegistry();
+  r.register(makeSpec());
+  assert.throws(
+    () => r.register(makeSpec({ id: "cmd.other", shortcut: "meta+t", slash: [] })),
+    /快捷键冲突/,
+  );
+});
+
+test("registry: availability gates execute", async () => {
+  const r = new CommandRegistry();
+  r.register(makeSpec({ available: () => false }));
+  const res = await r.execute("cmd.test", mockCtx);
+  assert.equal(res.ok, false);
+  assert.match(res.error, /不可用/);
+});
+
+test("registry: unknown command never reaches the model", async () => {
+  const r = new CommandRegistry();
+  const res = await r.execute("no.such", mockCtx);
+  assert.equal(res.ok, false);
+  assert.match(res.error, /未知命令/);
+});
+
+test("registry: execute dispatches args + result", async () => {
+  let got = null;
+  const r = new CommandRegistry();
+  r.register(
+    makeSpec({
+      execute: (ctx, args) => {
+        got = { ctx, args };
+        return { ok: true, message: "done" };
+      },
+    }),
+  );
+  const res = await r.execute("cmd.test", mockCtx, { level: "safe" });
+  assert.equal(res.ok, true);
+  assert.equal(got.args.level, "safe");
+});
+
+test("registry: execute swallows command exceptions into results", async () => {
+  const r = new CommandRegistry();
+  r.register(makeSpec({ execute: () => { throw new Error("boom"); } }));
+  const res = await r.execute("cmd.test", mockCtx);
+  assert.equal(res.ok, false);
+  assert.match(res.error, /boom/);
+});
+
+test("registry: shortcut binding + slash lookup", () => {
+  const r = new CommandRegistry();
+  r.register(makeSpec());
+  assert.equal(r.shortcutBinding("META+T")?.id, "cmd.test");
+  assert.equal(r.shortcutBinding("meta+x"), undefined);
+  assert.equal(r.commandForSlash("/test")?.id, undefined, "slash 不带前导 /");
+  assert.equal(r.commandForSlash("TEST")?.id, "cmd.test");
+});
+
+test("registry: search matches title/description/slash", () => {
+  const r = new CommandRegistry();
+  r.register(makeSpec({ title: "聚焦输入框", slash: ["focus"] }));
+  assert.equal(r.search("聚焦").length, 1);
+  assert.equal(r.search("/focus").length, 1);
+  assert.equal(r.search("不存在").length, 0);
+  assert.equal(r.search("").length, 1);
+});
+
+test("registry: singleton + idempotent core registration (reload safety)", () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const count = reg.size;
+  assert.ok(count > 0, "核心命令应已注册");
+  // 重复注册（reload / 双 init）不产生第二份
+  registerCoreCommands(reg);
+  assert.equal(reg.size, count);
+  resetCommandRegistry();
+});
+
+// ── 真实命令集（文档验收）───────────────────────────────────────────
+
+test("core commands: all ids/slashes/shortcuts unique", () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const all = reg.all();
+  const ids = new Set(all.map((c) => c.id));
+  assert.equal(ids.size, all.length, "id 不重复");
+  const slashes = all.flatMap((c) => c.slash ?? []);
+  assert.equal(new Set(slashes).size, slashes.length, "slash 不重复");
+  const shortcuts = all.filter((c) => c.shortcut).map((c) => c.shortcut);
+  assert.equal(new Set(shortcuts).size, shortcuts.length, "快捷键不冲突");
+  resetCommandRegistry();
+});
+
+test("core commands: the 8 documented shortcuts are all bound", () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const expected = [
+    "meta+k", // Command Palette
+    "meta+.", // 切换 Ask/Plan/Agent
+    "meta+n", // 新建 Thread
+    "meta+l", // 聚焦 Composer
+    "meta+b", // 展开/收起 Threads
+    "meta+i", // 打开/关闭 Inspector
+    "escape", // 关闭浮层/停止 Run
+    "meta+shift+enter", // 排队下一任务
+  ];
+  for (const s of expected) {
+    assert.ok(reg.shortcutBinding(s), `快捷键 ${s} 应绑定到命令`);
+  }
+  resetCommandRegistry();
+});
+
+test("core commands: kind classification matches the doc", () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const kindOf = (id) => reg.get(id)?.kind;
+  // UI 命令
+  for (const id of ["help", "status.show", "permissions.set", "target.show", "skills.open", "thread.resume", "logs.open"]) {
+    assert.equal(kindOf(id), "ui", `${id} 应为 ui`);
+  }
+  // 确定性命令
+  for (const id of ["doctor", "reconcile", "collect", "artifact.validate", "skills.reload"]) {
+    assert.equal(kindOf(id), "deterministic", `${id} 应为 deterministic`);
+  }
+  // Agent 命令
+  for (const id of ["agent.ask", "agent.plan", "agent.agent"]) {
+    assert.equal(kindOf(id), "agent", `${id} 应为 agent`);
+  }
+  resetCommandRegistry();
+});
+
+test("core commands: UI 命令不创建 Run（不派发 user-input）", async () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const storeStub = {
+    getActiveThreadId: () => "t1",
+    getThread: () => ({ sessionMode: "agent", autonomy: "prompt", executionTarget: null, status: "idle", pendingPermits: [], artifacts: [] }),
+    getState: () => ({ bridgeActive: true, transport: "wire", activityState: "sleeping", inspector: { open: false } }),
+    updateThread: () => {},
+    setInspector: () => {},
+  };
+  const fakeWindow = {
+    dispatchEvent: (e) => events.push(e.type),
+    desktop: { openLogDir: () => {}, sendWireCommand: () => {} },
+  };
+  const ctx = { store: storeStub };
+  // 临时把 window 指到 stub（commands 的执行经 window.*）
+  const prevWindow = globalThis.window;
+  globalThis.window = fakeWindow;
+  try {
+    for (const id of ["help", "status.show", "permissions.set", "logs.open", "inspector.toggle"]) {
+      const res = await reg.execute(id, ctx, {});
+      assert.equal(res.ok, true, `${id} 应执行成功`);
+    }
+    assert.ok(
+      !events.includes("electromind:user-input"),
+      "UI 命令不得派发 user-input（不创建 Run）",
+    );
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  resetCommandRegistry();
+});
+
+test("core commands: agent 命令带任务时派发 user-input（mode 正确）", async () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const storeStub = {
+    getActiveThreadId: () => "t1",
+    getThread: () => ({ sessionMode: "agent", status: "idle", pendingPermits: [] }),
+    getState: () => ({ bridgeActive: true }),
+    updateThread: () => {},
+    setInspector: () => {},
+  };
+  const fakeWindow = {
+    dispatchEvent: (e) => events.push({ type: e.type, detail: e.detail }),
+    desktop: {},
+  };
+  const prevWindow = globalThis.window;
+  globalThis.window = fakeWindow;
+  try {
+    const res = await reg.execute("agent.agent", { store: storeStub }, { text: "跑 CP2K" });
+    assert.equal(res.ok, true);
+    const input = events.find((e) => e.type === "electromind:user-input");
+    assert.ok(input, "agent 命令应派发 user-input");
+    assert.equal(input.detail.mode, "agent");
+    assert.equal(input.detail.text, "跑 CP2K");
+    // 无任务 → 只切模式不派发
+    events.length = 0;
+    await reg.execute("agent.plan", { store: storeStub }, {});
+    assert.ok(!events.some((e) => e.type === "electromind:user-input"));
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  resetCommandRegistry();
+});
+
+test("core commands: 未接线的确定性命令不可用且不执行", async () => {
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const ctx = { store: { getState: () => ({ bridgeActive: true }), getActiveThreadId: () => "t1", getThread: () => ({ artifacts: [] }) } };
+  for (const id of ["doctor", "reconcile", "collect"]) {
+    assert.equal(reg.isAvailable(id, ctx), false, `${id} 后端未接线应不可用`);
+    const res = await reg.execute(id, ctx, {});
+    assert.equal(res.ok, false);
+  }
+  resetCommandRegistry();
+});

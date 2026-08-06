@@ -176,6 +176,16 @@ export const Composer: React.FC<Props> = ({
     return () => window.removeEventListener("electromind:focus-composer", focus);
   }, []);
 
+  // P1: Cmd+Shift+Enter（composer.enqueue）→ 排队下一任务并聚焦输入。
+  useEffect(() => {
+    const enqueue = () => {
+      setEnqueueNext(true);
+      inputRef.current?.focus();
+    };
+    window.addEventListener("electromind:enqueue-next", enqueue);
+    return () => window.removeEventListener("electromind:enqueue-next", enqueue);
+  }, []);
+
   // Close the attachment menu on outside click / Escape.
   useEffect(() => {
     if (!attachOpen) return;

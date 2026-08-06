@@ -1386,7 +1386,37 @@ function overlayTemplate(): string {
           <div class="desktop-modal-body shortcuts-modal-body">
             <div class="shortcuts-list">
               <div class="shortcut-item">
-                <span class="shortcut-label">收缩左侧</span>
+                <span class="shortcut-label">Command Palette</span>
+                <div class="shortcut-keys">
+                  <kbd class="key-modifier">
+                    <span class="key-icon">⌘</span>
+                    <span class="key-label">Command</span>
+                  </kbd>
+                  <kbd>K</kbd>
+                </div>
+              </div>
+              <div class="shortcut-item">
+                <span class="shortcut-label">切换 Ask / Plan / Agent</span>
+                <div class="shortcut-keys">
+                  <kbd class="key-modifier">
+                    <span class="key-icon">⌘</span>
+                    <span class="key-label">Command</span>
+                  </kbd>
+                  <kbd>.</kbd>
+                </div>
+              </div>
+              <div class="shortcut-item">
+                <span class="shortcut-label">新建 Thread</span>
+                <div class="shortcut-keys">
+                  <kbd class="key-modifier">
+                    <span class="key-icon">⌘</span>
+                    <span class="key-label">Command</span>
+                  </kbd>
+                  <kbd>N</kbd>
+                </div>
+              </div>
+              <div class="shortcut-item">
+                <span class="shortcut-label">聚焦输入框</span>
                 <div class="shortcut-keys">
                   <kbd class="key-modifier">
                     <span class="key-icon">⌘</span>
@@ -1396,23 +1426,40 @@ function overlayTemplate(): string {
                 </div>
               </div>
               <div class="shortcut-item">
-                <span class="shortcut-label">收缩右侧</span>
+                <span class="shortcut-label">展开 / 收起 Threads</span>
                 <div class="shortcut-keys">
                   <kbd class="key-modifier">
                     <span class="key-icon">⌘</span>
                     <span class="key-label">Command</span>
                   </kbd>
-                  <kbd>R</kbd>
+                  <kbd>B</kbd>
                 </div>
               </div>
               <div class="shortcut-item">
-                <span class="shortcut-label">打开本面板</span>
+                <span class="shortcut-label">打开 / 关闭 Inspector</span>
                 <div class="shortcut-keys">
                   <kbd class="key-modifier">
                     <span class="key-icon">⌘</span>
                     <span class="key-label">Command</span>
                   </kbd>
-                  <kbd>K</kbd>
+                  <kbd>I</kbd>
+                </div>
+              </div>
+              <div class="shortcut-item">
+                <span class="shortcut-label">停止当前 Run</span>
+                <div class="shortcut-keys">
+                  <kbd>Esc</kbd>
+                </div>
+              </div>
+              <div class="shortcut-item">
+                <span class="shortcut-label">排队下一任务</span>
+                <div class="shortcut-keys">
+                  <kbd class="key-modifier">
+                    <span class="key-icon">⌘</span>
+                    <span class="key-label">Command</span>
+                  </kbd>
+                  <kbd class="key-modifier">⇧</kbd>
+                  <kbd>Enter</kbd>
                 </div>
               </div>
             </div>
@@ -4381,30 +4428,72 @@ async function start(): Promise<void> {
       }
       // P0 交互优先级：Esc 先关浮层/菜单（上面），再停止 Run —— 绝不默认批准。
       // 等待审批时停止 Run 会让审批随运行取消，不会放行工具调用。
+      // P1: 停止动作经统一 Command Registry（run.stop）——
+      // 快捷键与 Slash / Palette 执行同一命令。
       const activeThread = getThreadStore().getActiveThread();
       const hasPendingApproval = (activeThread?.pendingPermits?.length ?? 0) > 0;
       if (uiState.activityState === "running" || hasPendingApproval) {
-        void cancelRun();
+        const reg = (window as unknown as Record<string, unknown>)
+          .__electromindCommandRegistry as {
+            execute: (
+              id: string,
+              ctx: unknown,
+              args?: Record<string, unknown>,
+            ) => Promise<unknown>;
+          } | undefined;
+        if (reg) {
+          void reg.execute("run.stop", { store: getThreadStore() });
+        } else {
+          void cancelRun();
+        }
       }
       return;
     }
     if (!event.metaKey) {
       return;
     }
-    if (event.key === "l" || event.key === "L") {
-      event.preventDefault();
-      uiState.leftCollapsed = !uiState.leftCollapsed;
-      uiState.sidebarDocked = false;
-      applyWorkbenchChrome();
-      syncComposerDock();
-    } else if (event.key === "r" || event.key === "R") {
-      event.preventDefault();
-      inspectorController.toggle();
-    } else if (event.key === "k" || event.key === "K") {
-      event.preventDefault();
-      openShortcutsModal();
+    // P1: 其余快捷键全部经统一 Command Registry 解析（Cmd+K 面板 /
+    // Cmd+. 模式 / Cmd+N 新建 / Cmd+L 聚焦输入 / Cmd+B Threads /
+    // Cmd+I Inspector / Cmd+Shift+Enter 排队）。
+    const reg = (window as unknown as Record<string, unknown>)
+      .__electromindCommandRegistry as
+      | {
+          shortcutBinding: (s: string) => { id: string } | undefined;
+          execute: (
+            id: string,
+            ctx: unknown,
+            args?: Record<string, unknown>,
+          ) => Promise<unknown>;
+        }
+      | undefined;
+    const shortcut = pressedShortcut(event);
+    if (reg && shortcut) {
+      const binding = reg.shortcutBinding(shortcut);
+      if (binding) {
+        event.preventDefault();
+        void reg.execute(binding.id, { store: getThreadStore() });
+        return;
+      }
     }
   });
+
+  /** 组合键 → 规范化快捷键串（与 Registry 的 shortcut 字段同格式）。 */
+  function pressedShortcut(event: KeyboardEvent): string {
+    const parts: string[] = [];
+    if (event.metaKey) parts.push("meta");
+    if (event.ctrlKey) parts.push("ctrl");
+    if (event.altKey) parts.push("alt");
+    if (event.shiftKey) parts.push("shift");
+    const key = event.key.toLowerCase();
+    if (key === "escape") {
+      return parts.join("+") || "";
+    }
+    if (key === "enter") parts.push("enter");
+    else if (key === " " || key === "spacebar") parts.push("space");
+    else if (key.length === 1) parts.push(key);
+    else return "";
+    return parts.join("+");
+  }
 
   fileTree.addEventListener("click", (event) => {
     const target = event.target;
@@ -4615,6 +4704,22 @@ async function start(): Promise<void> {
   };
   window.addEventListener("electromind:user-input", handleComposerInput);
   window.addEventListener("electromind:stop", handleComposerStop);
+
+  // ── P1: Command Registry 事件桥 ─────────────────────────────────
+  // Registry 的 UI 命令通过事件打开 vanilla 浮层/面板 —— 与按钮绑定
+  // 走同一批闭包，状态不会出现两套。
+  window.addEventListener("electromind:open-shortcuts", () => {
+    openShortcutsModal();
+  });
+  window.addEventListener("electromind:open-settings", () => {
+    void openSettingsModal();
+  });
+  window.addEventListener("electromind:toggle-threads", () => {
+    uiState.leftCollapsed = !uiState.leftCollapsed;
+    uiState.sidebarDocked = false;
+    applyWorkbenchChrome();
+    syncComposerDock();
+  });
 
   const disposeRuntimeState = window.desktop.onRuntimeState((state) => {
     const previousThreadId = uiState.runtime.currentThreadId;

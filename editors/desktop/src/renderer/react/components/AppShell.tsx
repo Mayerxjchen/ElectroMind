@@ -19,6 +19,7 @@
  */
 
 import React from "react";
+import { CommandPalette } from "./CommandPalette";
 
 /** 与 vanilla platformClass(appInfo) 相同的结果（darwin → macos）。 */
 function platformClass(): string {
@@ -78,5 +79,10 @@ export const AppShell: React.FC = () => (
         布局，因此 DOM 位置无关紧要；不设置 z-index 以保持原有层级
         （子元素 z-index 继续参与根上下文，与旧 DOM 树一致）。 */}
     <div className="desktop-overlay-layer" data-overlay-layer />
+    {/* React Overlay —— React 侧浮层（Command Palette / Slash Menu），
+        与 vanilla 填充的 OverlayLayer 分离，互不覆盖。 */}
+    <div className="react-overlay-layer" data-react-overlay-layer>
+      <CommandPalette />
+    </div>
   </div>
 );
