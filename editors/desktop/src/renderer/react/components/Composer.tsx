@@ -20,7 +20,6 @@ import {
   autonomyIsRisky,
   isRiskDismissed,
   markRiskDismissed,
-  permissionText,
   riskNoteText,
 } from "../composer-permissions.ts";
 import { lastErrorFromItems } from "../composer-status.ts";
@@ -34,7 +33,6 @@ import {
   composerInputDisabled,
   composerPlaceholder,
   deliveryForState,
-  showSteerControls,
 } from "../composer-delivery.ts";
 import { parseSlashInput } from "../slash-parser.ts";
 import {
@@ -49,6 +47,8 @@ import { modelPolicyLabel } from "../model-policy.ts";
 import type { ModelSelection } from "../../store/types";
 import { SlashMenu } from "./SlashMenu";
 import { ModelPicker } from "./ModelPicker";
+import { ModePicker } from "./ModePicker";
+import { StatusPicker } from "./StatusPicker";
 
 // ── Props ────────────────────────────────────────────────────────────
 
@@ -61,18 +61,6 @@ interface Props {
 }
 
 // ── Constants ────────────────────────────────────────────────────────
-
-const MODES: { value: string; label: string; desc: string }[] = [
-  { value: "agent", label: "Agent", desc: "执行完整任务" },
-  { value: "plan", label: "Plan", desc: "调研并制定计划" },
-  { value: "ask", label: "Ask", desc: "解释与查询" },
-];
-
-const AUTONOMY_LEVELS: { value: string; label: string }[] = [
-  { value: "prompt", label: "Prompt" },
-  { value: "auto-safe", label: "Auto-safe" },
-  { value: "full-access", label: "Full access" },
-];
 
 // ── Component ────────────────────────────────────────────────────────
 
@@ -134,6 +122,9 @@ export const Composer: React.FC<Props> = ({
 
   // ── P3: Auto Model —— 紧凑状态 chip + Model Picker ──────────────
   const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  // ── P5: 模式 chip + Target·Permission chip 的 Picker ────────────
+  const [modePickerOpen, setModePickerOpen] = useState(false);
+  const [statusPickerOpen, setStatusPickerOpen] = useState(false);
   useEffect(() => {
     const toggle = () => setModelPickerOpen((v) => !v);
     window.addEventListener("electromind:model-picker-toggle", toggle);
@@ -375,6 +366,23 @@ export const Composer: React.FC<Props> = ({
         onClose={() => setModelPickerOpen(false)}
       />
 
+      {/* P5: Mode Picker（Ask/Plan/Agent） */}
+      <ModePicker
+        open={modePickerOpen}
+        current={mode}
+        onSelect={onModeChange}
+        onClose={() => setModePickerOpen(false)}
+      />
+
+      {/* P5: Target · Permission Picker */}
+      <StatusPicker
+        open={statusPickerOpen}
+        targetLabel={targetLabel}
+        autonomy={autonomy}
+        onPermission={onAutonomyChange}
+        onClose={() => setStatusPickerOpen(false)}
+      />
+
       {/* P2: Slash 命令菜单（Claude Code 风格；SKILLS 分组 P4 加入） */}
       {slash.kind === "command" && slashMenuOpen && (
         <SlashMenu
@@ -463,21 +471,7 @@ export const Composer: React.FC<Props> = ({
           />
         </div>
 
-        {/* Mode selector */}
-        <select
-          className="composer-select"
-          value={mode}
-          onChange={(e) => onModeChange(e.target.value)}
-          title="任务模式"
-        >
-          {MODES.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-
-        {/* P3: Auto Model —— 紧凑状态 chip（替代常驻宽下拉框），
+        {/* P3/P5: Auto Model —— 紧凑状态 chip（替代常驻宽下拉框），
             点击打开 Model Picker；实际模型来自后端 model/resolved */}
         <button
           type="button"
@@ -492,55 +486,28 @@ export const Composer: React.FC<Props> = ({
             : ""}
         </button>
 
-        {/* Autonomy selector */}
-        <select
-          className="composer-select"
-          value={autonomy}
-          onChange={(e) => onAutonomyChange(e.target.value)}
-          title="自主程度"
+        {/* P5: 模式 chip —— 点击打开 Mode Picker（Ask/Plan/Agent） */}
+        <button
+          type="button"
+          className="composer-chip"
+          data-mode-chip
+          onClick={() => setModePickerOpen((v) => !v)}
+          title="任务模式"
         >
-          {AUTONOMY_LEVELS.map((a) => (
-            <option key={a.value} value={a.value}>
-              {a.label}
-            </option>
-          ))}
-        </select>
+          {mode === "plan" ? "Plan" : mode === "ask" ? "Ask" : "Agent"}
+        </button>
 
-        {/* D3.4: explicit permission copy — never a bare "Auto" or an icon */}
-        <span
-          className="composer-permission"
-          data-permission-text
-          data-risky={risky ? "true" : "false"}
-          title={permissionText(autonomy)}
+        {/* P5: Target · Permission 状态 chip —— 点击打开 Status Picker
+            （执行目标展示 + Prompt/Auto-safe/Full access） */}
+        <button
+          type="button"
+          className="composer-chip"
+          data-status-chip
+          onClick={() => setStatusPickerOpen((v) => !v)}
+          title="执行目标与权限"
         >
-          {permissionText(autonomy)}
-        </span>
-
-        {/* Execution target (read-only display) */}
-        <span className="composer-target" title="执行目标">
-          {targetLabel}
-        </span>
-
-        {/* Steer / enqueue selector — 仅运行中且不在等待审批时显示
-            （P0：等待审批时 Composer 降级，审批卡是唯一主焦点） */}
-        {showSteerControls({ isRunning, awaitingApproval }) && (
-          <>
-            <button
-              className={`composer-steer-btn${enqueueNext ? "" : " active"}`}
-              onClick={() => setEnqueueNext(false)}
-              title="立即插入当前 Run（steer）"
-            >
-              steer
-            </button>
-            <button
-              className={`composer-enqueue-btn${enqueueNext ? " active" : ""}`}
-              onClick={() => setEnqueueNext(true)}
-              title="作为下一任务排队执行（enqueue）"
-            >
-              下一任务
-            </button>
-          </>
-        )}
+          {targetLabel} · {autonomy === "full-access" ? "Full" : autonomy === "auto-safe" ? "Safe" : "Prompt"}
+        </button>
       </div>
 
       {/* D3.4: one-time risk note for auto-approved runs */}

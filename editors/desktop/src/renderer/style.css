@@ -454,7 +454,8 @@ button {
 
 /* ── Model Picker（P3 Auto Model）────────────────────────────────── */
 
-.composer-model-chip {
+.composer-model-chip,
+.composer-chip {
     font-size: var(--text-xs);
     padding: 2px 8px;
     border-radius: var(--radius-sm);
@@ -465,7 +466,8 @@ button {
     cursor: pointer;
 }
 
-.composer-model-chip:hover {
+.composer-model-chip:hover,
+.composer-chip:hover {
     border-color: var(--primary);
     color: var(--text-primary);
 }

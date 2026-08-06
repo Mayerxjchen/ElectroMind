@@ -92,7 +92,7 @@ test("placeholder: approval state wins over running/idle", () => {
   );
   assert.equal(
     composerPlaceholder({ awaitingApproval: false, isRunning: true, mode: "agent" }),
-    "输入 steer 指令…",
+    "输入补充指令…",
   );
   assert.equal(
     composerPlaceholder({ awaitingApproval: false, isRunning: false, mode: "plan" }),
@@ -100,6 +100,6 @@ test("placeholder: approval state wins over running/idle", () => {
   );
   assert.equal(
     composerPlaceholder({ awaitingApproval: false, isRunning: false, mode: "ask" }),
-    "输入任务…",
+    "输入任务，使用 / 执行命令或 Skill…",
   );
 });

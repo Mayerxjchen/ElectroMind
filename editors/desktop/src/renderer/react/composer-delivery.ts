@@ -37,13 +37,15 @@ export function composerInputDisabled(s: Pick<ComposerState, "disconnected" | "a
   return s.disconnected || s.awaitingApproval;
 }
 
-/** 输入框占位文案（审批优先于运行态）。 */
+/** 输入框占位文案（审批优先于运行态；P5 最终文案）。 */
 export function composerPlaceholder(s: {
   awaitingApproval: boolean;
   isRunning: boolean;
   mode: string;
 }): string {
   if (s.awaitingApproval) return "等待审批…";
-  if (s.isRunning) return "输入 steer 指令…";
-  return s.mode === "plan" ? "描述要规划的任务…" : "输入任务…";
+  if (s.isRunning) return "输入补充指令…";
+  return s.mode === "plan"
+    ? "描述要规划的任务…"
+    : "输入任务，使用 / 执行命令或 Skill…";
 }
