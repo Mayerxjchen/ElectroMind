@@ -20,6 +20,7 @@ import os
 import shutil
 import socket
 import subprocess
+import sys
 import time
 from pathlib import Path
 
@@ -64,6 +65,35 @@ def loopback_ssh(tmp_path_factory):
     )
     authorized.write_text((clientkey.with_suffix(".pub")).read_text() + "\n")
 
+    # Debian/Ubuntu 的 sshd 需要特权分离目录 /run/sshd；CI runner 上
+    # 没有（sshd 非服务化），缺失时 sshd 接受连接后立即断开（SFTP
+    # handshake 0 字节）——不是连接失败，是 privsep 子进程起不来。
+    # 仅 Linux：非 root 时尝试 sudo（GH runner 免密 sudo）。
+    # macOS 的 sshd 无此要求，跳过（否则 sudo 会卡密码）。
+    if sys.platform.startswith("linux") and not os.path.isdir("/run/sshd"):
+        try:
+            os.makedirs("/run/sshd", exist_ok=True)
+        except PermissionError:
+            subprocess.run(["sudo", "mkdir", "-p", "/run/sshd"], check=True, timeout=30)
+
+    # sftp-server 路径随发行版不同（/usr/libexec/sftp-server 仅 macOS；
+    # Debian/Ubuntu 在 /usr/lib*/openssh/sftp-server）。
+    sftp_server = next(
+        (
+            p
+            for p in (
+                "/usr/libexec/sftp-server",
+                "/usr/lib/openssh/sftp-server",
+                "/usr/libexec/openssh/sftp-server",
+                shutil.which("sftp-server") or "",
+            )
+            if p and os.path.isfile(p)
+        ),
+        None,
+    )
+    if sftp_server is None:
+        pytest.fail("未找到 sftp-server —— loopback SSH MUST 验收需要 sftp 子系统")
+
     port = _free_port()
     config = root / "sshd_config"
     config.write_text(
@@ -77,7 +107,7 @@ def loopback_ssh(tmp_path_factory):
                 "PubkeyAuthentication yes",
                 "StrictModes no",
                 "UsePAM no",
-                "Subsystem sftp /usr/libexec/sftp-server",
+                f"Subsystem sftp {sftp_server}",
             ]
         )
         + "\n"

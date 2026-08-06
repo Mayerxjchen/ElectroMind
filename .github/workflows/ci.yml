@@ -94,7 +94,7 @@ jobs:
           node --test scripts/*.test.mjs 2>&1 | tee /tmp/unit.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
-            tail -n 40 /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
+            grep -n -A 30 '^not ok' /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
             echo "::error file=editors/desktop,title=desktop unit failures::$(cat /tmp/unit-fail.txt)"
           fi
           exit "$code"
@@ -139,7 +139,7 @@ jobs:
           node --test scripts/*.test.mjs 2>&1 | tee /tmp/unit.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
-            tail -n 40 /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
+            grep -n -A 30 '^not ok' /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
             echo "::error file=editors/desktop,title=desktop unit failures::$(cat /tmp/unit-fail.txt)"
           fi
           exit "$code"
