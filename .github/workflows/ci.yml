@@ -54,11 +54,18 @@ jobs:
       - name: ruff format --check
         run: uv run ruff format --check .
 
+      # container MUST 验收（test_skill_mount_parity）要求镜像已预加载、
+      # 测试禁止自动 pull：先在 CI 构建 electromind:latest 再跑 pytest。
+      # 注意：ELECTROMIND_TEST_CONTAINER_IMAGE 必须是真实镜像名——
+      # 留空/缺省会让该测试硬失败（禁止 skip 绕过 MUST）。
+      - name: Build container test image
+        run: docker build -t electromind:latest -f src/app/Dockerfile src/app
+
       - name: pytest + coverage
         run: uv run pytest tests/ --cov=src --cov-report=json -q
         env:
           COVERAGE_MIN: "78"
-          ELECTROMIND_TEST_CONTAINER_IMAGE: ""
+          ELECTROMIND_TEST_CONTAINER_IMAGE: "electromind:latest"
 
       - name: Desktop deps + compile
         working-directory: editors/desktop
