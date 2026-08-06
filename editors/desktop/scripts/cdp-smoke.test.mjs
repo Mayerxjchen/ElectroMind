@@ -154,12 +154,18 @@ test("desktop renderer loads via CDP (no startup error page)", async () => {
     }
 
     // 启动错误页 = #app 下直接挂 <pre>（P4.5 之后为 textContent）。若 renderer
-    // 启动即崩，会走到该错误页。
-    const hasError = await cdpEval(
+    // 启动即崩，会走到该错误页。出现时把 <pre> 里的错误文本带进断言消息，
+    // 直接可读根因。
+    const errorText = await cdpEval(
       page,
-      "!!(document.getElementById('app') && document.getElementById('app').querySelector('pre'))",
+      "(document.getElementById('app')?.querySelector('pre')?.textContent || '').slice(0, 800)",
     );
-    assert.equal(hasError, false, "不应出现启动错误页（<pre> 错误块）");
+    const hasError = !!errorText;
+    assert.equal(
+      hasError,
+      false,
+      `不应出现启动错误页（<pre> 错误块）；errorText=${errorText}`,
+    );
   } finally {
     proc.kill("SIGTERM");
     await sleep(300);
