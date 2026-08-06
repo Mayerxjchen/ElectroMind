@@ -10,6 +10,7 @@
  */
 
 import type { CommandRegistry, CommandSpec, CommandContext } from "./command-registry";
+import { modelPolicyLabel, modelSelectionFromPolicy } from "./model-policy.ts";
 
 /** /full 等危险命令的二次确认 —— 经事件桥走 vanilla confirm 模态。
  *  main.ts 监听 electromind:confirm-request，完成后回发
@@ -370,7 +371,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
     ui({
       id: "model.set",
       title: "选择模型",
-      description: "Auto 或指定模型（fast/balanced/best 档位由 P3 Resolver 接入）",
+      description: "Auto / Fast / Balanced / Best / Plan→Execute / 指定模型",
       category: "execution",
       slash: ["model"],
       usage: "/model [auto|fast|balanced|best|plan-execute|<model-id>]",
@@ -379,24 +380,14 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         const id = activeThreadId(ctx);
         if (!id) return { ok: false, error: "没有活动会话" };
         const modelArg = String(args.model ?? "");
-        if (modelArg) {
-          if (modelArg === "auto") {
-            ctx.store.updateThread(id, { model: { kind: "auto" } } as never);
-            return { ok: true, message: "模型已切换为 Auto" };
-          }
-          if (["fast", "balanced", "best", "plan-execute"].includes(modelArg)) {
-            return {
-              ok: false,
-              error: `${modelArg} 档位由 P3 Auto Model Resolver 接入（当前可用 /model auto 或具体模型 id）`,
-            };
-          }
-          ctx.store.updateThread(id, { model: { kind: "named", modelId: modelArg } } as never);
-          return { ok: true, message: `模型已切换为 ${modelArg}` };
+        if (!modelArg) {
+          // 无参数 → 打开 Model Picker
+          dispatch("electromind:model-picker-toggle");
+          return { ok: true, message: "Model Picker 已打开" };
         }
-        const m = ctx.store.getThread(id)?.model as { kind?: string; modelId?: string } | undefined;
-        const label =
-          m?.kind === "named" ? `named:${m.modelId}` : m?.kind === "auto" ? "auto" : "auto";
-        return { ok: true, message: `当前模型: ${label}` };
+        const selection = modelSelectionFromPolicy(modelArg);
+        ctx.store.updateThread(id, { model: selection } as never);
+        return { ok: true, message: `模型策略已切换为 ${modelPolicyLabel(selection)}` };
       },
     }),
 

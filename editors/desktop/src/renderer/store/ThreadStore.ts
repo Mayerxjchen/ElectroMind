@@ -648,6 +648,19 @@ export class ThreadStore {
         });
         return true;
 
+      // ── P3: model/resolved —— Run 开始时后端解析一次的广播 ────────
+      case "model/resolved": {
+        this.updateThread(threadId, {
+          modelResolved: {
+            policy: String(params.model_policy ?? "Auto"),
+            effectiveModel: String(params.effective_model ?? ""),
+            reason: String(params.reason ?? ""),
+            phase: String(params.phase ?? "plan"),
+          },
+        } as never);
+        return true;
+      }
+
       // ── Protocol v2: run/* ────────────────────────────────────────
       case "run/started": {
         const runId = String(params.run_id ?? "");

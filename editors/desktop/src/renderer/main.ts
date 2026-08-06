@@ -18,6 +18,7 @@ import {
 } from "./skills-view";
 import { MessageRenderer } from "./MessageRenderer";
 import { ContextUsageRing } from "./context-usage";
+import { modelPolicyString } from "./react/model-policy";
 import { INSTALL_COMMANDS, bindHealthPanel, renderHealthPanel } from "./environment-health";
 import { mountOnboarding } from "./onboarding";
 import DOMPurify from "dompurify";
@@ -3386,7 +3387,11 @@ async function start(): Promise<void> {
     applyActivityState();
     appendTerminalEntry("command", text);
     try {
-      await window.desktop.sendUserInput(text, requestId, delivery, mode);
+      // P3: Auto Model policy 随 Run 携带（后端 ModelResolver 解析）
+      const modelPolicy = modelPolicyString(
+        getThreadStore().getActiveThread()?.model,
+      );
+      await window.desktop.sendUserInput(text, requestId, delivery, mode, modelPolicy);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (threadId) {

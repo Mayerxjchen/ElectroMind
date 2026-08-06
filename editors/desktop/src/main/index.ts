@@ -1690,7 +1690,7 @@ ipcMain.handle("desktop:delete-thread", async (_event, threadId: string) => {
   }
   return true;
 });
-ipcMain.handle("desktop:send-user-input", async (_event, text: string, requestId?: string, delivery?: string, mode?: string) => {
+ipcMain.handle("desktop:send-user-input", async (_event, text: string, requestId?: string, delivery?: string, mode?: string, model?: string) => {
   clearLastError();
   const activeBridge = ensureBridge();
   if (!activeBridge) {
@@ -1707,6 +1707,8 @@ ipcMain.handle("desktop:send-user-input", async (_event, text: string, requestId
     text,
     delivery: dlv,
     mode: mode && mode !== "agent" ? mode : undefined,
+    // P3: Auto Model policy（auto/fast/balanced/best/plan-execute/模型 id）
+    model: model && model.trim() ? model.trim() : undefined,
     project_path: projectPath,
     request_id: reqId,
   });

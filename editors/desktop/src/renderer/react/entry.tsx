@@ -24,6 +24,7 @@ import type { ThreadStore } from "../store/ThreadStore";
 import { sharedThreadStore } from "./useStore";
 import { getCommandRegistry, type CommandContext } from "./command-registry";
 import { registerCoreCommands } from "./commands";
+import { modelSelectionFromPolicy } from "./model-policy";
 
 /** Render the AppShell skeleton.  Called once at module evaluation.
  *  Guard: if the vanilla fallback already rendered its own shell
@@ -54,15 +55,10 @@ function mountComposerAt(el: HTMLElement, store: ThreadStore): void {
         const id = store.getActiveThreadId();
         if (id) store.updateThread(id, { sessionMode: mode as never });
       }}
-      onModelChange={(modelId) => {
+      onModelChange={(policy) => {
         const id = store.getActiveThreadId();
         if (id) {
-          store.updateThread(id, {
-            model:
-              modelId === "auto"
-                ? { kind: "auto" }
-                : { kind: "named", modelId },
-          } as never);
+          store.updateThread(id, { model: modelSelectionFromPolicy(policy) } as never);
         }
       }}
       onAutonomyChange={(level) => {

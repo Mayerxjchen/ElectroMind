@@ -41,9 +41,21 @@ export type SessionMode = "ask" | "plan" | "agent" | "review";
 
 export type AutonomyLevel = "prompt" | "auto-safe" | "full-access";
 
+/** P3: Auto Model —— auto / profile(fast|balanced|best) / hybrid
+ *  (plan-execute) / named。解析由后端 ModelResolver 权威完成。 */
 export type ModelSelection =
   | { kind: "auto" }
+  | { kind: "profile"; profile: "fast" | "balanced" | "best" }
+  | { kind: "hybrid"; profile: "plan-execute" }
   | { kind: "named"; modelId: string };
+
+/** Run 开始时后端广播的模型解析结果（model/resolved 事件）。 */
+export type ModelResolved = {
+  policy: string;
+  effectiveModel: string;
+  reason: string;
+  phase: string;
+};
 
 export type ExecutionTarget =
   | { kind: "local" }
@@ -216,6 +228,9 @@ export type ThreadState = {
   skillsState: SkillsState | null;
   executionContextState: ExecutionContextState | null;
   executionState: ExecutionState | null;
+
+  /** P3: 最近一次 Run 开始时的模型解析结果（model/resolved 事件）。 */
+  modelResolved?: ModelResolved;
 
   /** G1: 当前 Plan（无则 null；plan/state 事件与快照恢复）。 */
   plan: PlanState | null;

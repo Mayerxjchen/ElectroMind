@@ -40,7 +40,10 @@ import { parseSlashInput } from "../slash-parser.ts";
 import { completeSlash, slashCandidates, tokensToArgs } from "../slash-candidates.ts";
 import { getCommandRegistry } from "../command-registry.ts";
 import type { CommandSpec } from "../command-registry.ts";
+import { modelPolicyLabel } from "../model-policy.ts";
+import type { ModelSelection } from "../../store/types";
 import { SlashMenu } from "./SlashMenu";
+import { ModelPicker } from "./ModelPicker";
 
 // ── Props ────────────────────────────────────────────────────────────
 
@@ -58,15 +61,6 @@ const MODES: { value: string; label: string; desc: string }[] = [
   { value: "agent", label: "Agent", desc: "执行完整任务" },
   { value: "plan", label: "Plan", desc: "调研并制定计划" },
   { value: "ask", label: "Ask", desc: "解释与查询" },
-];
-
-const MODELS: { value: string; label: string }[] = [
-  { value: "auto", label: "Auto" },
-  { value: "claude-fable-5", label: "Claude Fable 5" },
-  { value: "claude-opus-5", label: "Claude Opus 5" },
-  { value: "claude-sonnet-5", label: "Claude Sonnet 5" },
-  { value: "deepseek-v4-pro", label: "DeepSeek V4 Pro" },
-  { value: "deepseek-v4-flash", label: "DeepSeek V4 Flash" },
 ];
 
 const AUTONOMY_LEVELS: { value: string; label: string }[] = [
@@ -132,6 +126,14 @@ export const Composer: React.FC<Props> = ({
   const bridgeActive = useBridgeActive();
   const disconnected = !bridgeActive;
   const inputDisabled = composerInputDisabled({ disconnected, awaitingApproval });
+
+  // ── P3: Auto Model —— 紧凑状态 chip + Model Picker ──────────────
+  const [modelPickerOpen, setModelPickerOpen] = useState(false);
+  useEffect(() => {
+    const toggle = () => setModelPickerOpen((v) => !v);
+    window.addEventListener("electromind:model-picker-toggle", toggle);
+    return () => window.removeEventListener("electromind:model-picker-toggle", toggle);
+  }, []);
 
   // ── P2: Slash 命令状态（Claude Code 语义）──────────────────────
   const slash = parseSlashInput(text);
@@ -356,6 +358,15 @@ export const Composer: React.FC<Props> = ({
 
   return (
     <div className="composer">
+      {/* P3: Model Picker（Auto Model 选择） */}
+      <ModelPicker
+        open={modelPickerOpen}
+        current={model as ModelSelection}
+        effectiveModel={thread?.modelResolved?.effectiveModel ?? ""}
+        onSelect={onModelChange}
+        onClose={() => setModelPickerOpen(false)}
+      />
+
       {/* P2: Slash 命令菜单（Claude Code 风格；SKILLS 分组 P4 加入） */}
       {slash.kind === "command" && slashMenuOpen && (
         <SlashMenu
@@ -458,19 +469,20 @@ export const Composer: React.FC<Props> = ({
           ))}
         </select>
 
-        {/* Model selector */}
-        <select
-          className="composer-select"
-          value={model.kind === "named" ? model.modelId : "auto"}
-          onChange={(e) => onModelChange(e.target.value)}
-          title="模型选择"
+        {/* P3: Auto Model —— 紧凑状态 chip（替代常驻宽下拉框），
+            点击打开 Model Picker；实际模型来自后端 model/resolved */}
+        <button
+          type="button"
+          className="composer-model-chip"
+          data-model-chip
+          onClick={() => setModelPickerOpen((v) => !v)}
+          title={`模型策略 ${modelPolicyLabel(model as ModelSelection)} · 实际 ${thread?.modelResolved?.effectiveModel ?? "待 Run 解析"}`}
         >
-          {MODELS.map((m) => (
-            <option key={m.value} value={m.value}>
-              {m.label}
-            </option>
-          ))}
-        </select>
+          {modelPolicyLabel(model as ModelSelection)}
+          {thread?.modelResolved?.effectiveModel
+            ? ` · ${thread.modelResolved.effectiveModel}`
+            : ""}
+        </button>
 
         {/* Autonomy selector */}
         <select
