@@ -4373,6 +4373,13 @@ async function start(): Promise<void> {
       if (artifactPreviewPath) {
         closeArtifactPreview();
       }
+      // P0 交互优先级：Esc 先关浮层/菜单（上面），再停止 Run —— 绝不默认批准。
+      // 等待审批时停止 Run 会让审批随运行取消，不会放行工具调用。
+      const activeThread = getThreadStore().getActiveThread();
+      const hasPendingApproval = (activeThread?.pendingPermits?.length ?? 0) > 0;
+      if (uiState.activityState === "running" || hasPendingApproval) {
+        void cancelRun();
+      }
       return;
     }
     if (!event.metaKey) {

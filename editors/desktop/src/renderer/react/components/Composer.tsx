@@ -25,6 +25,12 @@ import {
   attachmentRef,
 } from "../composer-attachments.ts";
 import type { AttachmentId } from "../composer-attachments.ts";
+import {
+  composerInputDisabled,
+  composerPlaceholder,
+  deliveryForState,
+  showSteerControls,
+} from "../composer-delivery.ts";
 
 // ── Props ────────────────────────────────────────────────────────────
 
@@ -82,6 +88,9 @@ export const Composer: React.FC<Props> = ({
   const [dismissedError, setDismissedError] = useState<string | null>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const isRunning = activity === "running";
+  // P0 交互优先级：waiting_approval > running —— 等待审批时 Composer
+  // 降级为非主操作区（隐藏 steer、禁用输入），审批卡成为唯一主焦点。
+  const awaitingApproval = (thread?.pendingPermits?.length ?? 0) > 0;
 
   const mode = thread?.sessionMode ?? "agent";
   const model = typeof thread?.model === "object" && thread?.model
@@ -112,6 +121,7 @@ export const Composer: React.FC<Props> = ({
   // ── D3.4: disconnected → composer disabled + reconnect entry ────────
   const bridgeActive = useBridgeActive();
   const disconnected = !bridgeActive;
+  const inputDisabled = composerInputDisabled({ disconnected, awaitingApproval });
 
   const toggleAttach = useCallback(() => {
     setAttachOpen((v) => !v);
@@ -194,17 +204,18 @@ export const Composer: React.FC<Props> = ({
     // Harness Spine: sending during a running turn is allowed — the wire
     // enqueues the input and sends an input/state ACK back.
     if (!trimmed) return;
-    // Explicit "下一任务" → enqueue; otherwise steer (immediate) while
-    // running, auto when idle.
-    const delivery = enqueueNext
-      ? "enqueue"
-      : isRunning
-        ? "immediate"
-        : "auto";
+    // P0: waiting_approval / disconnected → null（新任务不能绕过当前审批）。
+    const delivery = deliveryForState({
+      disconnected,
+      isRunning,
+      awaitingApproval,
+      enqueueNext,
+    });
+    if (!delivery) return;
     onSend(trimmed, delivery);
     setText("");
     setEnqueueNext(false);
-  }, [text, onSend, enqueueNext, isRunning]);
+  }, [text, onSend, enqueueNext, isRunning, disconnected, awaitingApproval]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -351,8 +362,9 @@ export const Composer: React.FC<Props> = ({
           {targetLabel}
         </span>
 
-        {/* Steer / enqueue selector (only while running) */}
-        {isRunning && (
+        {/* Steer / enqueue selector — 仅运行中且不在等待审批时显示
+            （P0：等待审批时 Composer 降级，审批卡是唯一主焦点） */}
+        {showSteerControls({ isRunning, awaitingApproval }) && (
           <>
             <button
               className={`composer-steer-btn${enqueueNext ? "" : " active"}`}
@@ -410,17 +422,15 @@ export const Composer: React.FC<Props> = ({
           value={text}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
-          placeholder={
-            isRunning
-              ? "输入 steer 指令…"
-              : thread?.sessionMode === "plan"
-                ? "描述要规划的任务…"
-                : "输入任务…"
-          }
+          placeholder={composerPlaceholder({
+            awaitingApproval,
+            isRunning,
+            mode,
+          })}
           rows={1}
-          disabled={disconnected}
+          disabled={inputDisabled}
         />
-        {isRunning ? (
+        {isRunning && !awaitingApproval ? (
           <button
             className="composer-stop-btn"
             onClick={onStop}
@@ -433,7 +443,7 @@ export const Composer: React.FC<Props> = ({
           <button
             className="composer-send-btn"
             onClick={handleSend}
-            disabled={!text.trim() || disconnected}
+            disabled={!text.trim() || inputDisabled}
             title="发送 (Enter)"
           >
             ↑

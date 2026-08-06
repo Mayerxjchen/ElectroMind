@@ -22,6 +22,7 @@
         "test:threadstore-restore": "node --test scripts/threadstore-restore.test.mjs",
         "test:renderer-timeline": "node --test scripts/message-renderer-timeline.test.mjs",
         "test:composer-permissions": "node --test scripts/composer-permissions.test.mjs",
+        "test:composer-delivery": "node --test scripts/composer-delivery.test.mjs",
         "test:composer-status": "node --test scripts/composer-status.test.mjs",
         "test:parser-unverified": "node --test scripts/parser-unverified.test.mjs",
         "test:agent-process-tree": "node --test scripts/agent-process-tree.test.mjs",
