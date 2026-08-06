@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
+import { validateIpcParams } from "./ipc-schema";
 import type {
   DesktopApi,
   DesktopEvent,
@@ -30,6 +31,11 @@ const ALLOWED_WIRE_COMMANDS = new Set<string>([
   "artifact/validate",
 ]);
 
+function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {
+  validateIpcParams(channel, args);
+  return ipcRenderer.invoke(channel, ...args);
+}
+
 function subscribeToChannel<T>(
   channel: string,
   listener: (payload: T) => void,
@@ -43,95 +49,95 @@ function subscribeToChannel<T>(
 
 const desktopApi: DesktopApi = {
   getAppInfo() {
-    return ipcRenderer.invoke("desktop:get-app-info");
+    return invoke("desktop:get-app-info");
   },
   getRuntimeState() {
-    return ipcRenderer.invoke("desktop:get-runtime-state");
+    return invoke("desktop:get-runtime-state");
   },
   setYoloMode(enabled: boolean) {
-    return ipcRenderer.invoke("desktop:set-yolo-mode", enabled);
+    return invoke("desktop:set-yolo-mode", enabled);
   },
   listThreads() {
-    return ipcRenderer.invoke("desktop:list-threads");
+    return invoke("desktop:list-threads");
   },
   getThreadMeta(threadId: string) {
-    return ipcRenderer.invoke("desktop:get-thread-meta", threadId);
+    return invoke("desktop:get-thread-meta", threadId);
   },
   getSettings() {
-    return ipcRenderer.invoke("desktop:get-settings");
+    return invoke("desktop:get-settings");
   },
   openDocumentation() {
-    return ipcRenderer.invoke("desktop:open-documentation");
+    return invoke("desktop:open-documentation");
   },
   listArtifacts() {
-    return ipcRenderer.invoke("desktop:list-artifacts");
+    return invoke("desktop:list-artifacts");
   },
   openArtifact(path: string) {
-    return ipcRenderer.invoke("desktop:open-artifact", path);
+    return invoke("desktop:open-artifact", path);
   },
   /** P4.4: 一键打开日志目录。 */
   openLogDir() {
-    return ipcRenderer.invoke("desktop:open-log-dir");
+    return invoke("desktop:open-log-dir");
   },
   readArtifact(path: string) {
-    return ipcRenderer.invoke("desktop:read-artifact", path);
+    return invoke("desktop:read-artifact", path);
   },
   getSandboxStatus() {
-    return ipcRenderer.invoke("desktop:get-sandbox-status");
+    return invoke("desktop:get-sandbox-status");
   },
   listSandboxTree() {
-    return ipcRenderer.invoke("desktop:list-sandbox-tree");
+    return invoke("desktop:list-sandbox-tree");
   },
   listProjectFiles() {
-    return ipcRenderer.invoke("desktop:list-project-files");
+    return invoke("desktop:list-project-files");
   },
   listProjectTree() {
-    return ipcRenderer.invoke("desktop:list-project-tree");
+    return invoke("desktop:list-project-tree");
   },
   selectProject() {
-    return ipcRenderer.invoke("desktop:select-project");
+    return invoke("desktop:select-project");
   },
   pickDirectory(defaultPath?: string) {
-    return ipcRenderer.invoke("desktop:pick-directory", defaultPath);
+    return invoke("desktop:pick-directory", defaultPath);
   },
   getNewSessionOptions() {
-    return ipcRenderer.invoke("desktop:get-new-session-options");
+    return invoke("desktop:get-new-session-options");
   },
   getOnboardingState() {
-    return ipcRenderer.invoke("desktop:get-onboarding-state");
+    return invoke("desktop:get-onboarding-state");
   },
   refreshEnvironmentCheck() {
-    return ipcRenderer.invoke("desktop:refresh-environment-check");
+    return invoke("desktop:refresh-environment-check");
   },
   installElectromindCli() {
-    return ipcRenderer.invoke("desktop:install-electromind-cli");
+    return invoke("desktop:install-electromind-cli");
   },
   saveProviderSetup(setup) {
-    return ipcRenderer.invoke("desktop:save-provider-setup", setup);
+    return invoke("desktop:save-provider-setup", setup);
   },
   completeOnboarding(options) {
-    return ipcRenderer.invoke("desktop:complete-onboarding", options);
+    return invoke("desktop:complete-onboarding", options);
   },
   resumeThread(threadId: string) {
-    return ipcRenderer.invoke("desktop:resume-thread", threadId);
+    return invoke("desktop:resume-thread", threadId);
   },
   forceReconnect() {
-    return ipcRenderer.invoke("desktop:force-reconnect");
+    return invoke("desktop:force-reconnect");
   },
   deleteThread(threadId: string) {
-    return ipcRenderer.invoke("desktop:delete-thread", threadId);
+    return invoke("desktop:delete-thread", threadId);
   },
   sendUserInput(text: string, requestId?: string, delivery?: string, mode?: string) {
-    return ipcRenderer.invoke("desktop:send-user-input", text, requestId, delivery, mode);
+    return invoke("desktop:send-user-input", text, requestId, delivery, mode);
   },
   clearLastError() {
-    return ipcRenderer.invoke("desktop:clear-last-error");
+    return invoke("desktop:clear-last-error");
   },
   resetSession(options?: ResetSessionOptions) {
-    return ipcRenderer.invoke("desktop:reset-session", options);
+    return invoke("desktop:reset-session", options);
   },
   requestHistoryReplay() {
-    return ipcRenderer.invoke("desktop:request-history");
+    return invoke("desktop:request-history");
   },
   sendWireCommand(command: WireCommand) {
     // Capability boundary: only allowlist commands may cross the bridge.
@@ -140,13 +146,13 @@ const desktopApi: DesktopApi = {
         new Error(`wire command not allowed: ${String(command.cmd)}`),
       );
     }
-    return ipcRenderer.invoke("desktop:send-wire-command", command);
+    return invoke("desktop:send-wire-command", command);
   },
   permitToolCall(toolCallId: string, approvalId?: string, threadId?: string, runId?: string) {
-    return ipcRenderer.invoke("desktop:permit-tool-call", { toolCallId, approvalId, threadId, runId });
+    return invoke("desktop:permit-tool-call", { toolCallId, approvalId, threadId, runId });
   },
   denyToolCall(toolCallId: string, reason?: string, approvalId?: string, threadId?: string, runId?: string) {
-    return ipcRenderer.invoke("desktop:deny-tool-call", { toolCallId, reason, approvalId, threadId, runId });
+    return invoke("desktop:deny-tool-call", { toolCallId, reason, approvalId, threadId, runId });
   },
   onAgentEvent(listener: (event: DesktopEvent) => void) {
     return subscribeToChannel("desktop:event", listener);
@@ -158,19 +164,19 @@ const desktopApi: DesktopApi = {
   // ── File operations ────────────────────────────────────────────
 
   getFileMetadata(ref: FileRef): Promise<FileMetadata> {
-    return ipcRenderer.invoke("desktop:get-file-metadata", ref);
+    return invoke("desktop:get-file-metadata", ref);
   },
   previewFile(ref: FileRef): Promise<FilePreview> {
-    return ipcRenderer.invoke("desktop:preview-file", ref);
+    return invoke("desktop:preview-file", ref);
   },
   copyFilePath(ref: FileRef, format: PathFormat): Promise<void> {
-    return ipcRenderer.invoke("desktop:copy-file-path", ref, format);
+    return invoke("desktop:copy-file-path", ref, format);
   },
   exportFile(ref: FileRef, suggestedName?: string): Promise<FileTransferResult> {
-    return ipcRenderer.invoke("desktop:export-file", ref, suggestedName);
+    return invoke("desktop:export-file", ref, suggestedName);
   },
   revealInFinder(ref: FileRef): Promise<void> {
-    return ipcRenderer.invoke("desktop:reveal-in-finder", ref);
+    return invoke("desktop:reveal-in-finder", ref);
   },
 };
 

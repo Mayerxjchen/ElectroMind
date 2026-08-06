@@ -40,8 +40,8 @@ function extractMainChannels(source) {
 
 function extractPreloadChannels(source) {
   const channels = new Set();
-  // ipcRenderer.invoke("desktop:xxx", ...)
-  const invokeRe = /ipcRenderer\.invoke\(\s*"([^"]+)"/g;
+  // invoke("desktop:xxx", ...)（经 schema 校验包装，见 ipc-schema.ts）
+  const invokeRe = /(?:ipcRenderer\.)?invoke\(\s*"([^"]+)"/g;
   let match;
   while ((match = invokeRe.exec(source)) !== null) {
     channels.add(match[1]);
