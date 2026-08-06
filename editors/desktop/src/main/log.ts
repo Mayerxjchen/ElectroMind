@@ -37,13 +37,34 @@ function rotateIfNeeded(file: string): void {
   }
 }
 
+// 脱敏（验收六）：API key / Bearer token / 长密钥串统一掩码，避免
+// 密钥落盘。agent.log 是 stderr 原始流，同样经过这里。
+const SECRET_PATTERNS: RegExp[] = [
+  /\bsk-[A-Za-z0-9_-]{12,}/g, // OpenAI 风格 key
+  /\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi,
+  /\b(?:api[_-]?key|apikey|token|secret|password|passwd)\s*[:=]\s*["']?[A-Za-z0-9._~+/=-]{8,}/gi,
+  /\beyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/g, // JWT
+];
+
+function redact(line: string): string {
+  let out = line;
+  for (const re of SECRET_PATTERNS) {
+    out = out.replace(re, (m) => {
+      // 保留 key 名与少量前缀，方便定位是哪一类凭据
+      const keep = Math.min(m.length, 8);
+      return m.slice(0, keep) + "…[REDACTED]";
+    });
+  }
+  return out;
+}
+
 function write(name: string, line: string): void {
   try {
     ensureDir();
     const file = path.join(LOG_DIR, name);
     rotateIfNeeded(file);
     const ts = new Date().toISOString();
-    appendFileSync(file, `[${ts}] ${line}\n`, "utf8");
+    appendFileSync(file, `[${ts}] ${redact(line)}\n`, "utf8");
   } catch {
     // 日志写盘失败不能拖垮主进程
   }
