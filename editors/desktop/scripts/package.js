@@ -9,6 +9,7 @@
 // 产物统一落在 release/ 下，命名 electromind-Desktop-<version>-<platform>-<arch>.<ext>。
 
 const { execFileSync } = require("node:child_process");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { packager } = require("@electron/packager");
@@ -197,6 +198,42 @@ function embedAgent(appDir, agentBin, allowCompanion, distDir = path.join(root, 
   fs.copyFileSync(src, path.join(agentDir, "electromind"));
   fs.chmodSync(path.join(agentDir, "electromind"), 0o755);
   console.log(`D2: 已嵌入内置 Agent ${path.basename(src)} → Resources/agent/electromind`);
+
+  // 验收八：Agent SHA-256 + 版本校验（缺失/不匹配 → 构建失败）。
+  const agentPath = path.join(agentDir, "electromind");
+  const sha = crypto.createHash("sha256").update(fs.readFileSync(agentPath)).digest("hex");
+  fs.writeFileSync(path.join(agentDir, "agent.sha256"), `${sha}\n`);
+  const expectedSha =
+    arg("agent-sha256", "") || process.env.ELECTROMIND_AGENT_SHA256 || "";
+  if (expectedSha && sha !== expectedSha) {
+    throw new Error(
+      `D2/P5.2: Agent SHA-256 不匹配: ${sha}（期望 ${expectedSha}）——请核对 --agent-bin 指向的二进制`,
+    );
+  }
+  console.log(`D2: Agent SHA-256 ${sha.slice(0, 12)}… → Resources/agent/agent.sha256`);
+  try {
+    const out = execFileSync(agentPath, ["version"], {
+      timeout: 60_000,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const agentVer = (out.trim().match(/\d+\.\d+\.\d+/) || [""])[0];
+    if (agentVer !== version) {
+      throw new Error(
+        `D2/P5.2: Agent 版本 ${agentVer || "(无法解析)"} 与 Desktop ${version} 不匹配`,
+      );
+    }
+    console.log(`D2: Agent 版本 ${agentVer} 与 Desktop ${version} 一致`);
+  } catch (exc) {
+    if (exc instanceof Error && exc.message.startsWith("D2/P5.2")) {
+      throw exc;
+    }
+    throw new Error(
+      `D2/P5.2: 无法校验 Agent 版本（${
+        exc instanceof Error ? exc.message : String(exc)
+      }）——版本不可验证时禁止打包`,
+    );
+  }
   return true;
 }
 

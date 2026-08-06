@@ -90,13 +90,27 @@ test("embedAgent embeds an explicit agent binary", () => {
   const tmpDir = mkdtempSync(join(tmpdir(), "agent-embed-"));
   try {
     const appDir = join(tmpDir, "app");
+    // 假 agent：可执行脚本，`version` 子命令输出与 Desktop 一致的版本号
+    // （嵌入后 package.js 会真实执行它做版本校验）。
+    const desktopVersion = JSON.parse(
+      require("node:fs").readFileSync(join(import.meta.dirname, "..", "package.json"), "utf8"),
+    ).version;
     const agentSrc = join(tmpDir, "agent-bin");
-    copyFileSync(SAMPLE_BIN, agentSrc);
+    require("node:fs").writeFileSync(
+      agentSrc,
+      `#!/bin/sh\necho "${desktopVersion}"\n`,
+    );
+    require("node:fs").chmodSync(agentSrc, 0o755);
     const ok = embedAgent(appDir, agentSrc, false);
     assert.equal(ok, true);
     // .app bundle 路径：appDir/<productName>.app/Contents/Resources/agent/electromind
     const embedded = join(appDir, "electromind Desktop.app", "Contents", "Resources", "agent", "electromind");
     assert.ok(require("node:fs").existsSync(embedded), "agent 应被嵌入");
+    // 验收八：嵌入时写出 agent.sha256 清单
+    assert.ok(
+      require("node:fs").existsSync(join(embedded, "..", "agent.sha256")),
+      "应生成 agent.sha256",
+    );
   } finally {
     rmSync(tmpDir, { recursive: true, force: true });
   }
