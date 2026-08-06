@@ -138,8 +138,10 @@ def test_same_name_different_source_rejected(home, lines):
     target = SkillInstaller().root / "demo-skill" / "SKILL.md"
     assert "body v1" in target.read_text(encoding="utf-8")  # 仍是 v1
     # 拒绝时发出 Error
-    errors = [json.loads(l) for l in lines if json.loads(l).get("method") == "Error"]
-    assert any("同名 Skill" in str(e.get("params", {}).get("message", "")) for e in errors)
+    errors = [json.loads(ln) for ln in lines if json.loads(ln).get("method") == "Error"]
+    assert any(
+        "同名 Skill" in str(e.get("params", {}).get("message", "")) for e in errors
+    )
 
 
 def test_operations_do_not_bump_catalog_generation(home, lines):
@@ -153,5 +155,5 @@ def test_operations_do_not_bump_catalog_generation(home, lines):
 
 def test_install_missing_source_errors(home, lines):
     asyncio.run(wire._emit_skills_install({"source": ""}))
-    errors = [json.loads(l) for l in lines if json.loads(l).get("method") == "Error"]
+    errors = [json.loads(ln) for ln in lines if json.loads(ln).get("method") == "Error"]
     assert errors and "source" in str(errors[-1].get("params", {}).get("message", ""))

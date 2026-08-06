@@ -1006,7 +1006,9 @@ def _emit_skills_get(command: dict) -> None:
 def _emit_skills_reload(command: dict) -> None:
     """``skills/reload`` — re-discover; bump generation on content change."""
     service = _skills_service()
-    log(f"[dbg-reload] pre gen={service.list().generation} fp={ {k: v[:8] for k, v in getattr(service, '_source_fingerprints', {}).items()} }")
+    log(
+        f"[dbg-reload] pre gen={service.list().generation} fp={ {k: v[:8] for k, v in getattr(service, '_source_fingerprints', {}).items()} }"
+    )
     catalog = service.reload()
     log(f"[dbg-reload] post gen={catalog.generation}")
     thread_id = str(command.get("thread_id", ""))
@@ -1040,10 +1042,12 @@ async def _emit_skills_install(command: dict) -> None:
     source = str(command.get("source", "")).strip()
     ref = str(command.get("ref", "") or "HEAD")
     path = str(command.get("path", "") or "")
-    scope = str(command.get("scope", "") or "user")
     grant_trust = bool(command.get("trust", False))
     if not source:
-        emit_error("skills/install 需要 source 字段（git URL 或本地目录）", where="skills/install")
+        emit_error(
+            "skills/install 需要 source 字段（git URL 或本地目录）",
+            where="skills/install",
+        )
         return
     installer = SkillInstaller()
     try:
@@ -1067,7 +1071,9 @@ async def _emit_skills_install(command: dict) -> None:
                     pass
                 return
         if info["is_git"]:
-            result = await installer.install_from_git(source, ref=ref, path=path or None)
+            result = await installer.install_from_git(
+                source, ref=ref, path=path or None
+            )
         else:
             result = await installer.install_from_dir(Path(source))
         if grant_trust:
