@@ -142,20 +142,23 @@ function stageLinux() {
 // （非零退出），绝不带病产出。
 // P5.2: 找不到 Agent 时默认**失败**，禁止静默降级为 Companion。
 //       显式传 --allow-companion 才允许产出 Companion 包（开发用）。
-function embedAgent(appDir, agentBin, allowCompanion) {
+function embedAgent(appDir, agentBin, allowCompanion, distDir = path.join(root, "..", "..", "dist")) {
   let src = agentBin;
   if (!src) {
-    const distDir = path.join(root, "..", "..", "dist");
-    const candidates = fs
-      .readdirSync(distDir)
-      .filter(
-        (f) =>
-          f.startsWith("electromind-") &&
-          !f.endsWith(".whl") &&
-          !f.endsWith(".tar.gz") &&
-          !f.endsWith(".txt"),
-      )
-      .map((f) => path.join(distDir, f));
+    // dist/ 可能不存在（干净 checkout）——按空目录处理，走领域错误
+    // （禁止静默降级），不让底层 ENOENT 越过产品语义。
+    const candidates = fs.existsSync(distDir)
+      ? fs
+          .readdirSync(distDir)
+          .filter(
+            (f) =>
+              f.startsWith("electromind-") &&
+              !f.endsWith(".whl") &&
+              !f.endsWith(".tar.gz") &&
+              !f.endsWith(".txt"),
+          )
+          .map((f) => path.join(distDir, f))
+      : [];
     if (candidates.length === 0) {
       if (allowCompanion) {
         console.warn("D2: 未找到 standalone agent，且 --allow-companion 已显式传入 —— 产出 Companion 包");
