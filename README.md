@@ -1,5 +1,7 @@
 <div align="center">
 
+<img width="400" alt="ElectroMind" src="docs/assets/cat.png" />
+
 # ⚡ ElectroMind
 
 **AI Agent for Scientific Computing**
