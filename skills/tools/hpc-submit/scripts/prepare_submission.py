@@ -109,9 +109,7 @@ def main(argv: list[str] | None = None) -> int:
         from electromind.hpc import default_idempotency_key
 
         idem = args.idempotency_key or default_idempotency_key(args.thread, args.run)
-        existing = next(
-            (r for r in store.all() if r.idempotency_key == idem), None
-        )
+        existing = next((r for r in store.all() if r.idempotency_key == idem), None)
         if existing is not None:
             if existing.job_id:
                 raise HpcSubmissionError(
