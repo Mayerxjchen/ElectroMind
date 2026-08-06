@@ -153,18 +153,19 @@ test("desktop renderer loads via CDP (no startup error page)", async () => {
       );
     }
 
-    // 启动错误页 = #app 下直接挂 <pre>（P4.5 之后为 textContent）。若 renderer
-    // 启动即崩，会走到该错误页。出现时把 <pre> 里的错误文本带进断言消息，
-    // 直接可读根因。
+    // 启动错误页 = #app 的**直接子元素** <pre>（P4.5 之后为 textContent）——
+    // 错误 handler 是唯一直接往 #app 挂 <pre> 的代码。onboarding/设置等
+    // 正常界面也含 <pre class="setup-cmd">（agent 未安装引导），但它们
+    // 包在容器/模态里，不是 #app 直接子元素，不算启动错误。
     const errorText = await cdpEval(
       page,
-      "(document.getElementById('app')?.querySelector('pre')?.textContent || '').slice(0, 800)",
+      "(document.querySelector('#app > pre')?.textContent || '').slice(0, 800)",
     );
     const hasError = !!errorText;
     assert.equal(
       hasError,
       false,
-      `不应出现启动错误页（<pre> 错误块）；errorText=${errorText}`,
+      `不应出现启动错误页（#app 直接子 <pre>）；errorText=${errorText}`,
     );
   } finally {
     proc.kill("SIGTERM");
