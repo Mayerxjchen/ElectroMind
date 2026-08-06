@@ -91,7 +91,7 @@ jobs:
         working-directory: editors/desktop
         run: |
           set +e
-          node --test $(ls scripts/*.test.mjs | grep -Ev 'cdp-smoke|package-agent') 2>&1 | tee /tmp/unit.log
+          node --test $(ls scripts/*.test.mjs | grep -Ev 'cdp-smoke|package-agent|standalone-smoke|skills-manager-cdp') 2>&1 | tee /tmp/unit.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
             grep -n -A 30 '^not ok' /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
@@ -150,7 +150,7 @@ jobs:
         working-directory: editors/desktop
         run: |
           set +e
-          node --test $(ls scripts/*.test.mjs | grep -Ev 'cdp-smoke|package-agent') 2>&1 | tee /tmp/unit.log
+          node --test $(ls scripts/*.test.mjs | grep -Ev 'cdp-smoke|package-agent|standalone-smoke|skills-manager-cdp') 2>&1 | tee /tmp/unit.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
             grep -n -A 30 '^not ok' /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
@@ -182,3 +182,57 @@ jobs:
       - name: Package (explicit allow-companion)
         working-directory: editors/desktop
         run: node scripts/package.js --allow-companion
+
+  # 八: 真实 Standalone 冒烟 —— 构建内置 Agent、严格打包、干净环境启动、
+  # Skills Manager 完整操作链。与 Companion 冒烟分开，各保各的覆盖。
+  standalone-smoke:
+    name: macOS standalone smoke (real agent)
+    runs-on: macos-14
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
+      - name: Python sync (incl. pyinstaller)
+        run: uv sync --group dev --frozen
+
+      - name: Build standalone agent (PyInstaller)
+        run: bash scripts/build-standalone.sh
+
+      - name: Desktop deps + compile + type check
+        working-directory: editors/desktop
+        run: |
+          npm ci || npm install
+          npm run compile
+          npm run check
+
+      # 严格打包：显式 --agent-bin + SHA 校验（缺失/不匹配 → 构建失败）
+      - name: Package with explicit agent + SHA
+        working-directory: editors/desktop
+        run: |
+          AGENT_BIN=$(ls ../../dist/electromind-*-macosx_* | head -1)
+          AGENT_SHA=$(shasum -a 256 "$AGENT_BIN" | awk '{print $1}')
+          node scripts/package.js --agent-bin "$AGENT_BIN" --agent-sha256 "$AGENT_SHA"
+
+      # 冒烟测试自动探测 release/ 下最新 .app，无需显式路径
+      - name: Standalone smoke (clean env + wire + restart restore)
+        working-directory: editors/desktop
+        run: node --test scripts/standalone-smoke.test.mjs
+
+      - name: Skills Manager CDP chain (install/trust/update/revoke/remove + restart)
+        working-directory: editors/desktop
+        run: node --test scripts/skills-manager-cdp.test.mjs

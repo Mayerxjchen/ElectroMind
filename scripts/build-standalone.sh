@@ -10,17 +10,25 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-VERSION=$(python3 -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
-PLATFORM=$(python3 -c "import sysconfig;print(sysconfig.get_platform().replace('-','_'))")
+# 优先用项目 venv（uv sync --group dev 已含 pyinstaller）；无 uv 时退回
+# 系统 python3。
+if command -v uv >/dev/null 2>&1; then
+  PY="uv run python"
+else
+  PY="python3"
+fi
+
+VERSION=$($PY -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")
+PLATFORM=$($PY -c "import sysconfig;print(sysconfig.get_platform().replace('-','_'))")
 OUT="dist/electromind-${VERSION}-${PLATFORM}"
 
-if ! python3 -c "import PyInstaller" 2>/dev/null; then
-  echo "缺少 PyInstaller：pip install pyinstaller"
+if ! $PY -c "import PyInstaller" 2>/dev/null; then
+  echo "缺少 PyInstaller：uv sync --group dev 或 pip install pyinstaller"
   exit 2
 fi
 
 echo "==> 构建 standalone: $OUT"
-python3 -m PyInstaller --noconfirm --clean \
+$PY -m PyInstaller --noconfirm --clean \
   --onefile \
   --name "electromind" \
   --collect-data tiktoken \
