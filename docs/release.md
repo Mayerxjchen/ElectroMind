@@ -49,7 +49,41 @@ node --test scripts/skills-manager-cdp.test.mjs      # Skills 完整操作链
 > （`codesign --options runtime` + notarize + staple），否则对方首次打开需
 > 右键 → 打开。
 
-## 5. CI
+## 5. 发布到 GitHub Release
+
+前置：`gh` CLI 已安装并登录（`gh auth status` 确认），SSH/git 推送正常。
+
+```bash
+# 5.1 确认版本号一致（package.json 与 pyproject.toml）
+node -p "require('./editors/desktop/package.json').version"
+
+# 5.2 tag 指向当前 main（发布必须关联最新代码，避免关联旧 commit）
+git tag -f v<VER> main
+git push origin v<VER> --force
+
+# 5.3 创建 Release 并上传 DMG + zip（产物见第 3、4 步）
+~/bin/gh release create v<VER> \
+  "editors/desktop/release/electromind-Desktop-<VER>-arm64.dmg" \
+  "editors/desktop/release/electromind-Desktop-<VER>-mac-arm64.zip" \
+  --repo Mayerxjchen/ElectroMind \
+  --title "ElectroMind <VER>" \
+  --notes "ElectroMind Desktop <VER> — macOS (Apple Silicon)
+
+包含：
+- \`electromind-Desktop-<VER>-arm64.dmg\` — 拖拽安装包
+- \`electromind-Desktop-<VER>-mac-arm64.zip\` — zip 版
+
+> 未经 Apple 公证，首次打开需 右键 → 打开。"
+
+# 5.4 验证
+~/bin/gh release view v<VER> --repo Mayerxjchen/ElectroMind
+```
+
+> 只发布 DMG + zip 两个安装包（裸 agent 二进制属构建中间产物，不对外）。
+> 附件删除：`gh release delete-asset v<VER> <文件名> --repo Mayerxjchen/ElectroMind --yes`。
+> Python 包（wheel/sdist）走 `scripts/release.sh --publish`，与 Desktop 安装包分开。
+
+## 6. CI
 
 推送 main / PR 自动跑（`.github/workflows/ci.yml`）：
 
