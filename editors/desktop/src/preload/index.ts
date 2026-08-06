@@ -29,6 +29,12 @@ const ALLOWED_WIRE_COMMANDS = new Set<string>([
   "artifact/reject",
   "artifact/complete",
   "artifact/validate",
+  // 七: Desktop Skills Manager（用户显式操作；模型不可触发）
+  "skills/reload",
+  "skills/install",
+  "skills/update",
+  "skills/remove",
+  "skills/trust",
 ]);
 
 function invoke<T>(channel: string, ...args: unknown[]): Promise<T> {

@@ -1002,6 +1002,101 @@ button {
     margin-left: auto;
 }
 
+/* ── 七: Skills Manager —— 安装行 + 每 Skill 操作按钮 ────────────────── */
+
+.skill-badge-trust {
+    margin-left: 0;
+}
+
+.skill-scope-tag {
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 0 4px;
+    align-self: flex-start;
+}
+
+.skill-actions {
+    display: flex;
+    gap: 6px;
+    margin-top: 6px;
+    flex-wrap: wrap;
+}
+
+.skill-action {
+    font-size: var(--text-xs);
+    padding: 2px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.skill-action:hover {
+    background: color-mix(in srgb, var(--primary) 10%, transparent);
+    color: var(--text-primary);
+}
+
+.skill-action-danger:hover {
+    border-color: var(--danger);
+    color: var(--danger);
+}
+
+.skills-manager {
+    border-top: 1px solid var(--border);
+    padding: 8px 12px 12px;
+}
+
+.skills-install-row {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+}
+
+.skills-install-input {
+    flex: 1;
+    min-width: 0;
+    font-size: var(--text-sm);
+    padding: 5px 8px;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    background: var(--bg-secondary, transparent);
+    color: var(--text-primary);
+}
+
+.skills-install-input:focus {
+    outline: none;
+    border-color: var(--primary);
+}
+
+.skills-install-trust {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: var(--text-xs);
+    color: var(--text-secondary);
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.skills-install-btn {
+    font-size: var(--text-sm);
+    padding: 4px 12px;
+    border: 1px solid var(--primary);
+    border-radius: 4px;
+    background: var(--primary);
+    color: var(--on-primary, #fff);
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.skills-install-btn:disabled {
+    opacity: 0.6;
+    cursor: default;
+}
+
 .skill-item.skill-diag {
     border-left: 3px solid var(--text-tertiary);
 }

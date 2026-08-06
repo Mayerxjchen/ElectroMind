@@ -10,6 +10,12 @@ import { InspectorController } from "./InspectorController";
 (window as unknown as Record<string, unknown>).__electromindStore =
   getThreadStore();
 import { isInspectorTab, type InspectorTab } from "./inspector-model";
+import {
+  initialSkillsPanelState,
+  reduceSkillsAction,
+  renderSkillRows,
+  type SkillViewItem,
+} from "./skills-view";
 import { MessageRenderer } from "./MessageRenderer";
 import { ContextUsageRing } from "./context-usage";
 import { INSTALL_COMMANDS, bindHealthPanel, renderHealthPanel } from "./environment-health";
@@ -53,6 +59,7 @@ import type {
   Skill,
   ThreadMeta,
   ThreadSummary,
+  WireCommand,
   WireEvent,
 } from "../shared/protocol";
 import { renderIcon, renderWechatIcon, type DesktopIconName } from "./icons";
@@ -966,6 +973,22 @@ function renderShell(appInfo: AppInfo, runtime: RuntimeState): void {
             <div class="skills-panel" data-skills-panel hidden>
               <div id="execution-context-section" style="display:none; margin-bottom:8px; border-bottom:1px solid var(--border); padding-bottom:8px;"></div>
               <div class="skills-list" data-skills-list></div>
+              <div class="skills-manager">
+                <div class="skills-install-row">
+                  <input
+                    class="skills-install-input"
+                    data-skills-install-source
+                    type="text"
+                    placeholder="Git URL 或本地目录（安装 Skill）"
+                    spellcheck="false"
+                  />
+                  <label class="skills-install-trust" title="安装后立即授予信任（安装 ≠ 信任，默认不授予）">
+                    <input type="checkbox" data-skills-install-trust /> 信任
+                  </label>
+                  <button class="skills-install-btn" type="button" data-skills-install>安装</button>
+                  <button class="skill-action" type="button" data-skills-refresh title="重新发现 Skill 目录">刷新</button>
+                </div>
+              </div>
             </div>
             <div class="left-footer">
               <div class="user-menu" data-user-menu>
@@ -1740,6 +1763,10 @@ async function start(): Promise<void> {
     sessions: [] as ThreadSummary[],
     skills: [] as Skill[],
     skillsState: null as SkillsStatePayload | null,
+    // 七: skills/list 的实时目录（安装/更新/移除后刷新；SkillsState 来自
+    // 按 Run 冻结的运行时快照，不含操作后的新 Skill）
+    skillsCatalog: null as SkillViewItem[] | null,
+    skillsPanel: initialSkillsPanelState(),
     executionContextState: null as ExecutionContextStatePayload | null,
     hpcSubmissions: [] as HpcSubmissionsPayload["submissions"],
     runtime: initialRuntime,
@@ -2604,7 +2631,12 @@ async function start(): Promise<void> {
       return;
     }
 
-    if (!state || (state.skills.length === 0 && state.diagnostics.length === 0)) {
+    // 七: 实时目录（skills/list）非空时不走空状态（新装 Skill 也来自这里）
+    const hasCatalog = !!uiState.skillsCatalog && uiState.skillsCatalog.length > 0;
+    if (
+      !hasCatalog &&
+      (!state || (state.skills.length === 0 && state.diagnostics.length === 0))
+    ) {
       skillsList.innerHTML = `
         <div class="session-empty">
           <div class="session-empty-title">暂无可用 Skill</div>
@@ -2617,31 +2649,29 @@ async function start(): Promise<void> {
     let html = "";
 
     // ── generation header ──
-    if (state.generation > 0) {
-      const shortDigest = state.digest ? state.digest.slice(0, 8) : "";
-      html += `<div class="skill-section-label">Skills · Generation ${state.generation}${shortDigest ? ` · ${shortDigest}` : ""}</div>`;
+    if ((state?.generation ?? 0) > 0) {
+      const shortDigest = state?.digest ? state.digest.slice(0, 8) : "";
+      html += `<div class="skill-section-label">Skills · Generation ${state?.generation ?? 0}${shortDigest ? ` · ${shortDigest}` : ""}</div>`;
     }
 
-    // ── available ──
-    const available = state.skills.filter((s) => s.status === "available");
+    // ── available（七: Skills Manager —— 纯函数渲染，busy 态禁用按钮）──
+    // 优先用 skills/list 实时目录（含操作后的新 Skill 与 trust_state）；
+    // 回退到 SkillsState 快照。
+    const sourceList: SkillViewItem[] =
+      uiState.skillsCatalog && uiState.skillsCatalog.length > 0
+        ? uiState.skillsCatalog
+        : (state?.skills ?? []);
+    const available = sourceList.filter((s) => s.status !== "loaded");
     if (available.length > 0) {
       html += `<div class="skill-section-label">可用 (${available.length})</div>`;
-      for (const skill of available) {
-        const sourceLabel = skill.source ? skill.source.split("-").slice(0, 2).join("/") : "";
-        html += `
-          <div class="skill-item" title="来源: ${escapeHtml(skill.source)}">
-            <span class="skill-name">${escapeHtml(skill.name)}</span>
-            ${sourceLabel ? `<span class="skill-source-tag">${escapeHtml(sourceLabel)}</span>` : ""}
-            <span class="skill-desc">${escapeHtml(skill.description)}</span>
-          </div>`;
-      }
+      html += renderSkillRows(available, uiState.skillsPanel.busy);
     }
 
     // ── loaded this run ──
-    if (state.loaded_this_run && state.loaded_this_run.length > 0) {
-      html += `<div class="skill-section-label">本轮加载 (${state.loaded_this_run.length})</div>`;
-      for (const name of state.loaded_this_run) {
-        const skill = state.skills.find((s) => s.name === name);
+    if (state?.loaded_this_run && state.loaded_this_run.length > 0) {
+      html += `<div class="skill-section-label">本轮加载 (${state?.loaded_this_run?.length ?? 0})</div>`;
+      for (const name of state?.loaded_this_run ?? []) {
+        const skill = (state?.skills ?? []).find((s) => s.name === name);
         html += `
           <div class="skill-item skill-loaded" title="本轮 Run 中通过 use_skill 加载">
             <span class="skill-name">${escapeHtml(name)}</span>
@@ -2652,9 +2682,9 @@ async function start(): Promise<void> {
     }
 
     // ── loaded (all-time) ──
-    const loaded = state.skills.filter((s) => s.status === "loaded");
-    if (loaded.length > 0 || state.loaded.length > 0) {
-      const displayLoaded = loaded.length > 0 ? loaded : state.loaded.map((n) => ({ name: n, description: "", source: "", sha256: "", status: "loaded" as const }));
+    const loaded = (state?.skills ?? []).filter((s) => s.status === "loaded");
+    if (loaded.length > 0 || (state?.loaded ?? []).length > 0) {
+      const displayLoaded = loaded.length > 0 ? loaded : (state?.loaded ?? []).map((n) => ({ name: n, description: "", source: "", sha256: "", status: "loaded" as const }));
       html += `<div class="skill-section-label">本任务已加载</div>`;
       for (const skill of displayLoaded) {
         html += `
@@ -2667,9 +2697,9 @@ async function start(): Promise<void> {
     }
 
     // ── diagnostics ──
-    if (state.diagnostics.length > 0) {
+    if ((state?.diagnostics?.length ?? 0) > 0) {
       html += `<div class="skill-section-label">诊断</div>`;
-      for (const d of state.diagnostics) {
+      for (const d of state?.diagnostics ?? []) {
         const icon = d.severity === "error" ? "✗" : "⚠";
         html += `
           <div class="skill-item skill-diag skill-diag-${d.severity}" title="${escapeHtml(d.path)}">
@@ -3371,14 +3401,29 @@ async function start(): Promise<void> {
       renderSkillList();
     }
 
+    if (event.method === "skills/list" || event.method === "skills/reload") {
+      // 实时目录（wire 响应，install/update/remove/trust 后的 reload 也是
+      // 这个形状）：优先于冻结的 SkillsState 快照
+      const params = event.params as { skills?: SkillViewItem[] };
+      if (Array.isArray(params?.skills)) {
+        uiState.skillsCatalog = params.skills;
+        // 操作后的目录刷新到达 = 操作完成 → 清除面板 busy 态
+        uiState.skillsPanel = { ...uiState.skillsPanel, busy: new Set() };
+        renderSkillList();
+      }
+    }
+
     if (event.method === "SkillsState") {
       const state = event.params as unknown as SkillsStatePayload;
-      // Only apply if this event is for the active task
+      // Only apply if this event is for the active task; 无活动线程时
+      // 接受 agent 当前会话的 SkillsState（否则新装 Skill 永不刷新面板）
       if (state.thread_id && state.thread_id === uiState.runtime.currentThreadId) {
         uiState.skillsState = state;
-      } else if (!state.thread_id) {
+      } else if (!state.thread_id || !uiState.runtime.currentThreadId) {
         uiState.skillsState = state;
       }
+      // 新状态到达 = 操作后的目录刷新完成 → 清除面板 busy 态
+      uiState.skillsPanel = { ...uiState.skillsPanel, busy: new Set() };
       renderSkillList();
     }
 
@@ -3416,6 +3461,17 @@ async function start(): Promise<void> {
     }
     if (event.method === "Error") {
       appendTerminalEntry("stderr", String(event.params.message ?? ""));
+      // 七: Skills Manager 操作失败 → 面板错误提示
+      const errMsg = String(event.params.message ?? "");
+      if (errMsg.startsWith("skills/")) {
+        uiState.skillsPanel = reduceSkillsAction(uiState.skillsPanel, {
+          type: "end",
+          name: "",
+          ok: false,
+          error: errMsg,
+        });
+        toast(errMsg, { type: "error" });
+      }
     }
     if (event.method === "RunEnd") {
       appendTerminalEntry("status", "任务已结束，等待下一条指令。");
@@ -3628,6 +3684,86 @@ async function start(): Promise<void> {
 
   skillsButton.addEventListener("click", () => {
     toggleSkillsPanel(sessionList.hidden === false);
+  });
+
+  // ── 七: Skills Manager —— 安装 / 信任 / 更新 / 移除 / 刷新 ──────────
+  function sendSkillManageCommand(cmd: string, params: Record<string, unknown>, name: string): void {
+    uiState.skillsPanel = reduceSkillsAction(uiState.skillsPanel, {
+      type: "begin",
+      name,
+    });
+    renderSkillList();
+    void window.desktop.sendWireCommand({ cmd, ...params } as WireCommand).catch((e: unknown) => {
+      uiState.skillsPanel = reduceSkillsAction(uiState.skillsPanel, {
+        type: "end",
+        name,
+        ok: false,
+        error: String(e),
+      });
+      renderSkillList();
+      toast(String(e), { type: "error" });
+    });
+    // wire 流按序处理：操作后立即 reload，面板以操作后的目录刷新
+    window.setTimeout(() => {
+      void window.desktop.sendWireCommand({ cmd: "skills/reload" }).catch(() => {});
+    }, 80);
+  }
+
+  const skillsInstallSource = findRequired<HTMLInputElement>("[data-skills-install-source]");
+  const skillsInstallTrust = findRequired<HTMLInputElement>("[data-skills-install-trust]");
+  const skillsInstallBtn = findRequired<HTMLButtonElement>("[data-skills-install]");
+  const skillsRefreshBtn = findRequired<HTMLButtonElement>("[data-skills-refresh]");
+
+  skillsInstallBtn.addEventListener("click", () => {
+    const source = skillsInstallSource.value.trim();
+    if (!source) {
+      toast("请输入 Git URL 或本地目录", { type: "error" });
+      return;
+    }
+    sendSkillManageCommand(
+      "skills/install",
+      {
+        source,
+        trust: skillsInstallTrust.checked,
+        scope: "user",
+      },
+      "install",
+    );
+    skillsInstallSource.value = "";
+  });
+  skillsInstallSource.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      skillsInstallBtn.click();
+    }
+  });
+  skillsRefreshBtn.addEventListener("click", () => {
+    void window.desktop.sendWireCommand({ cmd: "skills/reload" }).catch((e: unknown) => {
+      toast(String(e), { type: "error" });
+    });
+  });
+
+  skillsList.addEventListener("click", (ev) => {
+    const target = ev.target as HTMLElement;
+    const trustBtn = target.closest<HTMLElement>("[data-skill-trust]");
+    const updateBtn = target.closest<HTMLElement>("[data-skill-update]");
+    const removeBtn = target.closest<HTMLElement>("[data-skill-remove]");
+    if (trustBtn) {
+      const name = trustBtn.dataset.skillTrust ?? "";
+      const wasTrusted = trustBtn.dataset.trusted === "1";
+      sendSkillManageCommand("skills/trust", { name, granted: !wasTrusted }, name);
+      return;
+    }
+    if (updateBtn) {
+      const name = updateBtn.dataset.skillUpdate ?? "";
+      sendSkillManageCommand("skills/update", { name }, name);
+      return;
+    }
+    if (removeBtn) {
+      const name = removeBtn.dataset.skillRemove ?? "";
+      if (window.confirm(`确认移除 Skill「${name}」？`)) {
+        sendSkillManageCommand("skills/remove", { name }, name);
+      }
+    }
   });
 
   // D3.4-2: bridge for the React Composer's skills button (vanilla owns

@@ -67,7 +67,10 @@ function renderStepEnv(env: EnvironmentCheck): string {
       detail: env.electromindInstalled ? "已安装" : "需要安装",
     },
   ];
-  const ready = env.uvInstalled && env.electromindInstalled;
+  // 就绪 = Agent 可用（开发模式经 uv run，打包模式经内置 Agent——
+  // 两者都反映在 electromindInstalled）。uv 只是安装 CLI 的途径：
+  // Agent 已就绪时不再展示"安装 CLI"指引（Standalone 内置 Agent 场景）。
+  const ready = env.electromindInstalled;
   return `
     <div class="setup-pane">
       <p class="setup-lead">确认本机已安装运行依赖。默认使用 <strong>local</strong> 沙箱，无需 Docker。</p>

@@ -40,7 +40,8 @@ export function buildHealthItems(env: EnvironmentCheck): HealthItem[] {
       id: "uv",
       label: "uv",
       ok: env.uvInstalled,
-      optional: false,
+      // Agent 已就绪（内置/全局/uv-run）时 uv 只是安装途径，非必需
+      optional: env.electromindInstalled,
       detail: env.uvInstalled ? (env.uvPath ?? "已安装") : "未找到",
     },
     {

@@ -336,6 +336,14 @@ def fingerprint_source(source: SkillSource) -> str:
         md = skill_dir / "SKILL.md"
         if md.is_file():
             parts.append(hash_content(md.read_bytes().decode("utf-8", "replace")))
+        # SKILL-8: install manifest 参与指纹——trust_granted 翻转必须触发
+        # catalog reload（否则信任变更被缓存吞掉，面板/激活态不刷新）
+        manifest = skill_dir / ".electromind-install.json"
+        if manifest.is_file():
+            try:
+                parts.append(hash_content(manifest.read_text(encoding="utf-8")))
+            except OSError:
+                parts.append("install-manifest:unreadable")
         for rel in sorted(_resource_rel_paths(skill_dir)):
             full = skill_dir / rel
             try:

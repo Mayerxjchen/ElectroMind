@@ -1006,7 +1006,9 @@ def _emit_skills_get(command: dict) -> None:
 def _emit_skills_reload(command: dict) -> None:
     """``skills/reload`` — re-discover; bump generation on content change."""
     service = _skills_service()
+    log(f"[dbg-reload] pre gen={service.list().generation} fp={ {k: v[:8] for k, v in getattr(service, '_source_fingerprints', {}).items()} }")
     catalog = service.reload()
+    log(f"[dbg-reload] post gen={catalog.generation}")
     thread_id = str(command.get("thread_id", ""))
     _emit_jsonrpc(
         "skills/reload",
@@ -1023,6 +1025,138 @@ def _emit_skills_changed(command: dict) -> None:
         "skills/changed",
         {"thread_id": thread_id, "changed": changed},
     )
+
+
+async def _emit_skills_install(command: dict) -> None:
+    """``skills/install`` — 用户显式安装 Skill（git URL 或本地目录）。
+
+    Desktop Skills Manager 入口；与 CLI ``skills add`` 同语义：
+    识别来源 → 安装 → （可选）授予信任 → 刷新目录。
+    """
+    from pathlib import Path
+
+    from electromind.skills.installer import InstallError, SkillInstaller
+
+    source = str(command.get("source", "")).strip()
+    ref = str(command.get("ref", "") or "HEAD")
+    path = str(command.get("path", "") or "")
+    scope = str(command.get("scope", "") or "user")
+    grant_trust = bool(command.get("trust", False))
+    if not source:
+        emit_error("skills/install 需要 source 字段（git URL 或本地目录）", where="skills/install")
+        return
+    installer = SkillInstaller()
+    try:
+        info = await installer.identify_source(source, ref=ref, path=path or None)
+        name = str(info["name"])
+        # 同名冲突不静默覆盖：已安装同名 Skill 且来源不同 → 拒绝
+        # （同来源重装 = 更新语义，放行）。与 CLI preflight 一致。
+        same_name = [r for r in installer.installed() if r.name == name]
+        if same_name:
+            existing = same_name[0]
+            new_source = source if info["is_git"] else str(Path(source).resolve())
+            if existing.source != new_source:
+                emit_error(
+                    f"skills/install 失败: 同名 Skill「{name}」已存在"
+                    f"（来源 {existing.source}），拒绝覆盖；请先移除或用 update",
+                    where="skills/install",
+                )
+                try:
+                    _emit_skills_catalog(command)
+                except Exception:  # noqa: BLE001
+                    pass
+                return
+        if info["is_git"]:
+            result = await installer.install_from_git(source, ref=ref, path=path or None)
+        else:
+            result = await installer.install_from_dir(Path(source))
+        if grant_trust:
+            installer.set_trust(name, True)
+        _emit_jsonrpc(
+            "skills/install",
+            {
+                "ok": True,
+                "name": name,
+                "target": str(result.target),
+                "commit": str(info.get("commit_sha", ""))[:12],
+                "trusted": grant_trust,
+            },
+        )
+    except InstallError as exc:
+        emit_error(f"skills/install 失败: {exc}", where="skills/install")
+    except Exception as exc:  # noqa: BLE001 — 未知安装错误也要可诊断
+        emit_error(f"skills/install 异常: {exc}", where="skills/install")
+    # 安装成功/失败都刷新目录（wire 流按序处理，随后的 skills/reload 已排队）
+    try:
+        _emit_skills_catalog(command)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _emit_skills_update(command: dict) -> None:
+    """``skills/update`` — 从记录来源重新安装并刷新。"""
+
+    from electromind.skills.installer import InstallError, SkillInstaller
+
+    name = str(command.get("name", "")).strip()
+    if not name:
+        emit_error("skills/update 需要 name 字段", where="skills/update")
+        return
+    installer = SkillInstaller()
+    try:
+        result = await installer.update(name)
+        _emit_jsonrpc(
+            "skills/update",
+            {"ok": True, "name": name, "target": str(result.target) if result else ""},
+        )
+    except InstallError as exc:
+        emit_error(f"skills/update 失败: {exc}", where="skills/update")
+    except Exception as exc:  # noqa: BLE001
+        emit_error(f"skills/update 异常: {exc}", where="skills/update")
+    try:
+        _emit_skills_catalog(command)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _emit_skills_remove(command: dict) -> None:
+    """``skills/remove`` — 卸载 installer 管理的 Skill。"""
+
+    from electromind.skills.installer import SkillInstaller
+
+    name = str(command.get("name", "")).strip()
+    if not name:
+        emit_error("skills/remove 需要 name 字段", where="skills/remove")
+        return
+    removed = await SkillInstaller().uninstall(name)
+    _emit_jsonrpc(
+        "skills/remove",
+        {"ok": bool(removed), "name": name, "removed": bool(removed)},
+    )
+    try:
+        _emit_skills_catalog(command)
+    except Exception:  # noqa: BLE001
+        pass
+
+
+async def _emit_skills_trust(command: dict) -> None:
+    """``skills/trust`` — 授予/撤销已安装 Skill 的信任。"""
+    from electromind.skills.installer import SkillInstaller
+
+    name = str(command.get("name", "")).strip()
+    granted = bool(command.get("granted", False))
+    if not name:
+        emit_error("skills/trust 需要 name 字段", where="skills/trust")
+        return
+    changed = SkillInstaller().set_trust(name, granted)
+    _emit_jsonrpc(
+        "skills/trust",
+        {"ok": changed, "name": name, "granted": granted, "changed": changed},
+    )
+    try:
+        _emit_skills_catalog(command)
+    except Exception:  # noqa: BLE001
+        pass
 
 
 def emit_skills(runner) -> None:
@@ -2686,6 +2820,17 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
 
     if cmd == "skills/changed":
         _emit_skills_changed(command)
+    if cmd == "skills/install":
+        await _emit_skills_install(command)
+        return runner
+    if cmd == "skills/update":
+        await _emit_skills_update(command)
+        return runner
+    if cmd == "skills/remove":
+        await _emit_skills_remove(command)
+        return runner
+    if cmd == "skills/trust":
+        await _emit_skills_trust(command)
         return runner
 
     if cmd == "set_provider":

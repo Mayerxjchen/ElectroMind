@@ -262,7 +262,13 @@ export type WireCommand =
   | { cmd: "artifact/complete"; thread_id?: string; artifact_id: string }
   | { cmd: "artifact/validate"; thread_id?: string; artifact_id: string; parser: string }
   // P3: HPC 提交记录查询（Inspector 任务页）
-  | { cmd: "hpc/submissions"; thread_id?: string };
+  | { cmd: "hpc/submissions"; thread_id?: string }
+  // 七: Desktop Skills Manager（用户显式操作；模型不可触发）
+  | { cmd: "skills/reload"; thread_id?: string }
+  | { cmd: "skills/install"; thread_id?: string; source: string; ref?: string; path?: string; scope?: string; trust?: boolean }
+  | { cmd: "skills/update"; thread_id?: string; name: string }
+  | { cmd: "skills/remove"; thread_id?: string; name: string }
+  | { cmd: "skills/trust"; thread_id?: string; name: string; granted: boolean };
 
 // ── G1: Plan 领域状态（镜像后端 PlanState，见 execution/plan.py）─────
 

@@ -238,14 +238,16 @@ export function getEnvironmentCheck(options?: {
   includeDisk?: boolean;
   /** 源码检出项目根目录，用于判断是否走 uv run 而非全局 CLI。 */
   projectRoot?: string;
+  /** 打包态（app.isPackaged）。Electron 37 已移除 process.defaultApp，
+   *  不能再用它推断打包态——由 index.ts 显式传入。 */
+  isPackaged?: boolean;
 }): EnvironmentCheck {
   const includeDisk = options?.includeDisk === true;
   const projectRoot = options?.projectRoot;
+  const isPackaged = options?.isPackaged === true;
   const uvInstalled = cliOnPath("uv");
   // F3: 生产包不认可"uv run --project 源码回退"，自检与启动同一口径。
-  // 打包态判断用 process.defaultApp === false（app.isPackaged 的等价物，
-  // 避免 setup.ts 依赖 electron 模块；node 环境下 undefined ≠ false）。
-  const backend = resolveBackendAvailability(projectRoot ?? "", process.defaultApp === false);
+  const backend = resolveBackendAvailability(projectRoot ?? "", isPackaged);
   const electromindInstalled = backend.available;
   const dockerInstalled = cliOnPath("docker");
   const podmanInstalled = cliOnPath("podman");
@@ -283,10 +285,10 @@ export function isEnvironmentReady(env: EnvironmentCheck): boolean {
   return env.electromindInstalled && env.apiKeyConfigured;
 }
 
-export function getOnboardingState(projectRoot?: string): OnboardingState {
+export function getOnboardingState(projectRoot?: string, isPackaged?: boolean): OnboardingState {
   const data = readDesktopJson();
   // 启动挡墙走快速检测，不跑 du / 镜像体积
-  const env = getEnvironmentCheck({ includeDisk: false, projectRoot });
+  const env = getEnvironmentCheck({ includeDisk: false, projectRoot, isPackaged });
   const completed = data.onboardingCompleted === true;
   const skipped = data.onboardingSkipped === true;
   const blocked = !isEnvironmentReady(env);
@@ -363,8 +365,9 @@ export function completeOnboarding(options?: {
   preferredBackend?: SandboxBackendOption;
   skipped?: boolean;
   projectRoot?: string;
+  isPackaged?: boolean;
 }): void {
-  const env = getEnvironmentCheck({ projectRoot: options?.projectRoot });
+  const env = getEnvironmentCheck({ projectRoot: options?.projectRoot, isPackaged: options?.isPackaged });
   // 未就绪时禁止「稍后配置」：跳过无效，挡墙仍会再次打开
   if (options?.skipped) {
     if (!isEnvironmentReady(env)) {

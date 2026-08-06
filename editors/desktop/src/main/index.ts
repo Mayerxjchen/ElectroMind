@@ -1717,6 +1717,12 @@ const ALLOWED_WIRE_COMMANDS = new Set<string>([
   "artifact/reject",
   "artifact/complete",
   "artifact/validate",
+  // 七: Desktop Skills Manager（用户显式操作；模型不可触发）
+  "skills/reload",
+  "skills/install",
+  "skills/update",
+  "skills/remove",
+  "skills/trust",
 ]);
 
 ipcMain.handle("desktop:send-wire-command", async (_event, command: Record<string, unknown>) => {
@@ -1790,9 +1796,15 @@ ipcMain.handle("desktop:pick-directory", async (_event, defaultPath?: string) =>
 ipcMain.handle("desktop:get-new-session-options", async () => {
   return newSessionOptions();
 });
-ipcMain.handle("desktop:get-onboarding-state", async () => getOnboardingState(electromindProjectRoot()));
+ipcMain.handle("desktop:get-onboarding-state", async () =>
+  getOnboardingState(electromindProjectRoot(), app.isPackaged),
+);
 ipcMain.handle("desktop:refresh-environment-check", async () =>
-  getEnvironmentCheck({ includeDisk: true, projectRoot: electromindProjectRoot() }),
+  getEnvironmentCheck({
+    includeDisk: true,
+    projectRoot: electromindProjectRoot(),
+    isPackaged: app.isPackaged,
+  }),
 );
 ipcMain.handle("desktop:install-electromind-cli", async () => installElectromindCli());
 ipcMain.handle("desktop:save-provider-setup", async (_event, setup) => {
@@ -1803,7 +1815,11 @@ ipcMain.handle("desktop:save-provider-setup", async (_event, setup) => {
   return saved;
 });
 ipcMain.handle("desktop:complete-onboarding", async (_event, options) => {
-  completeOnboarding({ ...options, projectRoot: electromindProjectRoot() });
+  completeOnboarding({
+    ...options,
+    projectRoot: electromindProjectRoot(),
+    isPackaged: app.isPackaged,
+  });
   disposeBridge();
   notifyRuntimeState();
 });
