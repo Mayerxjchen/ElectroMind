@@ -1395,6 +1395,9 @@ function createWindow(): BrowserWindow {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // 验收六：Renderer 开启沙箱。preload 只用 contextBridge/ipcRenderer，
+      // 与 sandbox:true 兼容（沙箱化 preload 仍是特权上下文，可暴露 API）。
+      sandbox: true,
       plugins: true,
     },
   });

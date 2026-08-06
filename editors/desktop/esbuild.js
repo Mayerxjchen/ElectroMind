@@ -35,6 +35,13 @@ function copyRendererAssets() {
     path.join(root, "src", "renderer", "chat.css"),
     path.join(dist, "chat.css"),
   );
+  // 严格 CSP 要求脚本外置（script-src 'self'）：启动错误处理 + React init。
+  for (const file of ["startup-error-handler.js", "react-init.js"]) {
+    fs.copyFileSync(
+      path.join(root, "src", "renderer", file),
+      path.join(dist, file),
+    );
+  }
   // 与 docs favicon 相同的 logo，给窗口 / 标签页用。
   fs.copyFileSync(
     path.join(root, "assets", "logo-icon.png"),
