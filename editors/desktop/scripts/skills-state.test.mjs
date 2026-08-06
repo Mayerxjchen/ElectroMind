@@ -135,3 +135,36 @@ test("CSS defines skill-loaded and skill-diag states", () => {
     "CSS must style error diagnostics with a red border",
   );
 });
+
+test("skills/list|reload live catalog updates and clears busy", () => {
+  // 实时目录（install/update/remove/trust 后的响应）写入 skillsCatalog，
+  // 并清除面板 busy 态（操作完成信号）
+  assert.match(
+    renderer,
+    /event\.method === "skills\/list" \|\| event\.method === "skills\/reload"/,
+    "renderer 必须处理 skills/list 与 skills/reload 实时目录",
+  );
+  assert.match(
+    renderer,
+    /uiState\.skillsCatalog\s*=\s*params\.skills/,
+    "实时目录必须写入 uiState.skillsCatalog",
+  );
+  assert.match(
+    renderer,
+    /uiState\.skillsPanel\s*=\s*\{ \.\.\.uiState\.skillsPanel, busy: new Set\(\) \}/,
+    "目录刷新到达 = 操作完成 → 清除 busy",
+  );
+});
+
+test("renderSkillList prefers live catalog over frozen SkillsState", () => {
+  assert.match(
+    renderer,
+    /uiState\.skillsCatalog && uiState\.skillsCatalog\.length > 0/,
+    "实时目录非空时优先于 SkillsState 快照",
+  );
+  assert.match(
+    renderer,
+    /!hasCatalog &&/,
+    "目录存在时不得落入空状态分支",
+  );
+});

@@ -11,6 +11,7 @@ export interface SkillViewItem {
   source?: string;
   scope?: string;
   sha256?: string;
+  content_digest?: string;
   status?: string;
   enabled_state?: string;
   trust_state?: string;
@@ -128,11 +129,15 @@ export function renderSkillRows(
         ? skill.source.split("-").slice(0, 2).join("/")
         : "";
       const trusted = skill.trust_state === "trusted";
+      // 内容摘要（catalog 项 content_digest / SkillsState 项 sha256）：
+      // 固定版本证据，前 8 位展示
+      const digest = (skill.content_digest || skill.sha256 || "").slice(0, 8);
       return `
         <div class="skill-item" title="来源: ${esc(skill.source ?? "")}">
           <span class="skill-name">${esc(skill.name)}</span>
           ${sourceLabel ? `<span class="skill-source-tag">${esc(sourceLabel)}</span>` : ""}
           ${skill.scope ? `<span class="skill-scope-tag">${esc(skill.scope)}</span>` : ""}
+          ${digest ? `<span class="skill-digest" title="内容 Digest（固定版本证据）">${esc(digest)}</span>` : ""}
           ${trusted ? `<span class="skill-badge skill-badge-trust" title="已授予信任">✓ 信任</span>` : ""}
           <span class="skill-desc">${esc(skill.description ?? "")}</span>
           ${renderSkillActions(skill, busy)}

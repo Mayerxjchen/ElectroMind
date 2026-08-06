@@ -1017,6 +1017,12 @@ button {
     align-self: flex-start;
 }
 
+.skill-digest {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: var(--text-xs);
+    color: var(--text-tertiary);
+}
+
 .skill-actions {
     display: flex;
     gap: 6px;

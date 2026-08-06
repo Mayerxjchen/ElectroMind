@@ -120,3 +120,14 @@ test("reduceSkillsAction: end fail → busy cleared + error", async () => {
   assert.equal(s2.busy.size, 0);
   assert.match(s2.lastError ?? "", /skills\/install 失败/);
 });
+
+test("renderSkillRows shows content digest short form", async () => {
+  const { renderSkillRows } = await getModule();
+  const html = renderSkillRows(
+    [{ name: "demo", content_digest: "abcdef1234567890", scope: "user" }],
+    new Set(),
+  );
+  assert.match(html, /skill-digest/);
+  assert.match(html, /abcdef12/);
+  assert.doesNotMatch(html, /abcdef1234567890/);
+});
