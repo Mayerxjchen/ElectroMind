@@ -624,6 +624,48 @@ def _emit_input_state_ack(
     _emit_jsonrpc("input/state", params)
 
 
+def _emit_model_resolved(
+    config,
+    requested_mode,
+    thread_id,
+    *,
+    phase: str = "plan",
+) -> None:
+    """P3: 广播 Run 的模型解析结果（policy / 实际模型 / 原因 / 阶段）。
+
+    Run 开始时解析一次并广播；客户端据此显示 "Auto · <模型>" 与审计原因。
+    phase: hybrid plan-execute 的阶段（plan→best / execute→balanced）。
+    """
+    from electromind.model_resolver import (
+        parse_model_policy,
+        policy_label,
+        resolve_model,
+    )
+
+    mode = (
+        str(requested_mode.value)
+        if requested_mode is not None
+        else (config.session_mode or "agent")
+    )
+    if mode == "run":
+        mode = "agent"
+    policy = parse_model_policy(config.model)
+    try:
+        res = resolve_model(policy, session_mode=mode, phase=phase)  # type: ignore[arg-type]
+    except (Exception, SystemExit):  # noqa: BLE001 — 解析失败给可读降级
+        res = None
+    _emit_jsonrpc(
+        "model/resolved",
+        {
+            "thread_id": thread_id,
+            "model_policy": policy_label(policy),
+            "effective_model": res.effective_model if res is not None else config.resolved_model(),
+            "reason": res.reason if res is not None else "resolve-failed",
+            "phase": phase,
+        },
+    )
+
+
 def _emit_jsonrpc(method: str, params: dict) -> None:
     """Emit a JSON-RPC 2.0 notification with the given method and params.
 
@@ -1798,6 +1840,14 @@ async def run_user_turn(
     last_usage: dict | None = None
     thread_id = getattr(runner.thread, "id", "")
     run_id: str | None = None  # Set per-event inside the loop
+
+    # ── P3: Run 开始时解析一次 Auto Model，并把解析结果广播给客户端。
+    # Run 开始后不因普通重试切换（解析结果已冻结在 RunSnapshot）。
+    try:
+
+        _emit_model_resolved(config, requested_mode, thread_id, phase="plan")
+    except (Exception, SystemExit):  # noqa: BLE001 — 解析失败不阻断本轮
+        log("[wire] model/resolved emission failed (non-fatal)")
     success = False
     stop_reason: str | None = None  # Terminal stop reason from the runner
     cancelled = False  # Explicit user/task cancellation
@@ -3103,6 +3153,12 @@ async def _dispatch_command(command: dict, runner, config: ReplConfig, state: di
             from electromind.harness.state import SessionMode
 
             requested_mode = SessionMode(mode_str)
+        # P3: 模型 policy 随 Run 携带（auto/fast/balanced/best/plan-execute/
+        # 具体模型 id）—— 覆盖本线程 config，_build_run_snapshot 与
+        # run_user_turn 的 resolved_model() 都按此解析（Run 开始后固定）。
+        model_str = command.get("model", "")
+        if isinstance(model_str, str) and model_str.strip():
+            config = replace(config, model=model_str.strip())
         msg = InputMessage.create(
             thread_id or "default",
             text,

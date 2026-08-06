@@ -88,7 +88,24 @@ class ReplConfig:
         return self.runner_location if self.runner_location is not None else "local"
 
     def resolved_model(self) -> str:
-        return self.model or "deepseek-v4-flash"
+        """模型解析（P3）。
+
+        policy 关键字（auto / fast / balanced / best / plan-execute）经
+        ModelResolver 按 Session Mode 确定性解析；具体模型 id 或未配置时
+        保持既有行为（named 直接用 / 回退 deepseek-v4-flash）—— 只有显式
+        声明 policy 才启用档位解析，避免静默改变存量配置的默认模型。
+        """
+        from electromind.model_resolver import parse_model_policy, resolve_model
+
+        if not self.model:
+            return "deepseek-v4-flash"
+        policy = parse_model_policy(self.model)
+        if policy.kind == "named" and policy.model_id:
+            return policy.model_id
+        mode = (self.session_mode or "agent").lower()
+        if mode == "run":
+            mode = "agent"
+        return resolve_model(policy, session_mode=mode).effective_model
 
     def resolved_skill_roots(self) -> tuple[str, ...]:
         return self.skill_roots or ()
