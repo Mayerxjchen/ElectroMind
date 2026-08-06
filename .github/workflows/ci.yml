@@ -91,7 +91,7 @@ jobs:
         working-directory: editors/desktop
         run: |
           set +e
-          node --test scripts/*.test.mjs 2>&1 | tee /tmp/unit.log
+          node --test $(ls scripts/*.test.mjs | grep -Ev 'cdp-smoke|package-agent') 2>&1 | tee /tmp/unit.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
             grep -n -A 30 '^not ok' /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
@@ -99,6 +99,13 @@ jobs:
           fi
           exit "$code"
 
+      # P5.2: 打包 Agent 校验逻辑（自包含测试：临时目录 + 合成 Mach-O）。
+      - name: Package agent tests
+        working-directory: editors/desktop
+        run: node --test scripts/package-agent.test.mjs
+
+      # P5.3: CDP 冒烟（真实 Electron 渲染；Linux 用 xvfb）。与纯单元测试
+      # 分层，失败归因清晰。
       - name: CDP smoke (electron renderer loads)
         working-directory: editors/desktop
         run: |
@@ -136,13 +143,23 @@ jobs:
         working-directory: editors/desktop
         run: |
           set +e
-          node --test scripts/*.test.mjs 2>&1 | tee /tmp/unit.log
+          node --test $(ls scripts/*.test.mjs | grep -Ev 'cdp-smoke|package-agent') 2>&1 | tee /tmp/unit.log
           code=${PIPESTATUS[0]}
           if [ "$code" -ne 0 ]; then
             grep -n -A 30 '^not ok' /tmp/unit.log | tr '\n' '%0A' | head -c 4000 > /tmp/unit-fail.txt
             echo "::error file=editors/desktop,title=desktop unit failures::$(cat /tmp/unit-fail.txt)"
           fi
           exit "$code"
+
+      - name: Package agent tests
+        working-directory: editors/desktop
+        run: node --test scripts/package-agent.test.mjs
+
+      - name: CDP smoke (electron renderer loads)
+        working-directory: editors/desktop
+        run: node --test scripts/cdp-smoke.test.mjs
+        env:
+          ELECTROMIND_HOME: /tmp/electromind-ci-smoke-mac
 
       # P5.1: 无 --agent-bin 且 dist/ 无产物 → 打包必须失败（禁止静默降级
       # Companion）。这里用 --allow-companion 显式跑打包冒烟（CI 不构建
