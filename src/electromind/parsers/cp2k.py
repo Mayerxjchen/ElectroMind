@@ -3,7 +3,9 @@
 识别的关键信号（基于 CP2K 8.x/2024.x 标准输出格式）：
 
 终止信号
-- 正常：``PROGRAM ENDED IN CP2K``（正常完成的唯一权威标志）
+- 正常：``PROGRAM ENDED IN CP2K`` / ``PROGRAM ENDED AT <时间戳>``
+  （CP2K 版本不同结束标志不同：8.x 及更早为 IN CP2K，2023+ 为 AT；
+  两者都算正常完成的权威标志）
 - 异常：``PROGRAM ABORTED``、``ABORTING``、``DEADLINE EXCEEDED``、
   ``*** OOM ***``、``out of memory``、``Killed``、``Traceback``、
   ``segmentation fault``
@@ -36,7 +38,8 @@ import re
 
 from . import ParseOutcome, ParseResult
 
-_PROGRAM_ENDED = re.compile(r"PROGRAM ENDED IN CP2K")
+# 兼容旧版（PROGRAM ENDED IN CP2K）与 2023+ 新版（PROGRAM ENDED AT <ts>）
+_PROGRAM_ENDED = re.compile(r"PROGRAM ENDED (?:IN CP2K|AT)")
 _ABORT_SIGNALS = re.compile(
     r"PROGRAM ABORTED|ABORTING|DEADLINE EXCEEDED|\*\*\* OOM \*\*\*|"
     r"out of memory|Killed|Traceback|segmentation fault|fatal error",

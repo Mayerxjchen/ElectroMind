@@ -26,9 +26,10 @@ export function parseCP2KOutput(text: string): {
   let inScf = false;
 
   for (const line of lines) {
-    // Energy: "ENERGY| Total FORCE_EVAL ( QS ) energy (a.u.):"
+    // Energy: "ENERGY| Total FORCE_EVAL ( QS ) energy [Hartree]  -17.1234567893"
+    //          (旧格式 "energy (a.u.):" 亦兼容)
     const energyMatch = line.match(
-      /ENERGY\|\s*Total FORCE_EVAL\s*\(.*?\)\s+energy\s*\(a\.u\.\):\s+([-\d.]+)/
+      /ENERGY\|\s*Total FORCE_EVAL\s*\(.*?\)\s+energy\s*(?:\[[^\]]+\]|\(a\.u\.\)):?\s+([-\d.]+)/
     );
     if (energyMatch) {
       const scfMatch = line.match(/OT\s+(\d+)/) || line.match(/(\d+)\s+OT/);

@@ -68,6 +68,21 @@ def test_truncated_out_is_truncated():
     assert r.energy is not None
 
 
+def test_program_ended_at_variant_is_valid(tmp_path):
+    """新版 CP2K（2023+）结束标志为 PROGRAM ENDED AT <ts>，必须同样识别。"""
+    text = (FIXTURES / "success.out").read_text(encoding="utf-8")
+    text = text.replace(
+        "PROGRAM ENDED IN CP2K", "PROGRAM ENDED AT 2026-08-06 12:34:56.789"
+    )
+    variant = tmp_path / "variant.out"
+    variant.write_text(text, encoding="utf-8")
+    r = parse_file(variant, parser="cp2k")
+    assert r.outcome is ParseOutcome.VALID
+    assert r.terminated_cleanly
+    assert not r.truncated
+    assert r.energy is not None
+
+
 def test_unknown_parser_returns_unknown():
     r = parse_file(FIXTURES / "success.out", parser="vasp")
     assert r.outcome is ParseOutcome.UNKNOWN
