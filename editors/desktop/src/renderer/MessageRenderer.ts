@@ -539,6 +539,9 @@ export class MessageRenderer {
     this.groupOverrides.clear();
     this.lastSyncKey = "";
     this.removeEmptyState();
+    // 必须同时移除骨架元素 —— 只翻转标志会让 hideSkeleton() 变成 no-op，
+    // 骨架永久留在 DOM 里拦截 Timeline 上的所有指针事件（真实 bug）。
+    this.removeSkeletonElement();
     this.skeletonVisible = false;
   }
 
@@ -568,11 +571,15 @@ export class MessageRenderer {
     return el;
   }
 
+  private removeSkeletonElement(): void {
+    const sk = this.container.querySelector(".history-skeleton");
+    if (sk) sk.remove();
+  }
+
   private hideSkeleton(): void {
     if (!this.skeletonVisible) return;
     this.skeletonVisible = false;
-    const sk = this.container.querySelector(".history-skeleton");
-    if (sk) sk.remove();
+    this.removeSkeletonElement();
   }
 
   private bindScroll(): void {

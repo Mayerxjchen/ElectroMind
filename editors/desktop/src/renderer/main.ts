@@ -1622,7 +1622,9 @@ function fillShellSlots(shell: HTMLElement, appInfo: AppInfo, runtime: RuntimeSt
     );
   }
 
-  const overlay = shell.querySelector<HTMLElement>("[data-overlay-layer]");
+  // OverlayLayer 是 .desktop-shell 的兄弟节点（AppShell 结构），
+  // 不在 shell 内部 —— 必须从文档根查询。
+  const overlay = document.querySelector<HTMLElement>("[data-overlay-layer]");
   if (overlay) {
     overlay.innerHTML = overlayTemplate();
   }
@@ -1913,7 +1915,11 @@ async function start(): Promise<void> {
   const threadStore = getThreadStore();
   let lastRenderedThreadId: string | null = null;
   threadStore.subscribe((state) => {
-    const currentId = uiState.runtime.currentThreadId ?? null;
+    // Store 是单一事实来源：vanilla 的 runtime.currentThreadId 只在有后端
+    // runtime 状态时可用；无后端（onboarding / CDP 测试）时回退到 store 的
+    // activeThreadId，保证 Timeline 始终按 store 渲染。
+    const currentId =
+      uiState.runtime.currentThreadId || threadStore.getActiveThreadId() || null;
     if (!currentId) return;
     const thread = state.threads[currentId];
     if (!thread) return;

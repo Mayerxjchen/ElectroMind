@@ -340,7 +340,12 @@ function configureAppRuntimePaths(): void {
   if (app.isPackaged) {
     return;
   }
-  const runtimeRoot = path.join(__dirname, "..", ".runtime");
+  // ELECTROMIND_HOME 已设置（测试 / 独立实例）→ userData 跟随它隔离，
+  // 否则多实例共享固定 .runtime/user-data，单实例锁会互相拦截
+  // （一个残留实例就会让后续所有测试启动失败）。
+  const runtimeRoot = process.env.ELECTROMIND_HOME
+    ? path.join(process.env.ELECTROMIND_HOME, ".runtime")
+    : path.join(__dirname, "..", ".runtime");
   app.setPath("userData", path.join(runtimeRoot, "user-data"));
   app.setPath("sessionData", path.join(runtimeRoot, "session-data"));
 }
@@ -1367,7 +1372,9 @@ function createWindow(): BrowserWindow {
   const workArea = screen.getPrimaryDisplay().workArea;
   const defaultWidth = Math.min(1360, workArea.width);
   const defaultHeight = Math.min(900, workArea.height);
-  const minWidth = Math.min(1100, workArea.width);
+  // P0: 验收窗口含 1024×768 —— minWidth 必须 ≤1024。Composer 已在主列
+  // 正常文档流（非浮层），窄窗口下自动收缩，无需 1100 下限。
+  const minWidth = Math.min(960, workArea.width);
   const minHeight = Math.min(600, workArea.height);
   // The window must NEVER exceed the work area — otherwise dragging the
   // bottom edge down tucks the composer (window bottom) behind the macOS
@@ -1470,6 +1477,10 @@ async function handleRendererCrash(
 
 // P1.4: 单实例锁。第二个实例启动时聚焦既有窗口并退出，避免两个 Desktop
 // 同时管理同一批 thread / Agent 进程。
+// 必须在 configureAppRuntimePaths()（userData 已按 ELECTROMIND_HOME 隔离）
+// 之后请求锁 —— 否则锁落在默认 userData 上，残留实例会拦截所有后续启动。
+configureAppRuntimePaths();
+
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 if (!gotSingleInstanceLock) {
   app.quit();
@@ -1497,8 +1508,6 @@ app.whenReady().then(() => {
     mainWindow = createWindow();
   });
 });
-
-configureAppRuntimePaths();
 
 app.on("window-all-closed", () => {
   disposeBridge();

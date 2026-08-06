@@ -157,6 +157,28 @@ test("desktop renderer loads via CDP (no startup error page)", async () => {
     // 错误 handler 是唯一直接往 #app 挂 <pre> 的代码。onboarding/设置等
     // 正常界面也含 <pre class="setup-cmd">（agent 未安装引导），但它们
     // 包在容器/模态里，不是 #app 直接子元素，不算启动错误。
+    // P0: 必须先等 boot 完成再检查 —— renderShell 等待 React 外壳
+    // （25×80ms）后才会填充槽位/回退，晚到 ~2.5s 的启动错误不能被漏掉。
+    let bootDone = false;
+    const bootDeadline = Date.now() + 20_000;
+    while (Date.now() < bootDeadline) {
+      try {
+        bootDone = await cdpEval(
+          page,
+          "document.documentElement.dataset.boot === 'done'",
+        );
+      } catch {
+        /* not up yet */
+      }
+      if (bootDone) break;
+      await sleep(300);
+    }
+    assert.equal(
+      bootDone,
+      true,
+      "boot 应完成（html[data-boot=done]）——启动可能仍卡在等待 React 外壳或已出现启动错误",
+    );
+
     const errorText = await cdpEval(
       page,
       "(document.querySelector('#app > pre')?.textContent || '').slice(0, 800)",
