@@ -1,5 +1,6 @@
-# ⚡ ElectroMind
 <div align="center">
+
+# ⚡ ElectroMind
 
 <img width="400" alt="ElectroMind" src="docs/assets/cat.png" />
 
