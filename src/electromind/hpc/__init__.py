@@ -25,11 +25,13 @@ from .submission import (
     HpcSubmissionError,
     SubmissionRecord,
     SubmissionStore,
+    default_idempotency_key,
     new_submission_id,
 )
 
 __all__ = [
     "HpcSubmissionError",
+    "default_idempotency_key",
     "SubmissionRecord",
     "SubmissionStore",
     "new_submission_id",

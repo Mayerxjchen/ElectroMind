@@ -103,16 +103,33 @@ def main(argv: list[str] | None = None) -> int:
 
     store = SubmissionStore()
     try:
-        record = store.record_attempt(
-            thread_id=args.thread,
-            run_id=args.run,
-            rsess_session=args.rsess_session,
-            remote_workdir=args.remote_workdir,
-            script_sha256=script_sha,
-            input_sha256=input_sha,
-            stdout_path=args.stdout,
-            idempotency_key=args.idempotency_key,
+        # 幂等复用：同一 (thread, run) 已登记过（sbatch 超时/断线后的重试、
+        # 或同一提交的 bind 阶段）→ 复用原记录，绝不产生第二条记录。
+        # 已有 job_id → 拒绝（禁止重复 sbatch）。
+        from electromind.hpc import default_idempotency_key
+
+        idem = args.idempotency_key or default_idempotency_key(args.thread, args.run)
+        existing = next(
+            (r for r in store.all() if r.idempotency_key == idem), None
         )
+        if existing is not None:
+            if existing.job_id:
+                raise HpcSubmissionError(
+                    f"thread {args.thread} run {args.run} 已有提交的作业"
+                    f"（job {existing.job_id}），禁止重复 sbatch"
+                )
+            record = existing
+        else:
+            record = store.record_attempt(
+                thread_id=args.thread,
+                run_id=args.run,
+                rsess_session=args.rsess_session,
+                remote_workdir=args.remote_workdir,
+                script_sha256=script_sha,
+                input_sha256=input_sha,
+                stdout_path=args.stdout,
+                idempotency_key=args.idempotency_key,
+            )
         if args.bind_job_id:
             record = store.bind_job_id(record.submission_id, args.bind_job_id)
     except HpcSubmissionError as exc:

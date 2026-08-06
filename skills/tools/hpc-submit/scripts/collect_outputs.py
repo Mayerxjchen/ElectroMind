@@ -33,10 +33,14 @@ def sha256_file(path: str | Path) -> str:
 
 
 def rsync_pull(target: str, remote_path: str, local_path: Path) -> None:
-    """rsync 拉取（-c 强制按内容校验，不信任 mtime/size）。"""
+    """rsync 拉取（-c 强制按内容校验，不信任 mtime/size）。
+
+    不用 ``--info=stats1``：macOS 系统自带 rsync 2.6.9（openrsync）不识别
+    该选项，CI 的现代 rsync 才支持——统计信息是装饰性的，不值得牺牲兼容。
+    """
     remote = f"{target}:{remote_path}"
     subprocess.run(
-        ["rsync", "-a", "-c", "--info=stats1", remote, str(local_path)],
+        ["rsync", "-a", "-c", remote, str(local_path)],
         check=True,
         capture_output=True,
         text=True,

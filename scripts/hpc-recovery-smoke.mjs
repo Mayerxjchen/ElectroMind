@@ -279,14 +279,12 @@ async function main() {
 
     // ── 7. 科学门：Scheduler 成功 ≠ 科学成功 ─────────────────────────
     console.log("\n[7] Parser 门（wire agent）");
+    // dev agent（uv run）需要完整 PATH；数据目录仍隔离
     const wireEnv = {
       ...process.env,
       HOME: home,
       ELECTROMIND_HOME: path.join(home, ".electromind"),
       DEEPSEEK_API_KEY: "sk-hpc-smoke",
-      PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
-      VIRTUAL_ENV: "",
-      PYTHONPATH: "",
     };
     const active = new WireDriver(["uv", "run", "--project", REPO, "electromind"], wireEnv);
     try {
@@ -318,7 +316,10 @@ async function main() {
         );
       } catch { /* wire agent 未发出 validation 事件，降级为主动查询 */ }
       active.send({ cmd: "artifact/state", thread_id: tid });
-      const st1 = await active.waitFor((e) => e.method === "artifact/state" && Array.isArray(e.params?.artifacts), 30_000);
+      const st1 = await active.waitFor(
+        (e) => e.method === "artifact/state" && Array.isArray(e.params?.artifacts) && (e.params.artifacts || []).some((a) => a.artifact_id === "hpc-real-output"),
+        30_000,
+      );
       const art1 = (st1.params.artifacts || []).find((a) => a.artifact_id === "hpc-real-output");
       check(
         "Scheduler 成功但 Parser 失败 → 不标记科学成功",
@@ -351,7 +352,10 @@ async function main() {
         );
       } catch { /* wire agent 未发出 validation 事件，降级为主动查询 */ }
       active.send({ cmd: "artifact/state", thread_id: tid });
-      const st2 = await active.waitFor((e) => e.method === "artifact/state" && Array.isArray(e.params?.artifacts), 30_000);
+      const st2 = await active.waitFor(
+        (e) => e.method === "artifact/state" && Array.isArray(e.params?.artifacts) && (e.params.artifacts || []).some((a) => a.artifact_id === "hpc-cp2k-valid"),
+        30_000,
+      );
       const art2 = (st2.params.artifacts || []).find((a) => a.artifact_id === "hpc-cp2k-valid");
       check("CP2K 成功输出 → VALIDATED", art2?.validation_status === "validated", `validation=${art2?.validation_status}`);
       await active.kill();
