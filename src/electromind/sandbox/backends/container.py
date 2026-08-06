@@ -167,9 +167,23 @@ class ContainerBackend:
             return fp.read()
 
     async def write_file(self, path: str, data: bytes) -> None:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        with open(path, "wb") as fp:
-            fp.write(data)
+        # 写统一走容器侧（exec）：目录可能由容器内用户（root）创建，
+        # Linux 宿主侧 open() 会因 uid 不匹配 EACCES（macOS VirtioFS
+        # 权限宽松所以能过）。base64 经 stdin 传入，二进制安全；
+        # 容器内 root 写入 root 创建的目录，两侧权限语义一致。
+        import base64
+        import shlex
+
+        encoded = base64.b64encode(data).decode("ascii")
+        quoted = shlex.quote(path)
+        mkdir = shlex.quote(os.path.dirname(path) or ".")
+        result = await self.exec(
+            ["sh", "-c", f"mkdir -p {mkdir} && base64 -d > {quoted}"],
+            stdin=encoded,
+            limits=SandboxLimits(timeout=60),
+        )
+        if not result.ok:
+            raise SandboxError(f"write_file {path} failed: {result.stderr}")
 
     async def list_dir(self, path: str) -> list[DirEntry]:
         entries: list[DirEntry] = []
