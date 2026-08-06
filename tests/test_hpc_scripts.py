@@ -70,6 +70,101 @@ def test_prepare_submission_creates_record(home):
     assert "禁止重复 sbatch" in r2.stderr
 
 
+def _run_script_env(script: str, *args: str, home: Path, env_extra: dict):
+    env = dict(os.environ)
+    env["ELECTROMIND_HOME"] = str(home)
+    env["PYTHONPATH"] = str(Path(__file__).parent.parent / "src")
+    env.update(env_extra)
+    return subprocess.run(
+        [sys.executable, str(SCRIPTS / script), *args],
+        capture_output=True,
+        text=True,
+        env=env,
+        cwd=str(home),
+    )
+
+
+def test_prepare_submission_verify_remote_ok_and_mismatch(home, tmp_path):
+    """--verify-remote：远端 SHA 一致 → 提交；不一致 → 拒绝（退出码 2）。"""
+    script = home / "run.sh"
+    script.write_text("#!/bin/sh\necho hi\n", encoding="utf-8")
+
+    # stub rsess：sha256sum 远端路径 → 计算本地同名文件哈希
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    stub = bin_dir / "rsess"
+    stub.write_text(
+        "#!/bin/sh\n"
+        'for a in "$@"; do last="$a"; done\n'
+        'sha256sum "$ELECTROMIND_HOME/$(basename "$last")"\n',
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    env_extra = {"PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+
+    r = _run_script_env(
+        "prepare_submission.py",
+        "--thread",
+        "t",
+        "--run",
+        "r",
+        "--script",
+        str(script),
+        "--rsess-session",
+        "sess-x",
+        "--remote-workdir",
+        "/remote/work",
+        "--verify-remote",
+        home=home,
+        env_extra=env_extra,
+    )
+    assert r.returncode == 0, r.stderr
+    assert r.stdout.strip().startswith("sub-")
+
+    # stub rsess 返回错误哈希 → 必须拒绝（禁止在内容不一致时提交）
+    bad = bin_dir / "rsess"
+    bad.write_text(
+        "#!/bin/sh\n"
+        "printf '0000000000000000000000000000000000000000000000000000000000000000  x\\n'\n",
+        encoding="utf-8",
+    )
+    bad.chmod(0o755)
+    r2 = _run_script_env(
+        "prepare_submission.py",
+        "--thread",
+        "t",
+        "--run",
+        "r2",
+        "--script",
+        str(script),
+        "--rsess-session",
+        "sess-x",
+        "--remote-workdir",
+        "/remote/work",
+        "--verify-remote",
+        home=home,
+        env_extra=env_extra,
+    )
+    assert r2.returncode == 2
+    assert "远端 SHA 不一致" in r2.stderr
+
+    # 缺 session/workdir 直接拒绝，不静默跳过校验
+    r3 = _run_script_env(
+        "prepare_submission.py",
+        "--thread",
+        "t",
+        "--run",
+        "r3",
+        "--script",
+        str(script),
+        "--verify-remote",
+        home=home,
+        env_extra=env_extra,
+    )
+    assert r3.returncode == 2
+    assert "--verify-remote 需要" in r3.stderr
+
+
 def test_prepare_submission_missing_script(home):
     r = _run_script(
         "prepare_submission.py",

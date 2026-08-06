@@ -17,11 +17,17 @@ from __future__ import annotations
 import json
 import time
 import uuid
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 from ..atomicfile import atomic_write_text, load_jsonl_recover
 from ..paths import default_electromind_home
+
+try:
+    import fcntl
+except ImportError:  # 非 POSIX（Windows 暂缓发行）→ 退化为不加锁
+    fcntl = None  # type: ignore[assignment]
 
 # 记录文件默认位置：<home>/hpc/submissions.jsonl
 SUBMISSIONS_REL = Path("hpc") / "submissions.jsonl"
@@ -94,6 +100,25 @@ class SubmissionStore:
         if self.path.exists():
             self._load()
 
+    @contextmanager
+    def _locked(self):
+        """跨进程互斥（P3.3）：check-then-append 窗口加 flock。
+
+        锁文件是 ``<path>.lock``（不删除，避免 unlink 竞态）。非 POSIX
+        平台退化为什么也不锁（Windows 暂缓发行，接受）。
+        """
+        lock_path = Path(f"{self.path}.lock")
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        fd = lock_path.open("a+")
+        try:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_EX)
+            yield
+        finally:
+            if fcntl is not None:
+                fcntl.flock(fd, fcntl.LOCK_UN)
+            fd.close()
+
     # ── 查询 ────────────────────────────────────────────────────────
 
     def all(self) -> list[SubmissionRecord]:
@@ -124,25 +149,32 @@ class SubmissionStore:
         """登记一次提交尝试。若 thread+run 已有 job_id → 拒绝（防重复 sbatch）。
 
         返回新记录（job_id 为空，等待 sbatch 成功后 bind）。
+
+        持锁执行 check-then-append：等锁期间其他进程可能已写入 job_id，
+        因此拿到锁后先重读磁盘再检查（跨进程竞态下的重复 sbatch 挡板）。
         """
         thread_id = str(kw.get("thread_id", ""))
         run_id = str(kw.get("run_id", ""))
-        if self.has_job_for(thread_id, run_id):
-            raise HpcSubmissionError(
-                f"thread {thread_id} run {run_id} 已有提交的作业，禁止重复 sbatch"
+        with self._locked():
+            # 等锁期间磁盘可能已变化：以锁内重读为准
+            self._records = {}
+            self._load()
+            if self.has_job_for(thread_id, run_id):
+                raise HpcSubmissionError(
+                    f"thread {thread_id} run {run_id} 已有提交的作业，禁止重复 sbatch"
+                )
+            record = SubmissionRecord(
+                submission_id=kw.get("submission_id") or new_submission_id(),
+                thread_id=thread_id,
+                run_id=run_id,
+                rsess_session=str(kw.get("rsess_session", "")),
+                remote_workdir=str(kw.get("remote_workdir", "")),
+                script_sha256=str(kw.get("script_sha256", "")),
+                input_sha256=str(kw.get("input_sha256", "")),
+                stdout_path=str(kw.get("stdout_path", "")),
             )
-        record = SubmissionRecord(
-            submission_id=kw.get("submission_id") or new_submission_id(),
-            thread_id=thread_id,
-            run_id=run_id,
-            rsess_session=str(kw.get("rsess_session", "")),
-            remote_workdir=str(kw.get("remote_workdir", "")),
-            script_sha256=str(kw.get("script_sha256", "")),
-            input_sha256=str(kw.get("input_sha256", "")),
-            stdout_path=str(kw.get("stdout_path", "")),
-        )
-        self._records[record.submission_id] = record
-        self._flush()
+            self._records[record.submission_id] = record
+            self._flush()
         return record
 
     def bind_job_id(self, submission_id: str, job_id: str) -> SubmissionRecord:

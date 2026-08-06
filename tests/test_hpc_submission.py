@@ -100,6 +100,61 @@ def test_has_job_for(tmp_path, monkeypatch):
     assert store.has_job_for("t1", "r1")
 
 
+def test_cross_process_duplicate_blocked_by_lock(tmp_path, monkeypatch):
+    """跨进程竞态：第二个进程等锁后重读磁盘，必须看到 job_id 并拒绝。
+
+    无锁时第二个进程用陈旧的内存状态直接写入 → 双记录（重复 sbatch）。
+    有锁时被阻塞，等锁期间主进程写入 job_id，重读后拒绝。
+    """
+    import subprocess
+    import sys
+
+    if not sys.platform.startswith(("linux", "darwin")):
+        pytest.skip("flock 仅 POSIX")
+
+    monkeypatch.setattr(
+        "electromind.hpc.submission.default_submissions_path",
+        lambda: tmp_path / "subs.jsonl",
+    )
+    store = SubmissionStore()
+    rec = _attempt(store, run_id="r1")  # 记录无 job_id
+
+    code = (
+        "import sys\n"
+        "from pathlib import Path\n"
+        "from electromind.hpc import SubmissionStore\n"
+        "s = SubmissionStore(Path(sys.argv[1]))\n"
+        "print('ready', flush=True)\n"
+        "try:\n"
+        "    r = s.record_attempt(thread_id='t1', run_id='r1', script_sha256='a'*64)\n"
+        "    s.bind_job_id(r.submission_id, 'sb-sub')\n"
+        "    print('ok:' + r.submission_id)\n"
+        "except Exception as e:\n"
+        "    print('err:' + repr(e), file=sys.stderr)\n"
+        "    sys.exit(2)\n"
+    )
+    cm = store._locked()
+    cm.__enter__()  # 主进程先持锁，子进程的 record_attempt 将阻塞
+    proc = subprocess.Popen(
+        [sys.executable, "-c", code, str(tmp_path / "subs.jsonl")],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    assert proc.stdout.readline().strip() == "ready"  # 子进程已停在锁上
+
+    # 等锁期间，主进程给同一 thread+run 绑定 job_id
+    store.bind_job_id(rec.submission_id, "sb-main")
+
+    cm.__exit__(None, None, None)  # 释放锁 → 子进程获锁、重读、拒绝
+
+    proc.wait(timeout=60)
+    err = proc.stderr.read()
+    assert proc.returncode == 2
+    assert "禁止重复 sbatch" in err
+    assert len(store.all()) == 1  # 磁盘上仍只有一条记录
+
+
 # ── 损坏恢复（P1.3 复用） ───────────────────────────────────────────────
 
 
