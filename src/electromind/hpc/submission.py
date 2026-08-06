@@ -45,6 +45,14 @@ def new_submission_id() -> str:
     return f"sub-{uuid.uuid4().hex[:12]}"
 
 
+def default_idempotency_key(thread_id: str, run_id: str) -> str:
+    """同一 (thread, run) 的重试必须复用同一幂等键。
+
+    sbatch 超时 / SSH 断线后的 reconcile 按此键找到原记录，绝不重提。
+    """
+    return f"{thread_id}:{run_id}"
+
+
 @dataclass(slots=True)
 class SubmissionRecord:
     """一次 HPC 提交的不可变事实记录。"""
@@ -59,6 +67,7 @@ class SubmissionRecord:
     job_id: str = ""
     state: str = ""  # queued | running | completed | failed | unknown | ...
     stdout_path: str = ""
+    idempotency_key: str = ""
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
 
@@ -78,6 +87,7 @@ class SubmissionRecord:
             job_id=str(d.get("job_id", "")),
             state=str(d.get("state", "")),
             stdout_path=str(d.get("stdout_path", "")),
+            idempotency_key=str(d.get("idempotency_key", "")),
             created_at=float(d.get("created_at", time.time())),
             updated_at=float(d.get("updated_at", time.time())),
         )
@@ -159,10 +169,19 @@ class SubmissionStore:
             # 等锁期间磁盘可能已变化：以锁内重读为准
             self._records = {}
             self._load()
+            idem_key = str(kw.get("idempotency_key", "")) or default_idempotency_key(
+                thread_id, run_id
+            )
             if self.has_job_for(thread_id, run_id):
                 raise HpcSubmissionError(
                     f"thread {thread_id} run {run_id} 已有提交的作业，禁止重复 sbatch"
                 )
+            # 幂等键挡板：同键已有 job_id（跨 thread/run 场景或自定义键）
+            for r in self._records.values():
+                if r.idempotency_key == idem_key and bool(r.job_id):
+                    raise HpcSubmissionError(
+                        f"idempotency_key {idem_key} 已绑定 job {r.job_id}，禁止重复 sbatch"
+                    )
             record = SubmissionRecord(
                 submission_id=kw.get("submission_id") or new_submission_id(),
                 thread_id=thread_id,
@@ -172,6 +191,7 @@ class SubmissionStore:
                 script_sha256=str(kw.get("script_sha256", "")),
                 input_sha256=str(kw.get("input_sha256", "")),
                 stdout_path=str(kw.get("stdout_path", "")),
+                idempotency_key=idem_key,
             )
             self._records[record.submission_id] = record
             self._flush()

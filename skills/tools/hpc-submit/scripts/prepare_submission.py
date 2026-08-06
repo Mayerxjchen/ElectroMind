@@ -50,6 +50,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--stdout", default="")
     p.add_argument("--bind-job-id", default="")
     p.add_argument(
+        "--idempotency-key",
+        default="",
+        help="幂等键（缺省为 thread:run）；重试必须复用同一键，禁止重复 sbatch",
+    )
+    p.add_argument(
         "--verify-remote",
         action="store_true",
         help="经 rsess 核对远端文件 SHA 与本地一致（需 --rsess-session/--remote-workdir）",
@@ -106,6 +111,7 @@ def main(argv: list[str] | None = None) -> int:
             script_sha256=script_sha,
             input_sha256=input_sha,
             stdout_path=args.stdout,
+            idempotency_key=args.idempotency_key,
         )
         if args.bind_job_id:
             record = store.bind_job_id(record.submission_id, args.bind_job_id)

@@ -88,6 +88,27 @@ def test_bind_job_id_idempotent_and_conflict(tmp_path, monkeypatch):
         store.bind_job_id(rec.submission_id, "sb-2")
 
 
+def test_idempotency_key_default_and_guard(tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        "electromind.hpc.submission.default_submissions_path",
+        lambda: tmp_path / "subs.jsonl",
+    )
+    store = SubmissionStore()
+    # 缺省键 = thread:run（同一 (thread, run) 重试复用同一键）
+    rec = _attempt(store, run_id="r1")
+    assert rec.idempotency_key == "t1:r1"
+
+    store2 = SubmissionStore()
+    loaded = store2.find(rec.submission_id)
+    assert loaded.idempotency_key == "t1:r1"  # 持久化
+
+    # 同键已有 job_id → 拒绝（跨实例场景）
+    store.bind_job_id(rec.submission_id, "sb-1")
+    store3 = SubmissionStore()
+    with pytest.raises(HpcSubmissionError, match="禁止重复 sbatch"):
+        store3.record_attempt(thread_id="t9", run_id="r9", idempotency_key="t1:r1")
+
+
 def test_has_job_for(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "electromind.hpc.submission.default_submissions_path",
