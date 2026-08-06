@@ -99,6 +99,13 @@ jobs:
           fi
           exit "$code"
 
+      # 仓库根 scripts/*.mjs 语法门禁：standalone 冒烟（hpc-recovery-smoke 等）
+      # 需真实 HPC 集群（aTrust + Slurm），GitHub runner 不可达，故 CI 只保证
+      # 脚本永远可解析；真实集群冒烟按 README「HPC 主路径」手动执行。
+      - name: Smoke script syntax gate (node --check)
+        working-directory: ${{ github.workspace }}
+        run: node --check scripts/hpc-recovery-smoke.mjs
+
       # P5.2: 打包 Agent 校验逻辑（自包含测试：临时目录 + 合成 Mach-O）。
       - name: Package agent tests
         working-directory: editors/desktop

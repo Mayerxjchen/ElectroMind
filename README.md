@@ -319,6 +319,20 @@ hpc-submit Skill → Slurm/PBS`。Desktop 不直接调用 Scheduler API。
   input_sha256 / job_id / state / stdout_path）。原子写 + `.bak` 恢复。
 - Desktop「任务」页展示这些记录；重启后经 rsess 重新查询恢复状态。
 
+**HPC 恢复冒烟**（`scripts/hpc-recovery-smoke.mjs`）：需要真实集群
+（aTrust 已登录 + 集群可达），CI 不跑——GitHub runner 无法访问 HPC。
+手动执行：
+
+```bash
+node scripts/hpc-recovery-smoke.mjs [--host ikkemhpc] [--sleep 45]
+```
+
+覆盖最终验收项：提交后本地进程退出 → 远端 Job 继续运行；重启后经 rsess
+恢复原 Job ID（reconcile，绝不重提）；重复 prepare 禁止二次 sbatch；
+输出经 rsync 收集 + SHA 核对；Scheduler 成功但 Parser 失败 → 不标记科学
+成功。CI（`.github/workflows/ci.yml`）对脚本做 `node --check` 语法门禁，
+保证脚本永远可解析。
+
 ## 数据诊断（P1.5）
 
 ```bash
