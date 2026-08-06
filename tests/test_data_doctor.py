@@ -119,6 +119,23 @@ def test_corrupt_messages_detected(tmp_path):
     assert any("messages.jsonl" in i for i in check.issues)
 
 
+def test_disk_space_low_detected(tmp_path, monkeypatch):
+    d = _make_thread(tmp_path, "thread-disk")
+    check = check_single_thread(d, tmp_path)
+    assert check.ok, check.issues  # 正常环境磁盘充足
+
+    import app.commands.data_doctor as dd
+
+    monkeypatch.setattr(
+        dd.shutil,
+        "disk_usage",
+        lambda _p: type("U", (), {"free": 512 * 1024 * 1024})(),  # 0.5GB
+    )
+    check2 = check_single_thread(d, tmp_path)
+    assert not check2.ok
+    assert any("磁盘剩余空间" in i for i in check2.issues)
+
+
 def test_collect_data_checks_scans_threads(tmp_path, monkeypatch):
     # 用临时 home 隔离，避免扫到真实用户数据（collect_data_checks 在函数体内
     # 从 electromind.paths 导入 default_electromind_home，故 patch 那里）。

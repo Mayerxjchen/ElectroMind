@@ -15,6 +15,7 @@ atomicfile 读取侧在加载时完成，本检查只报告状态。
 from __future__ import annotations
 
 import os
+import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -126,6 +127,15 @@ def check_single_thread(thread_dir: Path, home: Path) -> ThreadDataCheck:
         check.problem(f"thread 目录不可写: {thread_dir}")
     if not os.access(home, os.W_OK):
         check.problem(f"数据根不可写: {home}")
+
+    # 6. 磁盘空间（< 1GB 剩余视为风险）
+    try:
+        usage = shutil.disk_usage(home)
+        free_gb = usage.free / (1024**3)
+        if free_gb < 1.0:
+            check.problem(f"磁盘剩余空间不足 1GB: {free_gb:.2f}GB")
+    except OSError as exc:
+        check.problem(f"无法读取磁盘空间: {exc}")
 
     return check
 
