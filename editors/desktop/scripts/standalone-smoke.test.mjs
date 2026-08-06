@@ -275,6 +275,22 @@ test("clean env app launch: renderer loads, no error page, no install-CLI onboar
 
     const hasApp = await cdpEval(port, "!!document.getElementById('app')");
     assert.equal(hasApp, true, "#app 应挂载");
+
+    // 干净 macOS 验收：运行期间不得出现 python3/uv/全局 CLI 进程
+    // （PATH 已剥离，若 app 解析到任何外部解释器则此处必然失败）
+    const procSnap = await procTreeSnap();
+    const foreign = procSnap
+      .split("\n")
+      .filter(
+        (l) =>
+          /(^|\s)(python3?|uv|pip3?)(\s|$)/.test(l) &&
+          !l.includes("Resources/agent/electromind"),
+      );
+    assert.equal(
+      foreign.length,
+      0,
+      `运行期间出现外部 Python/uv 进程:\n${foreign.join("\n")}`,
+    );
     const errorPage = await cdpEval(
       port,
       "!!(document.querySelector('#app > pre'))",
