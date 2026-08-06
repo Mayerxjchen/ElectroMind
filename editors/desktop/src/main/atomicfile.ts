@@ -28,6 +28,19 @@ export function atomicWriteJsonFile(filePath: string, value: unknown): void {
     closeSync(fd);
   }
   renameSync(tmpPath, target);
+
+  // P1.2: rename 后 fsync 父目录，确保目录项落盘（否则崩溃后可能只剩 .bak）。
+  // 个别平台/文件系统不支持对目录 fsync —— 失败不阻断写（rename 本身已原子）。
+  try {
+    const dirFd = openSync(path.dirname(target), "r");
+    try {
+      fsyncSync(dirFd);
+    } finally {
+      closeSync(dirFd);
+    }
+  } catch {
+    // 目录 fsync 不可用时静默降级（macOS APFS 元数据已 journaled）
+  }
 }
 
 export function readJsonLoose<T>(filePath: string): T | undefined {
