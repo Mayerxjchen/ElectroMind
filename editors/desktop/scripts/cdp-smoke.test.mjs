@@ -55,6 +55,22 @@ async function cdpEval(target, expression) {
   return result.result?.value;
 }
 
+/** 只认真实应用页：type=page 且 URL 含 index.html；排除 about:blank
+ * （about:blank 的 readyState 也是 complete，直接取第一个 page 会抓到空页）。 */
+function isAppTarget(t) {
+  return (
+    t.type === "page" &&
+    t.url !== "about:blank" &&
+    (t.url || "").includes("index.html")
+  );
+}
+
+function targetSummary(targets) {
+  return JSON.stringify(
+    targets.map((t) => ({ type: t.type, url: t.url })),
+  );
+}
+
 test("desktop renderer loads via CDP (no startup error page)", async () => {
   // CI（Linux root）需要 --no-sandbox；开发机加它无害。
   const electronArgs = [APP_DIR, `--remote-debugging-port=${PORT}`, "--no-sandbox"];
@@ -67,18 +83,24 @@ test("desktop renderer loads via CDP (no startup error page)", async () => {
     },
   });
   let stderr = "";
+  let exitCode = null;
   proc.stderr.on("data", (d) => {
     stderr += d;
   });
+  proc.on("exit", (code) => {
+    exitCode = code;
+  });
 
+  let page = null;
+  let targets = [];
   try {
-    // 等待 CDP endpoint 就绪
-    let targets = [];
-    const deadline = Date.now() + 30_000;
-    while (Date.now() < deadline) {
+    // 等待 CDP endpoint 就绪，且出现真实应用页 target
+    const targetDeadline = Date.now() + 30_000;
+    while (Date.now() < targetDeadline) {
       try {
         targets = await fetchJson(`http://127.0.0.1:${PORT}/json`);
-        if (targets.length > 0) {
+        page = targets.find(isAppTarget);
+        if (page) {
           break;
         }
       } catch {
@@ -86,24 +108,50 @@ test("desktop renderer loads via CDP (no startup error page)", async () => {
       }
       await sleep(300);
     }
-    assert.ok(targets.length > 0, "CDP target 应可达");
+    assert.ok(
+      page,
+      `应存在 index.html page target；全部 targets=${targetSummary(targets)}` +
+        (stderr ? `；electron stderr=${stderr.slice(-500)}` : ""),
+    );
 
-    const page = targets.find((t) => t.type === "page");
-    assert.ok(page, "应存在 page target");
-    // 等 readyState 到 complete（渲染进程脚本执行完，React shell 挂载）。
-    let ready = "loading";
-    const readyDeadline = Date.now() + 20_000;
-    while (Date.now() < readyDeadline) {
-      ready = await cdpEval(page, "document.readyState");
-      if (ready === "complete") {
+    // #app 挂载轮询（不止看 readyState——about:blank 也是 complete）
+    let hasApp = false;
+    let ready = "";
+    const appDeadline = Date.now() + 20_000;
+    while (Date.now() < appDeadline) {
+      try {
+        ready = await cdpEval(page, "document.readyState");
+        hasApp = await cdpEval(page, "!!document.getElementById('app')");
+      } catch {
+        /* renderer 可能还在启动 */
+      }
+      if (hasApp) {
         break;
       }
       await sleep(300);
     }
-    assert.equal(ready, "complete", `页面应加载完成，实际 ${ready}`);
 
-    const hasApp = await cdpEval(page, "!!document.getElementById('app')");
-    assert.equal(hasApp, true, "#app 根元素应存在");
+    if (!hasApp) {
+      // 失败诊断：DOM 快照 + targets + stderr + exit code
+      let html = "";
+      try {
+        html = await cdpEval(
+          page,
+          "(document.documentElement?.outerHTML || '').slice(0, 2000)",
+        );
+      } catch {
+        html = "<cdp eval failed>";
+      }
+      assert.equal(
+        hasApp,
+        true,
+        `#app 根元素应存在；target url=${page.url}, readyState=${ready}` +
+          `；targets=${targetSummary(targets)}` +
+          `；outerHTML=${html}` +
+          (stderr ? `；electron stderr=${stderr.slice(-500)}` : "") +
+          (exitCode !== null ? `；electron exit=${exitCode}` : ""),
+      );
+    }
 
     // 启动错误页 = #app 下直接挂 <pre>（P4.5 之后为 textContent）。若 renderer
     // 启动即崩，会走到该错误页。
@@ -120,5 +168,6 @@ test("desktop renderer loads via CDP (no startup error page)", async () => {
     } catch {
       /* already dead */
     }
+    await new Promise((r) => setTimeout(r, 200));
   }
 });
