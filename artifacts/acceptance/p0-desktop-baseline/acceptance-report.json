@@ -1,0 +1,31 @@
+{
+  "spec": "2026-08-07-desktop-stability-refactor.md §P0",
+  "captured": "2026-08-07",
+  "baseline_tag": "v0.8.0-stability-baseline",
+  "baseline_commit": "2240538 chore: bump version to 0.8.0",
+  "baseline_app": "release/electromind Desktop-darwin-arm64/electromind Desktop.app (v0.8.0, 内置 agent)",
+  "feature_flags": "clean HOME，无 desktop.json → 全部 fail-closed=false → 旧桌面基线行为",
+  "results": {
+    "standalone_smoke": {
+      "status": "pass",
+      "detail": "3/3 — 内置 agent version+SHA 一致；干净环境启动（renderer 加载、无错误页、无安装引导）；wire 冒烟（线程/工具/Skills/CP2K VALIDATED + 重启恢复）；退出无孤立 Agent 进程"
+    },
+    "skills_cdp": {
+      "status": "pass",
+      "detail": "skills-manager-cdp.test.mjs（旧链，对基线包）通过；skills-manager-slash-cdp 需 dev 分支重新打包（基线包无 /skill 命令），属 P3 验收，非 P0"
+    },
+    "three_size_screenshots": {
+      "status": "pass",
+      "detail": "1024×768 / 1280×720 / 1440×900 PNG，CDP Emulation 强制视口后 captureScreenshot，boot 完成(data-boot=done)后截取",
+      "files": [
+        "baseline-1024x768.png",
+        "baseline-1280x720.png",
+        "baseline-1440x900.png"
+      ]
+    },
+    "hpc_recovery_smoke": {
+      "status": "pass",
+      "detail": "12/12（真集群，host=ikkemhpc，job=3522463）—— 提交后本地退出 → Job 继续；reconcile 恢复原 job_id（绝不重提）；重复 prepare 禁二次 sbatch；rsync 收集 + SHA 核对；Scheduler 成功但 Parser 失败 → 不标科学成功(rejected)；CP2K 成功输出 → VALIDATED"
+    }
+  }
+}
