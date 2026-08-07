@@ -8,7 +8,7 @@
 import {
   DEFAULT_FEATURES,
   type DesktopFeatures,
-} from "../shared/features";
+} from "../shared/features.ts";
 
 let cached: DesktopFeatures | null = null;
 
@@ -29,4 +29,12 @@ export async function loadDesktopFeatures(): Promise<DesktopFeatures> {
 /** 同步读取单个 flag；未加载时按默认值（= 当前稳定桌面行为）处理。 */
 export function currentFeature(key: keyof DesktopFeatures): boolean {
   return cached?.[key] ?? DEFAULT_FEATURES[key];
+}
+
+/** 测试专用：注入已加载的 flags（正常路径由 loadDesktopFeatures 填充）。
+ *  仅 node --test 下用于驱动 flag 门控分支。 */
+export function __seedDesktopFeaturesForTest(
+  flags: Partial<DesktopFeatures>,
+): void {
+  cached = { ...DEFAULT_FEATURES, ...flags };
 }

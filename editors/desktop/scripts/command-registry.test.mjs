@@ -22,6 +22,9 @@ const {
 const { registerCoreCommands, registerSkillSlashCommands } = await import(
   new URL("../src/renderer/react/commands.ts", import.meta.url)
 );
+const { __seedDesktopFeaturesForTest } = await import(
+  new URL("../src/renderer/features.ts", import.meta.url)
+);
 
 // ── 纯 Registry 机制 ────────────────────────────────────────────────
 
@@ -412,5 +415,164 @@ test("skill commands: execute dispatches user-input with skill + task", async ()
   } finally {
     globalThis.window = prevWindow;
   }
+  resetCommandRegistry();
+});
+
+// ── P3: /skill 根命令（slash_skill_v2 门控）──────────────────────────
+
+test("skill root: /skill is gated on slash_skill_v2 (fail-closed default)", async () => {
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  // 默认 flag=false → 不可用 + 任何入口执行都被拒（registry 层 fail-closed）
+  assert.equal(reg.isAvailable("skill.root", mockCtx), false, "默认不可用");
+  const res = await reg.execute("skill.root", mockCtx, {});
+  assert.equal(res.ok, false);
+  assert.match(res.error, /命令当前不可用/, "registry 拒绝执行不可用命令");
+  resetCommandRegistry();
+});
+
+test("skill root: /skill no args opens picker (flag on)", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const storeStub = {
+    getActiveThreadId: () => "t1",
+    getThread: () => ({}),
+    getState: () => ({ bridgeActive: true }),
+  };
+  const prevWindow = globalThis.window;
+  globalThis.window = {
+    dispatchEvent: (e) => events.push({ type: e.type, detail: e.detail }),
+    desktop: {},
+  };
+  try {
+    assert.equal(reg.isAvailable("skill.root", { store: storeStub }), true);
+    const res = await reg.execute(
+      "skill.root",
+      { store: storeStub },
+      { name: "", rest: "", text: "" },
+    );
+    assert.equal(res.ok, true);
+    assert.ok(
+      events.some((e) => e.type === "electromind:skill-picker-toggle"),
+      "无参 → 打开 Skill Picker",
+    );
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});
+
+test("skill root: /skill list and /skill info (read-only)", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const storeStub = {
+    getActiveThreadId: () => "t1",
+    getThread: () => ({
+      skillsState: {
+        skills: [
+          skill("cp2k"),
+          skill("demo", { trust_state: "untrusted" }),
+        ],
+      },
+    }),
+    getState: () => ({ bridgeActive: true }),
+  };
+  const ctx = { store: storeStub };
+  const list = await reg.execute(
+    "skill.root",
+    ctx,
+    { name: "list", rest: "", text: "list" },
+  );
+  assert.equal(list.ok, true);
+  assert.match(list.message, /cp2k · Trusted/);
+  assert.match(list.message, /demo · Untrusted/);
+  const info = await reg.execute(
+    "skill.root",
+    ctx,
+    { name: "info", rest: "cp2k", text: "info cp2k" },
+  );
+  assert.equal(info.ok, true);
+  assert.match(info.message, /名称: cp2k/);
+  const miss = await reg.execute(
+    "skill.root",
+    ctx,
+    { name: "info", rest: "nope", text: "info nope" },
+  );
+  assert.equal(miss.ok, false);
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});
+
+test("skill root: /skill <name> <task> blocks untrusted and runs trusted", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const storeStub = {
+    getActiveThreadId: () => "t1",
+    getThread: () => ({
+      skillsState: {
+        skills: [
+          skill("cp2k"),
+          skill("demo", { trust_state: "untrusted" }),
+          skill("model-skill", { invocation: "model" }),
+        ],
+      },
+    }),
+    getState: () => ({ bridgeActive: true }),
+  };
+  const prevWindow = globalThis.window;
+  globalThis.window = {
+    dispatchEvent: (e) => events.push({ type: e.type, detail: e.detail }),
+    desktop: {},
+  };
+  try {
+    const ctx = { store: storeStub };
+    // untrusted 被阻止
+    const blocked = await reg.execute(
+      "skill.root",
+      ctx,
+      { name: "demo", rest: "跑任务", text: "demo 跑任务" },
+    );
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.error, /未信任/);
+    // trusted + 任务 → user-input 携带 skill（确定性激活）
+    const ok = await reg.execute(
+      "skill.root",
+      ctx,
+      { name: "cp2k", rest: "跑输入文件", text: "cp2k 跑输入文件" },
+    );
+    assert.equal(ok.ok, true);
+    const input = events.find((e) => e.type === "electromind:user-input");
+    assert.ok(input, "应派发 user-input");
+    assert.equal(input.detail.skill, "cp2k");
+    assert.equal(input.detail.text, "跑输入文件");
+    // 缺任务描述 → 报错
+    const noTask = await reg.execute(
+      "skill.root",
+      ctx,
+      { name: "cp2k", rest: "", text: "cp2k" },
+    );
+    assert.equal(noTask.ok, false);
+    // model-only → 拒绝用户调用
+    const modelOnly = await reg.execute(
+      "skill.root",
+      ctx,
+      { name: "model-skill", rest: "x", text: "model-skill x" },
+    );
+    assert.equal(modelOnly.ok, false);
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
   resetCommandRegistry();
 });

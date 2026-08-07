@@ -49,6 +49,7 @@ import { SlashMenu } from "./SlashMenu";
 import { ModelPicker } from "./ModelPicker";
 import { ModePicker } from "./ModePicker";
 import { StatusPicker } from "./StatusPicker";
+import { SkillPicker } from "./SkillPicker";
 
 // ── Props ────────────────────────────────────────────────────────────
 
@@ -125,10 +126,17 @@ export const Composer: React.FC<Props> = ({
   // ── P5: 模式 chip + Target·Permission chip 的 Picker ────────────
   const [modePickerOpen, setModePickerOpen] = useState(false);
   const [statusPickerOpen, setStatusPickerOpen] = useState(false);
+  // ── P3: Skill Picker（/skill 无参打开；选择后补全输入）────────────
+  const [skillPickerOpen, setSkillPickerOpen] = useState(false);
   useEffect(() => {
     const toggle = () => setModelPickerOpen((v) => !v);
     window.addEventListener("electromind:model-picker-toggle", toggle);
     return () => window.removeEventListener("electromind:model-picker-toggle", toggle);
+  }, []);
+  useEffect(() => {
+    const toggle = () => setSkillPickerOpen((v) => !v);
+    window.addEventListener("electromind:skill-picker-toggle", toggle);
+    return () => window.removeEventListener("electromind:skill-picker-toggle", toggle);
   }, []);
 
   // ── P2: Slash 命令状态（Claude Code 语义）──────────────────────
@@ -381,6 +389,19 @@ export const Composer: React.FC<Props> = ({
         autonomy={autonomy}
         onPermission={onAutonomyChange}
         onClose={() => setStatusPickerOpen(false)}
+      />
+
+      {/* P3: Skill Picker —— /skill 无参打开；选择只补全 /skill <name>，
+          不立即执行（用户补任务描述后 Enter 走 agent 命令） */}
+      <SkillPicker
+        open={skillPickerOpen}
+        skills={thread?.skillsState?.skills ?? []}
+        onPick={(name) => {
+          setText(`/skill ${name} `);
+          setSkillPickerOpen(false);
+          inputRef.current?.focus();
+        }}
+        onClose={() => setSkillPickerOpen(false)}
       />
 
       {/* P2: Slash 命令菜单（Claude Code 风格；SKILLS 分组 P4 加入） */}

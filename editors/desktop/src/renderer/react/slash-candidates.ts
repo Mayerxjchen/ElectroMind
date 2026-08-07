@@ -50,6 +50,12 @@ export function tokensToArgs(commandId: string, tokens: string[]): ParsedArgs {
       return { model: tokens[0] ?? "" };
     case "skills.info":
       return { name: tokens[0] ?? "" };
+    case "skill.root":
+      return {
+        name: tokens[0] ?? "",
+        rest: tokens.slice(1).join(" "),
+        text: joined,
+      };
     case "artifact.validate":
       return { artifact_id: tokens[0] ?? "", parser: tokens[1] ?? "" };
     case "thread.new":

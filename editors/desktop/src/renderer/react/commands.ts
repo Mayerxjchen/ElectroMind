@@ -13,6 +13,8 @@ import type { CommandRegistry, CommandSpec, CommandContext } from "./command-reg
 import { modelPolicyLabel, modelSelectionFromPolicy } from "./model-policy.ts";
 import { requestConfirm } from "./confirm-bridge.ts";
 import { isSkillTrusted } from "../store/types.ts";
+import { currentFeature } from "../features.ts";
+import { skillInfoText, skillListText } from "./skill-view.ts";
 
 // ── 事件 / 能力助手 ─────────────────────────────────────────────────
 
@@ -395,6 +397,96 @@ export function registerCoreCommands(registry: CommandRegistry): void {
           ok: true,
           message: `${skill.name} · ${skill.source} · sha256 ${skill.sha256.slice(0, 8)} · ${skill.status}`,
         };
+      },
+    }),
+    // ── /skill 根命令（P3，slash_skill_v2 门控）────────────────────
+    // 无参 → Skill Picker（选择只补全 /skill <name>，不立即执行）；
+    // /skill list、/skill info <name> 为只读 UI 命令；
+    // /skill <name> <task> 为 agent 命令（携带 skill 行，确定性激活）；
+    // 管理动词（add/trust/revoke/update/remove/reload/doctor）在 P3
+    // 阶段 2（deterministic 后端命令）接线。
+    ui({
+      id: "skill.root",
+      title: "Skill 命令",
+      description: "查看 / 调用已安装 Skills（/skill 打开 Picker）",
+      category: "skills",
+      slash: ["skill"],
+      usage: "/skill | /skill list | /skill info <name> | /skill <name> <task>",
+      available: () => currentFeature("slash_skill_v2"),
+      execute: (ctx, args) => {
+        // fail-closed：flag 关闭时任何入口都不可执行
+        if (!currentFeature("slash_skill_v2")) {
+          return { ok: false, error: "slash_skill_v2 未启用" };
+        }
+        const threadId = activeThreadId(ctx);
+        const name = String(args.name ?? "").trim().toLowerCase();
+        if (!name) {
+          if (!threadId) return { ok: false, error: "没有活动会话" };
+          dispatch("electromind:skill-picker-toggle");
+          return { ok: true, message: "Skill Picker 已打开" };
+        }
+        if (name === "list") {
+          const t = activeThread(ctx);
+          const skills = t?.skillsState?.skills ?? [];
+          return { ok: true, message: skillListText(skills) };
+        }
+        if (name === "info") {
+          const target = String(args.rest ?? "").trim().toLowerCase();
+          if (!target) {
+            return { ok: false, error: "需要 skill 名称（/skill info <name>）" };
+          }
+          const t = activeThread(ctx);
+          const skill = t?.skillsState?.skills.find(
+            (s) => s.name.toLowerCase() === target,
+          );
+          if (!skill) return { ok: false, error: `Skill 不存在: ${target}` };
+          return { ok: true, message: skillInfoText(skill) };
+        }
+        // 管理动词 → P3 阶段 2（deterministic 后端命令）接线前不可用
+        const MANAGER_VERBS = new Set([
+          "add",
+          "trust",
+          "revoke",
+          "update",
+          "remove",
+          "reload",
+          "doctor",
+        ]);
+        if (MANAGER_VERBS.has(name)) {
+          return {
+            ok: false,
+            error: `/skill ${name} 需后端接线（管理命令阶段）`,
+          };
+        }
+        // /skill <name> <task> —— agent 执行（Skill 确定性激活）
+        const task = String(args.rest ?? "").trim();
+        if (!task) {
+          return { ok: false, error: `需要任务描述（/skill ${name} <task>）` };
+        }
+        const t = activeThread(ctx);
+        const skill = t?.skillsState?.skills.find(
+          (s) => s.name.toLowerCase() === name,
+        );
+        if (!skill) return { ok: false, error: `Skill 不存在: ${name}` };
+        if (!isSkillTrusted(skill)) {
+          return {
+            ok: false,
+            error: `Skill 未信任，不可调用（/skill trust ${name}）`,
+          };
+        }
+        const invocation = skill.invocation ?? "both";
+        if (invocation === "model") {
+          return { ok: false, error: `${name} 仅模型可调用` };
+        }
+        if (!threadId) return { ok: false, error: "没有活动会话" };
+        // 携带 skill 名 + 任务文本；后端确定性激活（不绕过权限模式）
+        dispatch("electromind:user-input", {
+          text: task,
+          delivery: "auto",
+          mode: "agent",
+          skill: name,
+        });
+        return { ok: true, message: `已启动 ${name} 任务（Skill 激活注入上下文）` };
       },
     }),
     ui({
