@@ -1,6 +1,7 @@
 ---
 name: review-response
 description: Orchestrate semi-automatic computational responses to peer review. Use when a manuscript and reviewer comments are provided and the agent must identify which comments require computation, plan and run calculations consistent with the manuscript's methods, validate whether each result actually addresses the concern, and draft response-letter and SI material.
+disable-model-invocation: true
 ---
 
 # Peer-Review Response Orchestrator

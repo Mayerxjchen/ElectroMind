@@ -1,6 +1,7 @@
 ---
 name: literature-to-calculation
 description: Extract concrete computational tasks from papers, supplementary information, peer-review files, reviewer comments, reports, or manuscript PDFs, and seed .research evidence artifacts such as method-fingerprint, model-observable-decision, and triage-plan before routing to computational chemistry workflow or tool skills. Use when Codex must turn document evidence into DFT, quantum chemistry, MD, MLP, structure-preparation, or analysis work.
+disable-model-invocation: true
 ---
 
 # Literature To Calculation

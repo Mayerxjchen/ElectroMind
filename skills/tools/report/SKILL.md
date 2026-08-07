@@ -1,6 +1,7 @@
 ---
 name: report
 description: "Assemble stage-synthesis or final .docx reports from computed results. Use for interim review packets after a calculation wave, or as the final deliverable of peer-review responses, calculation reports, and reproductions when accepted claims must be handed to humans with figures, captioned relative-energy tables, and structure figures paired with their data. Encodes report maturity gates: stage reports disclose pending follow-up; final reports consume accepted claims by default."
+disable-model-invocation: true
 ---
 
 # Report Builder

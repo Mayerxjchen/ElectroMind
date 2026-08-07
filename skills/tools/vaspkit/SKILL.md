@@ -1,6 +1,7 @@
 ---
 name: vaspkit
 description: Use VASPKIT to generate VASP helper inputs and post-process VASP outputs, including KPOINTS, band paths, DOS/band data, charge-density differences, planar averages, Bader charge coloring helpers, real-space wavefunctions, partial/orbital charge density, work functions, elastic/EOS summaries, thermochemistry/free-energy corrections, AIMD trajectory post-processing (MSD, diffusion, VACF, VDOS, RDF/trajectory conversion), and batch analysis.
+disable-model-invocation: true
 ---
 
 # VASPKIT

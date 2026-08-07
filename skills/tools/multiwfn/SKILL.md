@@ -1,6 +1,7 @@
 ---
 name: multiwfn
 description: Run and interpret Multiwfn wavefunction analyses for molecular quantum-chemistry outputs. Use for fchk/wfn/molden/cube-based orbital plots, population/charge analysis, spin density, NTO and TD-DFT state analysis, electrostatic potential, ELF/LOL/AIM/NCI/IRI-style analyses, spectra post-processing, and VMD/cube handoff.
+disable-model-invocation: true
 ---
 
 # Multiwfn

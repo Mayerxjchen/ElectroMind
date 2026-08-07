@@ -326,7 +326,9 @@ def test_expected_repository_skill_set(tmp_path):
             "literature-to-calculation",
             "research-orchestrator",
             "review-response",
+            "tesla-mlp-training",
             # tools
+            "ai2kit",
             "cp2k",
             "deepmd",
             "hpc-submit",
