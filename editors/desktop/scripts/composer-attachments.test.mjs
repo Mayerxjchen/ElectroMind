@@ -46,6 +46,18 @@ test("skill is a supported event entry (skills-open contract)", () => {
   assert.equal(s.eventName, "electromind:skills-open");
 });
 
+test("P6: attachmentEntriesForFlags hides skill under compact composer", () => {
+  const compact = m.attachmentEntriesForFlags({ compactComposer: true });
+  assert.ok(!compact.some((e) => e.id === "skill"), "compact 隐藏 Skill 按钮");
+  assert.ok(compact.some((e) => e.id === "file"), "文件入口保留");
+  assert.ok(compact.some((e) => e.id === "image"), "图片入口保留");
+  assert.ok(compact.some((e) => e.id === "folder"), "文件夹入口保留");
+
+  const normal = m.attachmentEntriesForFlags({ compactComposer: false });
+  assert.ok(normal.some((e) => e.id === "skill"), "非 compact 保留 Skill 按钮");
+  assert.equal(normal.length, m.ATTACHMENT_ENTRIES.length);
+});
+
 test("attachmentRef inserts a visible reference, never empty text", () => {
   assert.equal(m.attachmentRef("water64.xyz"), "📎 water64.xyz");
   assert.equal(m.attachmentRef("  spaced  "), "📎 spaced");

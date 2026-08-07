@@ -24,7 +24,7 @@ import {
 } from "../composer-permissions.ts";
 import { lastErrorFromItems } from "../composer-status.ts";
 import {
-  attachmentEntries,
+  attachmentEntriesForFlags,
   attachmentEntry,
   attachmentRef,
 } from "../composer-attachments.ts";
@@ -455,7 +455,9 @@ export const Composer: React.FC<Props> = ({
           </button>
           {attachOpen && (
             <div className="composer-attach-menu" role="menu" data-attach-menu>
-              {attachmentEntries().map((entry) =>
+              {attachmentEntriesForFlags({
+                compactComposer: currentFeature("compact_composer"),
+              }).map((entry) =>
                 entry.supported ? (
                   <button
                     key={entry.id}
@@ -537,8 +539,9 @@ export const Composer: React.FC<Props> = ({
         </button>
       </div>
 
-      {/* D3.4: one-time risk note for auto-approved runs */}
-      {showRiskNote && (
+      {/* D3.4: one-time risk note for auto-approved runs。
+          P6: compact_composer 移除长权限说明（chip 已示 Safe/Full 状态） */}
+      {showRiskNote && !currentFeature("compact_composer") && (
         <div className="composer-risk-note" role="note" data-risk-note>
           <span className="composer-risk-note-text">{riskNoteText(autonomy)}</span>
           <button

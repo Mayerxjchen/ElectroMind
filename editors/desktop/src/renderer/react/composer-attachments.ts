@@ -56,6 +56,18 @@ export function attachmentEntries(): readonly AttachmentEntry[] {
   return ATTACHMENT_ENTRIES;
 }
 
+/** P6: 按 compact_composer 过滤附件条目（纯函数，便于 node --test）。
+ *  compact_composer=true → 隐藏 Skill 入口：/skill v2 + Skill Picker
+ *  已替代旧 Skills 面板按钮（P6 "移除 Skills 按钮"）。 */
+export function attachmentEntriesForFlags(flags: {
+  compactComposer: boolean;
+}): readonly AttachmentEntry[] {
+  if (flags.compactComposer) {
+    return ATTACHMENT_ENTRIES.filter((e) => e.id !== "skill");
+  }
+  return ATTACHMENT_ENTRIES;
+}
+
 export function attachmentEntry(id: string): AttachmentEntry | undefined {
   return ATTACHMENT_ENTRIES.find((e) => e.id === id);
 }
