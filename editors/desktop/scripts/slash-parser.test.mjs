@@ -124,4 +124,19 @@ test("candidates: tokensToArgs maps per command convention", () => {
   assert.deepEqual(candidates.tokensToArgs("reconcile", ["3521223"]), {
     job_id: "3521223",
   });
+  // P3: /skill 管理动词
+  assert.deepEqual(candidates.tokensToArgs("skill.add", ["https://x", "--trust"]), {
+    source: "https://x",
+    trust: true,
+  });
+  assert.deepEqual(candidates.tokensToArgs("skill.add", ["https://x"]), {
+    source: "https://x",
+    trust: false,
+  });
+  assert.deepEqual(candidates.tokensToArgs("skill.trust", ["cp2k"]), {
+    name: "cp2k",
+  });
+  assert.deepEqual(candidates.tokensToArgs("skill.revoke", ["cp2k"]), {
+    name: "cp2k",
+  });
 });

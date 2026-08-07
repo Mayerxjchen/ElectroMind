@@ -576,3 +576,236 @@ test("skill root: /skill <name> <task> blocks untrusted and runs trusted", async
   __seedDesktopFeaturesForTest({});
   resetCommandRegistry();
 });
+
+// ── P3 阶段 2: /skill 管理命令（deterministic 后端接口）─────────────
+
+const MANAGER_IDS = [
+  "skill.add",
+  "skill.trust",
+  "skill.revoke",
+  "skill.update",
+  "skill.remove",
+  "skill.doctor",
+];
+
+/** wire 命令 spy 窗口：EventTarget（confirm-bridge 可收发）+ desktop spy。 */
+function makeWireWindow(events, opts = {}) {
+  const win = new EventTarget();
+  win.desktop = {
+    sendWireCommand: (cmd) => events.push({ type: "wire", cmd }),
+    ...(opts.desktop ?? {}),
+  };
+  const realDispatch = win.dispatchEvent.bind(win);
+  win.dispatchEvent = (e) => {
+    events.push({ type: e.type, detail: e.detail });
+    return realDispatch(e);
+  };
+  if (opts.confirm !== undefined) {
+    win.addEventListener("electromind:confirm-request", (e) => {
+      const d = e.detail;
+      win.dispatchEvent(
+        new CustomEvent("electromind:confirm-resolved", {
+          detail: { requestId: d.requestId, ok: opts.confirm === "yes" },
+        }),
+      );
+    });
+  }
+  return win;
+}
+
+function wireStore(skills) {
+  return {
+    getActiveThreadId: () => "t1",
+    getThread: () => ({ skillsState: { skills } }),
+    getState: () => ({ bridgeActive: true }),
+  };
+}
+
+test("skill manager: all deterministic commands gated on slash_skill_v2 (fail-closed)", async () => {
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const prevWindow = globalThis.window;
+  globalThis.window = makeWireWindow([]);
+  try {
+    for (const id of MANAGER_IDS) {
+      assert.equal(reg.isAvailable(id, wireStore([])), false, `${id} 默认不可用`);
+      const res = await reg.execute(id, wireStore([]), {});
+      assert.equal(res.ok, false);
+      assert.match(res.error, /命令当前不可用/, `${id} 被 registry 拒绝`);
+    }
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});
+
+test("skill trust/revoke/update: wire payloads correct", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const prevWindow = globalThis.window;
+  globalThis.window = makeWireWindow(events);
+  try {
+    const ctx = { store: wireStore([skill("cp2k")]) };
+    const trust = await reg.execute("skill.trust", ctx, { name: "CP2K" });
+    assert.equal(trust.ok, true);
+    let wire = events.find((e) => e.type === "wire")?.cmd;
+    assert.equal(wire.cmd, "skills/trust");
+    assert.equal(wire.name, "cp2k");
+    assert.equal(wire.granted, true);
+
+    events.length = 0;
+    const revoke = await reg.execute("skill.revoke", ctx, { name: "cp2k" });
+    assert.equal(revoke.ok, true);
+    wire = events.find((e) => e.type === "wire")?.cmd;
+    assert.equal(wire.cmd, "skills/trust");
+    assert.equal(wire.granted, false);
+
+    events.length = 0;
+    const update = await reg.execute("skill.update", ctx, { name: "cp2k" });
+    assert.equal(update.ok, true);
+    wire = events.find((e) => e.type === "wire")?.cmd;
+    assert.equal(wire.cmd, "skills/update");
+    assert.equal(wire.name, "cp2k");
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});
+
+test("skill add: parses source + --trust → skills/install", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const prevWindow = globalThis.window;
+  globalThis.window = makeWireWindow(events);
+  try {
+    const ctx = { store: wireStore([]) };
+    const res = await reg.execute("skill.add", ctx, {
+      source: "https://github.com/x/demo",
+      trust: true,
+    });
+    assert.equal(res.ok, true);
+    let wire = events.find((e) => e.type === "wire")?.cmd;
+    assert.equal(wire.cmd, "skills/install");
+    assert.equal(wire.source, "https://github.com/x/demo");
+    assert.equal(wire.trust, true);
+
+    // 缺 source → 报错，不触发 wire
+    events.length = 0;
+    const noSrc = await reg.execute("skill.add", ctx, { source: "" });
+    assert.equal(noSrc.ok, false);
+    assert.equal(events.some((e) => e.type === "wire"), false);
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});
+
+test("skill remove: confirm-yes → skills/remove; confirm-no → aborted", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const ctx = { store: wireStore([skill("demo")]) };
+  const prevWindow = globalThis.window;
+  try {
+    // 确认通过 → 触发 skills/remove
+    globalThis.window = makeWireWindow(events, { confirm: "yes" });
+    const yes = await reg.execute("skill.remove", ctx, { name: "demo" });
+    assert.equal(yes.ok, true);
+    const wire = events.find((e) => e.type === "wire")?.cmd;
+    assert.equal(wire.cmd, "skills/remove");
+    assert.equal(wire.name, "demo");
+
+    // 取消 → 不触发 wire
+    events.length = 0;
+    globalThis.window = makeWireWindow(events, { confirm: "no" });
+    const no = await reg.execute("skill.remove", ctx, { name: "demo" });
+    assert.equal(no.ok, false);
+    assert.match(no.error, /已取消/);
+    assert.equal(events.some((e) => e.type === "wire"), false);
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});
+
+test("skill doctor: read-only health text from skillsState", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const prevWindow = globalThis.window;
+  const events = [];
+  globalThis.window = makeWireWindow(events);
+  try {
+    const ctx = {
+      store: wireStore([
+        skill("cp2k"),
+        skill("ghost", { trust_state: undefined }),
+      ]),
+    };
+    const res = await reg.execute("skill.doctor", ctx, {});
+    assert.equal(res.ok, true);
+    assert.match(res.message, /Skills 2 · Trusted 1 · Untrusted 1/);
+    assert.match(res.message, /缺少 trust_state/);
+    assert.equal(events.some((e) => e.type === "wire"), false, "doctor 只读，不触发 wire");
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});
+
+test("skill root: /skill trust <name> and /skill add <src> --trust delegate to deterministic", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const prevWindow = globalThis.window;
+  globalThis.window = makeWireWindow(events);
+  try {
+    const ctx = { store: wireStore([skill("cp2k")]) };
+    // /skill trust cp2k
+    const t = await reg.execute("skill.root", ctx, {
+      name: "trust",
+      rest: "cp2k",
+      text: "trust cp2k",
+    });
+    assert.equal(t.ok, true);
+    let wire = events.find((e) => e.type === "wire")?.cmd;
+    assert.equal(wire.cmd, "skills/trust");
+    assert.equal(wire.name, "cp2k");
+    assert.equal(wire.granted, true);
+
+    // /skill add https://x --trust
+    events.length = 0;
+    const a = await reg.execute("skill.root", ctx, {
+      name: "add",
+      rest: "https://github.com/x/demo --trust",
+      text: "add https://github.com/x/demo --trust",
+    });
+    assert.equal(a.ok, true);
+    wire = events.find((e) => e.type === "wire")?.cmd;
+    assert.equal(wire.cmd, "skills/install");
+    assert.equal(wire.source, "https://github.com/x/demo");
+    assert.equal(wire.trust, true);
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});

@@ -9,12 +9,13 @@
  *   palette-toggle / enqueue-next
  */
 
-import type { CommandRegistry, CommandSpec, CommandContext } from "./command-registry";
+import type { CommandRegistry, CommandSpec, CommandContext, ParsedArgs } from "./command-registry.ts";
+import { getCommandRegistry } from "./command-registry.ts";
 import { modelPolicyLabel, modelSelectionFromPolicy } from "./model-policy.ts";
 import { requestConfirm } from "./confirm-bridge.ts";
 import { isSkillTrusted } from "../store/types.ts";
 import { currentFeature } from "../features.ts";
-import { skillInfoText, skillListText } from "./skill-view.ts";
+import { skillDoctorText, skillInfoText, skillListText } from "./skill-view.ts";
 
 // ── 事件 / 能力助手 ─────────────────────────────────────────────────
 
@@ -41,6 +42,14 @@ function targetLabel(thread: ReturnType<typeof activeThread>): string {
   if (t.kind === "ssh") return `SSH · ${t.host ?? ""}`;
   if (t.kind === "sandbox") return "Docker Sandbox";
   return "Local";
+}
+
+/** /skill add 参数：`<source> [--trust]` → { source, trust }。 */
+function parseAddArgs(rest: string): ParsedArgs {
+  const tokens = rest.trim().split(/\s+/).filter(Boolean);
+  const trust = tokens.includes("--trust");
+  const source = tokens.filter((t) => t !== "--trust").join(" ");
+  return { source, trust };
 }
 
 function modeLabel(mode: string): string {
@@ -442,24 +451,34 @@ export function registerCoreCommands(registry: CommandRegistry): void {
           if (!skill) return { ok: false, error: `Skill 不存在: ${target}` };
           return { ok: true, message: skillInfoText(skill) };
         }
-        // 管理动词 → P3 阶段 2（deterministic 后端命令）接线前不可用
-        const MANAGER_VERBS = new Set([
-          "add",
-          "trust",
-          "revoke",
-          "update",
-          "remove",
-          "reload",
-          "doctor",
-        ]);
-        if (MANAGER_VERBS.has(name)) {
-          return {
-            ok: false,
-            error: `/skill ${name} 需后端接线（管理命令阶段）`,
-          };
+        // 管理动词 → 委派给 deterministic 命令（本文件下方注册）。
+        // 委派经 registry.execute 重跑 availability（一致 fail-closed）。
+        const rest = String(args.rest ?? "").trim();
+        if (name === "add") {
+          return getCommandRegistry().execute(
+            "skill.add",
+            ctx,
+            parseAddArgs(rest),
+          );
+        }
+        const VERB_TARGETS: Record<string, string> = {
+          trust: "skill.trust",
+          revoke: "skill.revoke",
+          update: "skill.update",
+          remove: "skill.remove",
+          reload: "skills.reload",
+          doctor: "skill.doctor",
+        };
+        if (VERB_TARGETS[name]) {
+          const noArg = name === "doctor" || name === "reload";
+          return getCommandRegistry().execute(
+            VERB_TARGETS[name],
+            ctx,
+            noArg ? {} : { name: rest },
+          );
         }
         // /skill <name> <task> —— agent 执行（Skill 确定性激活）
-        const task = String(args.rest ?? "").trim();
+        const task = rest;
         if (!task) {
           return { ok: false, error: `需要任务描述（/skill ${name} <task>）` };
         }
@@ -487,6 +506,160 @@ export function registerCoreCommands(registry: CommandRegistry): void {
           skill: name,
         });
         return { ok: true, message: `已启动 ${name} 任务（Skill 激活注入上下文）` };
+      },
+    }),
+    // ── /skill 管理命令（P3 阶段 2，deterministic 后端接口）──────────
+    // 全部门控 slash_skill_v2 + 活动会话 + sendWireCommand；wire 命令在
+    // main 侧属 ALLOWED_WIRE_COMMANDS（模型不可触发，仅用户显式操作）。
+    deterministic({
+      id: "skill.add",
+      title: "安装 Skill",
+      description: "从 git URL / 本地目录安装（/skill add <source> [--trust]）",
+      category: "skills",
+      slash: ["skill-add"],
+      usage: "/skill add <source> [--trust]",
+      available: (ctx) =>
+        currentFeature("slash_skill_v2") &&
+        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+      execute: (ctx, args) => {
+        const id = activeThreadId(ctx);
+        const source = String(args.source ?? "").trim();
+        if (!id || !source) {
+          return {
+            ok: false,
+            error: "需要 source（/skill add <git-url|本地目录> [--trust]）",
+          };
+        }
+        const trust = Boolean(args.trust);
+        void window.desktop.sendWireCommand({
+          cmd: "skills/install",
+          thread_id: id,
+          source,
+          trust,
+        });
+        return {
+          ok: true,
+          message: `安装已触发: ${source}${trust ? "（并授予信任）" : ""}`,
+        };
+      },
+    }),
+    deterministic({
+      id: "skill.trust",
+      title: "信任 Skill",
+      description: "授予已安装 Skill 信任（/skill trust <name>）",
+      category: "skills",
+      slash: ["skill-trust"],
+      usage: "/skill trust <name>",
+      available: (ctx) =>
+        currentFeature("slash_skill_v2") &&
+        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+      execute: (ctx, args) => {
+        const id = activeThreadId(ctx);
+        const name = String(args.name ?? "").trim().toLowerCase();
+        if (!id || !name) {
+          return { ok: false, error: "需要 skill 名称（/skill trust <name>）" };
+        }
+        void window.desktop.sendWireCommand({
+          cmd: "skills/trust",
+          thread_id: id,
+          name,
+          granted: true,
+        });
+        return { ok: true, message: `已触发信任: ${name}` };
+      },
+    }),
+    deterministic({
+      id: "skill.revoke",
+      title: "撤销 Skill 信任",
+      description: "撤销已安装 Skill 的信任（/skill revoke <name>）",
+      category: "skills",
+      slash: ["skill-revoke"],
+      usage: "/skill revoke <name>",
+      available: (ctx) =>
+        currentFeature("slash_skill_v2") &&
+        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+      execute: (ctx, args) => {
+        const id = activeThreadId(ctx);
+        const name = String(args.name ?? "").trim().toLowerCase();
+        if (!id || !name) {
+          return { ok: false, error: "需要 skill 名称（/skill revoke <name>）" };
+        }
+        void window.desktop.sendWireCommand({
+          cmd: "skills/trust",
+          thread_id: id,
+          name,
+          granted: false,
+        });
+        return { ok: true, message: `已触发撤销信任: ${name}` };
+      },
+    }),
+    deterministic({
+      id: "skill.update",
+      title: "更新 Skill",
+      description: "从记录来源重新安装并刷新（/skill update <name>）",
+      category: "skills",
+      slash: ["skill-update"],
+      usage: "/skill update <name>",
+      available: (ctx) =>
+        currentFeature("slash_skill_v2") &&
+        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+      execute: (ctx, args) => {
+        const id = activeThreadId(ctx);
+        const name = String(args.name ?? "").trim().toLowerCase();
+        if (!id || !name) {
+          return { ok: false, error: "需要 skill 名称（/skill update <name>）" };
+        }
+        void window.desktop.sendWireCommand({
+          cmd: "skills/update",
+          thread_id: id,
+          name,
+        });
+        return { ok: true, message: `已触发更新: ${name}` };
+      },
+    }),
+    deterministic({
+      id: "skill.remove",
+      title: "卸载 Skill",
+      description: "卸载 installer 管理的 Skill（需二次确认）",
+      category: "skills",
+      slash: ["skill-remove"],
+      usage: "/skill remove <name>",
+      available: (ctx) =>
+        currentFeature("slash_skill_v2") &&
+        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+      execute: async (ctx, args) => {
+        const id = activeThreadId(ctx);
+        const name = String(args.name ?? "").trim().toLowerCase();
+        if (!id || !name) {
+          return { ok: false, error: "需要 skill 名称（/skill remove <name>）" };
+        }
+        const ok = await requestConfirm({
+          title: `卸载 Skill「${name}」？`,
+          message: `将移除 ${name} 及其安装目录（installer 管理的 Skill）。此操作不可撤销。`,
+          confirmText: "卸载",
+          cancelText: "取消",
+        });
+        if (!ok) return { ok: false, error: "已取消" };
+        void window.desktop.sendWireCommand({
+          cmd: "skills/remove",
+          thread_id: id,
+          name,
+        });
+        return { ok: true, message: `已触发卸载: ${name}` };
+      },
+    }),
+    deterministic({
+      id: "skill.doctor",
+      title: "Skills 健康检查",
+      description: "检查 Skills 状态完整性（信任 / 命名 / 重复）",
+      category: "skills",
+      slash: ["skill-doctor"],
+      usage: "/skill doctor",
+      available: () => currentFeature("slash_skill_v2"),
+      execute: (ctx) => {
+        const t = activeThread(ctx);
+        const skills = t?.skillsState?.skills ?? [];
+        return { ok: true, message: skillDoctorText(skills) };
       },
     }),
     ui({

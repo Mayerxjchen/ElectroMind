@@ -56,6 +56,16 @@ export function tokensToArgs(commandId: string, tokens: string[]): ParsedArgs {
         rest: tokens.slice(1).join(" "),
         text: joined,
       };
+    case "skill.add":
+      return {
+        source: tokens.filter((t) => t !== "--trust").join(" "),
+        trust: tokens.includes("--trust"),
+      };
+    case "skill.trust":
+    case "skill.revoke":
+    case "skill.update":
+    case "skill.remove":
+      return { name: tokens[0] ?? "" };
     case "artifact.validate":
       return { artifact_id: tokens[0] ?? "", parser: tokens[1] ?? "" };
     case "thread.new":

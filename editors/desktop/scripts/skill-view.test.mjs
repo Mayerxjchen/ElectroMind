@@ -91,3 +91,41 @@ test("skillInfoText: includes name/description/source/trust/invocation/status/di
   assert.match(text, /状态: available/);
   assert.match(text, /Digest: 0123456789abcdef/);
 });
+
+// ── /skill doctor ───────────────────────────────────────────────────
+
+test("skillDoctorText: empty catalog", () => {
+  assert.equal(view.skillDoctorText([]), "Skills 目录为空");
+});
+
+test("skillDoctorText: healthy catalog counts trusted/untrusted", () => {
+  const text = view.skillDoctorText([
+    skill("cp2k"),
+    skill("demo", { trust_state: "untrusted" }),
+  ]);
+  assert.match(text, /Skills 2 · Trusted 1 · Untrusted 1/);
+  assert.doesNotMatch(text, /⚠/, "健康目录无告警");
+  assert.doesNotMatch(text, /ℹ/, "无 model-only 明细");
+});
+
+test("skillDoctorText: missing trust_state flagged as fail-closed", () => {
+  const text = view.skillDoctorText([
+    skill("cp2k"),
+    skill("ghost", { trust_state: undefined }),
+  ]);
+  assert.match(text, /1 个缺少 trust_state/);
+  assert.match(text, /ghost/);
+});
+
+test("skillDoctorText: duplicate names flagged", () => {
+  const text = view.skillDoctorText([skill("dup"), skill("dup")]);
+  assert.match(text, /重复名称: dup/);
+});
+
+test("skillDoctorText: model-only detail listed", () => {
+  const text = view.skillDoctorText([
+    skill("cp2k"),
+    skill("auto", { invocation: "model" }),
+  ]);
+  assert.match(text, /1 个仅模型可调用: auto/);
+});
