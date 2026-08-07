@@ -224,7 +224,10 @@ def compute_fingerprint(root: Path, errors: list[str]) -> dict:
         ):
             path = first_existing(s, names)
             if path:
-                info = load_array(path, "flat" if label == "energy" else "33", errors)
+                # dpdata raw layout: energy 1 col/frame, force natoms*3
+                # cols/frame (folded to (frames, natoms, 3)), virial 9 cols.
+                modes = {"energy": "flat", "force": "n3", "virial": "33"}
+                info = load_array(path, modes[label], errors)
                 if info is None:
                     continue
                 if info["nonfinite"]:
