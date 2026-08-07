@@ -345,6 +345,83 @@ describe("ThreadStore protocol v2", () => {
     assert.equal(t.activeRun, null);
   });
 
+  // ── P5: model/resolved + snapshot model provenance ────────────────
+
+  it("model/resolved maps fallback audit payload", () => {
+    store.applyWireEvent("model/resolved", {
+      thread_id: "t1",
+      seq: 1,
+      model_policy: "Auto",
+      effective_model: "deepseek-v4-flash",
+      reason: "session-mode:plan:best",
+      phase: "plan",
+      fallback: {
+        from_model: "deepseek-v4-pro",
+        to_model: "deepseek-v4-flash",
+        error_class: "model_unavailable",
+        occurred_at: "2026-08-07T00:00:00Z",
+        before_side_effects: true,
+      },
+    });
+    const mr = store.ensureThread("t1").modelResolved;
+    assert.equal(mr.effectiveModel, "deepseek-v4-flash");
+    assert.equal(mr.policy, "Auto");
+    assert.deepEqual(mr.fallback, {
+      fromModel: "deepseek-v4-pro",
+      toModel: "deepseek-v4-flash",
+      errorClass: "model_unavailable",
+      occurredAt: "2026-08-07T00:00:00Z",
+      beforeSideEffects: true,
+    });
+  });
+
+  it("model/resolved without fallback leaves fallback undefined", () => {
+    store.applyWireEvent("model/resolved", {
+      thread_id: "t1",
+      seq: 1,
+      model_policy: "Auto",
+      effective_model: "deepseek-v4-pro",
+      reason: "session-mode:agent:balanced",
+      phase: "plan",
+    });
+    const mr = store.ensureThread("t1").modelResolved;
+    assert.equal(mr.effectiveModel, "deepseek-v4-pro");
+    assert.equal(mr.fallback, undefined);
+  });
+
+  it("applySnapshot restores modelResolved from run_snapshot.model", () => {
+    store.applySnapshot({
+      thread_id: "t1",
+      status: "idle",
+      last_seq: 5,
+      run_snapshot: { model: "deepseek-v4-pro" },
+    });
+    const mr = store.ensureThread("t1").modelResolved;
+    assert.equal(mr.effectiveModel, "deepseek-v4-pro");
+    assert.equal(mr.reason, "restored-from-snapshot");
+    // policy label derived from default auto selection
+    assert.equal(mr.policy, "Auto");
+  });
+
+  it("applySnapshot does not clobber a live model/resolved event", () => {
+    store.applyWireEvent("model/resolved", {
+      thread_id: "t1",
+      seq: 1,
+      model_policy: "Auto",
+      effective_model: "deepseek-v4-flash",
+      reason: "session-mode:ask:fast",
+      phase: "plan",
+    });
+    store.applySnapshot({
+      thread_id: "t1",
+      status: "idle",
+      last_seq: 10,
+      run_snapshot: { model: "deepseek-v4-pro" },
+    });
+    const mr = store.ensureThread("t1").modelResolved;
+    assert.equal(mr.effectiveModel, "deepseek-v4-flash"); // live event wins
+  });
+
   // ── End-to-end: full run lifecycle ───────────────────────────────
 
   it("full run lifecycle: start → items → complete", () => {

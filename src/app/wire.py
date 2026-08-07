@@ -636,6 +636,8 @@ def _emit_model_resolved(
     Run 开始时解析一次并广播；客户端据此显示 "Auto · <模型>" 与审计原因。
     phase: hybrid plan-execute 的阶段（plan→best / execute→balanced）。
     """
+    from datetime import datetime, timezone
+
     from electromind.model_resolver import (
         parse_model_policy,
         policy_label,
@@ -651,21 +653,35 @@ def _emit_model_resolved(
         mode = "agent"
     policy = parse_model_policy(config.model)
     try:
-        res = resolve_model(policy, session_mode=mode, phase=phase)  # type: ignore[arg-type]
+        res = resolve_model(
+            policy,
+            session_mode=mode,
+            phase=phase,  # type: ignore[arg-type]
+            now=datetime.now(timezone.utc).isoformat(),
+        )
     except (Exception, SystemExit):  # noqa: BLE001 — 解析失败给可读降级
         res = None
-    _emit_jsonrpc(
-        "model/resolved",
-        {
-            "thread_id": thread_id,
-            "model_policy": policy_label(policy),
-            "effective_model": res.effective_model
-            if res is not None
-            else config.resolved_model(),
-            "reason": res.reason if res is not None else "resolve-failed",
-            "phase": phase,
-        },
-    )
+    payload: dict = {
+        "thread_id": thread_id,
+        "model_policy": policy_label(policy),
+        "effective_model": res.effective_model
+        if res is not None
+        else config.resolved_model(),
+        "reason": res.reason if res is not None else "resolve-failed",
+        "phase": phase,
+    }
+    # P5: 降级显式携带审计（路由目标不可用时）—— 客户端据此显示 "降级"。
+    # 解析发生在 Run 开始、任何工具副作用之前（before_side_effects=True）。
+    if res is not None and res.fallback is not None:
+        fb = res.fallback
+        payload["fallback"] = {
+            "from_model": fb.from_model,
+            "to_model": fb.to_model,
+            "error_class": fb.error_class,
+            "occurred_at": fb.occurred_at,
+            "before_side_effects": fb.before_side_effects,
+        }
+    _emit_jsonrpc("model/resolved", payload)
 
 
 def _emit_jsonrpc(method: str, params: dict) -> None:

@@ -130,6 +130,35 @@ class TestAvailability:
         )
         assert r.effective_model == "custom-model"
 
+    def test_fallback_audit_recorded_when_degraded(self):
+        """P5: 路由目标不可用 → 显式携带 Fallback 审计（原/替代/分类/时间/副作用）。"""
+        r = resolve_model(
+            AUTO_POLICY,
+            session_mode="plan",
+            available_models=("deepseek-v4-flash",),
+            now="2026-08-07T00:00:00Z",
+        )
+        assert r.effective_model == "deepseek-v4-flash"
+        assert r.fallback is not None
+        assert r.fallback.from_model == "deepseek-v4-pro"  # 路由目标
+        assert r.fallback.to_model == "deepseek-v4-flash"  # 实际降级
+        assert r.fallback.error_class == "model_unavailable"
+        assert r.fallback.occurred_at == "2026-08-07T00:00:00Z"
+        assert r.fallback.before_side_effects is True  # Run 开始、副作用之前
+
+    def test_no_fallback_when_target_available(self):
+        r = resolve_model(AUTO_POLICY, session_mode="agent")
+        assert r.fallback is None, "目标可用时不记录降级"
+
+    def test_fallback_not_recorded_without_timestamp(self):
+        r = resolve_model(
+            AUTO_POLICY,
+            session_mode="plan",
+            available_models=("deepseek-v4-flash",),
+        )
+        assert r.fallback is not None
+        assert r.fallback.occurred_at == ""  # now 未填 → 空串（调用方负责填时间）
+
 
 class TestFixedRules:
     """固定规则：每次 Run 开始解析一次；Run 开始后固定（不因重试切换）。"""

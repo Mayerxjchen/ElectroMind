@@ -36,6 +36,7 @@ import type {
   ThreadSummary,
 } from "./types.ts";
 import { createInitialInspectorState } from "../inspector-model.ts";
+import { modelPolicyLabel } from "../react/model-policy.ts";
 import {
   createProjectionState,
   reduceTimeline,
@@ -670,12 +671,23 @@ export class ThreadStore {
 
       // ── P3: model/resolved —— Run 开始时后端解析一次的广播 ────────
       case "model/resolved": {
+        const fallback = params.fallback as Record<string, unknown> | undefined;
         this.updateThread(threadId, {
           modelResolved: {
             policy: String(params.model_policy ?? "Auto"),
             effectiveModel: String(params.effective_model ?? ""),
             reason: String(params.reason ?? ""),
             phase: String(params.phase ?? "plan"),
+            fallback:
+              fallback && typeof fallback === "object"
+                ? {
+                    fromModel: String(fallback.from_model ?? ""),
+                    toModel: String(fallback.to_model ?? ""),
+                    errorClass: String(fallback.error_class ?? ""),
+                    occurredAt: String(fallback.occurred_at ?? ""),
+                    beforeSideEffects: fallback.before_side_effects !== false,
+                  }
+                : undefined,
           },
         } as never);
         return true;
@@ -1180,6 +1192,21 @@ export class ThreadStore {
         runId: String(a.run_id ?? params.active_run_id ?? ""),
         timestamp: Date.now(),
       }));
+    }
+
+    // P5: run_snapshot.model 携带 Run 冻结模型 —— 重启恢复时没有 model/resolved
+    // 事件，从快照还原 modelResolved；policy 标签由当前 ModelSelection 推导。
+    const runSnapshot = params.run_snapshot as Record<string, unknown> | undefined;
+    if (runSnapshot && typeof runSnapshot === "object" && !t.modelResolved) {
+      const effective = String(runSnapshot.model ?? "");
+      if (effective) {
+        t.modelResolved = {
+          policy: modelPolicyLabel(t.model),
+          effectiveModel: effective,
+          reason: "restored-from-snapshot",
+          phase: "plan",
+        };
+      }
     }
 
     // G1: 恢复 Plan / Artifact 领域状态（重启后 Thread/Run/Plan/Approval/

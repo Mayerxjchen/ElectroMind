@@ -87,3 +87,45 @@ def test_model_resolved_failure_degrades_gracefully(monkeypatch):
     captured = [json.loads(line) for line in lines]
     assert captured[0]["params"]["effective_model"] == "deepseek-v4-flash"
     assert captured[0]["params"]["reason"] == "resolve-failed"
+
+
+def test_model_resolved_no_fallback_key_when_normal(monkeypatch):
+    """无降级时 model/resolved 不带 fallback 字段（向后兼容）。"""
+    lines = _capture(monkeypatch)
+    wire._emit_model_resolved(ReplConfig(model="auto", session_mode="ask"), None, "t1")
+    payload = json.loads(lines[0])["params"]
+    assert "fallback" not in payload
+
+
+def test_model_resolved_fallback_payload(monkeypatch):
+    """P5: 降级时 model/resolved 携带 fallback 审计（原/替代/分类/时间/副作用）。"""
+    import electromind.model_resolver as mr
+    from electromind.model_resolver import ModelFallback, ModelResolution
+
+    monkeypatch.setattr(
+        mr,
+        "resolve_model",
+        lambda *a, **k: ModelResolution(
+            policy="Auto",
+            effective_model="deepseek-v4-flash",
+            reason="session-mode:plan:best",
+            fallback=ModelFallback(
+                from_model="deepseek-v4-pro",
+                to_model="deepseek-v4-flash",
+                error_class="model_unavailable",
+                occurred_at="2026-08-07T00:00:00Z",
+                before_side_effects=True,
+            ),
+        ),
+    )
+    lines = _capture(monkeypatch)
+    wire._emit_model_resolved(ReplConfig(model="auto", session_mode="plan"), None, "t1")
+    payload = json.loads(lines[0])["params"]
+    assert payload["effective_model"] == "deepseek-v4-flash"
+    assert payload["fallback"] == {
+        "from_model": "deepseek-v4-pro",
+        "to_model": "deepseek-v4-flash",
+        "error_class": "model_unavailable",
+        "occurred_at": "2026-08-07T00:00:00Z",
+        "before_side_effects": True,
+    }

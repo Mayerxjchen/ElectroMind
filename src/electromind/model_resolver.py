@@ -131,21 +131,50 @@ def _model_for_profile(
     profile: Profile,
     route: RouteTable,
     available: tuple[str, ...],
-) -> str:
-    """档位 → 模型；若路由目标不在可用列表，回退到可用列表里档位最高的模型。"""
+) -> tuple[str, bool]:
+    """档位 → 模型；若路由目标不在可用列表，回退到可用列表里档位最高的模型。
+
+    返回 ``(model, degraded)``：degraded=True 表示发生了 fallback（路由目标
+    不可用，实际模型低于目标档位）—— 调用方据此记录审计。
+    """
     candidate = route.get(profile)
     if candidate and candidate in available:
-        return candidate
+        return candidate, False
     # 路由目标不可用 → 按档位降序在可用列表里找（第一版不跨服务商）。
     rank = _PROFILE_RANK[profile]
     for p, r in sorted(_PROFILE_RANK.items(), key=lambda kv: -kv[1]):
         if r <= rank:
             m = route.get(p)
             if m and m in available:
-                return m
+                return m, True
     if available:
-        return available[-1]
-    return route.get(profile) or "deepseek-v4-flash"
+        return available[-1], True
+    return (route.get(profile) or "deepseek-v4-flash"), True
+
+
+def _fallback_for(
+    *,
+    from_model: str | None,
+    to_model: str,
+    degraded: bool,
+    now: str | None,
+) -> ModelFallback | None:
+    """路由目标不可用 → 记录 Fallback 审计（原/替代/错误分类/时间/副作用）。
+
+    P5（修订版文档 §P5）：fallback 必须显式携带审计；``degraded=False`` 或
+    无路由目标可比对（``from_model`` 缺失）时返回 None。``occurred_at`` 由
+    调用方填入（解析器保持纯模块）；``before_side_effects=True`` —— 解析发生
+    在 Run 开始、任何工具副作用之前。
+    """
+    if not degraded or not from_model or from_model == to_model:
+        return None
+    return ModelFallback(
+        from_model=from_model,
+        to_model=to_model,
+        error_class="model_unavailable",
+        occurred_at=now or "",
+        before_side_effects=True,
+    )
 
 
 def resolve_model(
@@ -156,17 +185,19 @@ def resolve_model(
     route: RouteTable | None = None,
     skill_requirement: Profile | None = None,
     phase: Literal["plan", "execute"] = "plan",
+    now: str | None = None,
 ) -> ModelResolution:
     """解析一次（Run 开始时调用；Run 开始后固定）。
 
     session_mode: "ask" | "plan" | "agent"（run 视为 agent）
     skill_requirement: Skill 声明的最低档位（如 "best"）
     phase: hybrid plan-execute 的阶段；plan → best，execute → balanced
+    now: fallback 审计的 occurred_at（调用方填 ISO 时间；解析器不取时钟）
     """
     available = available_models or DEFAULT_AVAILABLE_MODELS
     table: RouteTable = {**DEFAULT_ROUTE, **(route or {})}
 
-    # 1. named：用户指定，不做解析
+    # 1. named：用户指定，不做解析（可用性由 provider 层校验）
     if policy.kind == "named" and policy.model_id:
         return ModelResolution(
             policy=policy_label(policy),
@@ -177,31 +208,52 @@ def resolve_model(
 
     # 2. profile：直接查路由表
     if policy.kind == "profile" and policy.profile:
+        model, degraded = _model_for_profile(policy.profile, table, available)
         return ModelResolution(
             policy=policy_label(policy),
-            effective_model=_model_for_profile(policy.profile, table, available),
+            effective_model=model,
             reason=f"policy:profile:{policy.profile}",
             phase=phase,
+            fallback=_fallback_for(
+                from_model=table.get(policy.profile),
+                to_model=model,
+                degraded=degraded,
+                now=now,
+            ),
         )
 
     # 3. hybrid plan-execute：plan 阶段 best，execute 阶段 balanced
     if policy.kind == "hybrid":
         prof: Profile = "best" if phase == "plan" else "balanced"
+        model, degraded = _model_for_profile(prof, table, available)
         return ModelResolution(
             policy=policy_label(policy),
-            effective_model=_model_for_profile(prof, table, available),
+            effective_model=model,
             reason=f"policy:hybrid:phase:{phase}:{prof}",
             phase=phase,
+            fallback=_fallback_for(
+                from_model=table.get(prof),
+                to_model=model,
+                degraded=degraded,
+                now=now,
+            ),
         )
 
     # 4. auto：按 Session Mode + Skill Requirement
     # Skill 声明最低能力 → 优先满足（至少达到该档位）
     if skill_requirement and skill_requirement in _PROFILE_RANK:
+        model, degraded = _model_for_profile(skill_requirement, table, available)
         return ModelResolution(
             policy=policy_label(policy),
-            effective_model=_model_for_profile(skill_requirement, table, available),
+            effective_model=model,
             reason=f"skill-requirement:{skill_requirement}",
             phase=phase,
+            fallback=_fallback_for(
+                from_model=table.get(skill_requirement),
+                to_model=model,
+                degraded=degraded,
+                now=now,
+            ),
         )
     mode = session_mode.lower()
     if mode == "ask":
@@ -210,9 +262,16 @@ def resolve_model(
         prof = "best"
     else:  # agent / run
         prof = "balanced"
+    model, degraded = _model_for_profile(prof, table, available)
     return ModelResolution(
         policy=policy_label(policy),
-        effective_model=_model_for_profile(prof, table, available),
+        effective_model=model,
         reason=f"session-mode:{mode}:{prof}",
         phase=phase,
+        fallback=_fallback_for(
+            from_model=table.get(prof),
+            to_model=model,
+            degraded=degraded,
+            now=now,
+        ),
     )

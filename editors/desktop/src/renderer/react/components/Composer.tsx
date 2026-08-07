@@ -42,6 +42,7 @@ import {
   tokensToArgs,
 } from "../slash-candidates.ts";
 import { getCommandRegistry } from "../command-registry.ts";
+import { currentFeature } from "../../features.ts";
 import type { CommandSpec } from "../command-registry.ts";
 import { modelPolicyLabel } from "../model-policy.ts";
 import type { ModelSelection } from "../../store/types";
@@ -493,17 +494,22 @@ export const Composer: React.FC<Props> = ({
         </div>
 
         {/* P3/P5: Auto Model —— 紧凑状态 chip（替代常驻宽下拉框），
-            点击打开 Model Picker；实际模型来自后端 model/resolved */}
+            点击打开 Model Picker；实际模型来自后端 model/resolved。
+            P5: 降级时（auto_model_v2 门控）显示 ⇣ 原模型溯源。 */}
         <button
           type="button"
           className="composer-model-chip"
           data-model-chip
           onClick={() => setModelPickerOpen((v) => !v)}
-          title={`模型策略 ${modelPolicyLabel(model as ModelSelection)} · 实际 ${thread?.modelResolved?.effectiveModel ?? "待 Run 解析"}`}
+          title={`模型策略 ${modelPolicyLabel(model as ModelSelection)} · 实际 ${thread?.modelResolved?.effectiveModel ?? "待 Run 解析"}${thread?.modelResolved?.fallback ? ` · 降级自 ${thread.modelResolved.fallback.fromModel}` : ""}`}
         >
           {modelPolicyLabel(model as ModelSelection)}
           {thread?.modelResolved?.effectiveModel
             ? ` · ${thread.modelResolved.effectiveModel}`
+            : ""}
+          {currentFeature("auto_model_v2") &&
+          thread?.modelResolved?.fallback?.fromModel
+            ? ` ⇣ ${thread.modelResolved.fallback.fromModel}`
             : ""}
         </button>
 

@@ -55,6 +55,17 @@ export type ModelResolved = {
   effectiveModel: string;
   reason: string;
   phase: string;
+  /** P5: 路由目标不可用时的降级审计（原/替代/分类/时间/副作用）。 */
+  fallback?: ModelFallbackInfo;
+};
+
+/** P5: 模型降级审计 —— 发生于 Run 开始、副作用之前。 */
+export type ModelFallbackInfo = {
+  fromModel: string;
+  toModel: string;
+  errorClass: string;
+  occurredAt: string;
+  beforeSideEffects: boolean;
 };
 
 export type ExecutionTarget =

@@ -83,6 +83,7 @@ class ArtifactManifest:
     path: str  # 相对工作目录或绝对路径
     sha256: str  # 文件内容摘要
     run_id: str = ""
+    model: str = ""  # P5: 产生该产物的 Run 冻结模型（溯源；空 = 无 Run 或旧数据）
     step_id: str = ""
     created_by: str = ""  # tool_call_id / parser 名 / user
     created_by_role: str = "agent"  # P0-6: 创建者角色（agent/reviewer/...）
@@ -125,6 +126,7 @@ class ArtifactManifest:
             path=self.path,
             sha256=self.sha256,
             run_id=self.run_id,
+            model=self.model,
             step_id=self.step_id,
             created_by=self.created_by,
             created_by_role=self.created_by_role,
@@ -164,6 +166,7 @@ class ArtifactManifest:
             path=validated.path,
             sha256=validated.sha256,
             run_id=validated.run_id,
+            model=validated.model,
             step_id=validated.step_id,
             created_by=validated.created_by,
             created_by_role=validated.created_by_role,
@@ -242,6 +245,7 @@ class ArtifactManifest:
             path=rejected.path,
             sha256=rejected.sha256,
             run_id=rejected.run_id,
+            model=rejected.model,
             step_id=rejected.step_id,
             created_by=rejected.created_by,
             created_by_role=rejected.created_by_role,
@@ -275,6 +279,7 @@ class ArtifactManifest:
             "path": self.path,
             "sha256": self.sha256,
             "run_id": self.run_id,
+            "model": self.model,
             "step_id": self.step_id,
             "created_by": self.created_by,
             "created_by_role": self.created_by_role,
@@ -301,6 +306,7 @@ class ArtifactManifest:
             path=d.get("path", ""),
             sha256=d.get("sha256", ""),
             run_id=d.get("run_id", ""),
+            model=d.get("model", ""),  # 旧数据无 model → 空（向后兼容）
             step_id=d.get("step_id", ""),
             created_by=d.get("created_by", ""),
             created_by_role=d.get("created_by_role", "agent"),

@@ -234,7 +234,21 @@ class RunEngine:
     def artifact_register(
         self, thread_id: str, manifest: ArtifactManifest
     ) -> ArtifactManifest:
-        """登记新产物（CREATED）；同 id 内容变化记录 replace 事件。"""
+        """登记新产物（CREATED）；同 id 内容变化记录 replace 事件。
+
+        P5: 用当前 Run 的冻结模型补齐溯源（manifest 未携带 model 时）。无活动
+        Run / 快照缺模型 / 旧数据保持原样（向后兼容）。
+        """
+        if not manifest.model:
+            session = self.manager.get_session(thread_id)
+            snap = (
+                getattr(session, "run_snapshot", None)
+                if session is not None
+                else None
+            )
+            model = getattr(snap, "model", "") if snap is not None else ""
+            if model:
+                manifest = replace(manifest, model=str(model))
         registry = self._ensure_artifacts(thread_id)
         stored = registry.register(manifest)
         self._emit_state(thread_id, "artifact", {"artifact": stored.to_dict()})

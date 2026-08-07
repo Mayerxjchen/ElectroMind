@@ -108,6 +108,24 @@ def test_manifest_roundtrip():
     assert ArtifactManifest.from_dict(d) == m
 
 
+def test_manifest_model_roundtrip():
+    """P5: model 溯源字段随序列化往返，状态推进不丢失。"""
+    m = _manifest(model="deepseek-v4-pro")
+    d = m.to_dict()
+    assert d["model"] == "deepseek-v4-pro"
+    assert ArtifactManifest.from_dict(d).model == "deepseek-v4-pro"
+    # 状态推进（complete/validate）不得清空 model
+    progressed = m.complete().validate(parser="p")
+    assert progressed.model == "deepseek-v4-pro"
+
+
+def test_manifest_model_absent_backward_compat():
+    """旧数据无 model 字段 → 空串（向后兼容）。"""
+    d = _manifest().to_dict()
+    del d["model"]
+    assert ArtifactManifest.from_dict(d).model == ""
+
+
 # ── Registry ────────────────────────────────────────────────────────────
 
 
