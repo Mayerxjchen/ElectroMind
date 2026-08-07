@@ -7,12 +7,12 @@
 | Gate | What to check |
 |---|---|
 | Held-out regression | `dp test` on data not used for training; report energy RMSE per atom and force RMSE, and keep detail files for parity plots. |
-| Dataset size | By default, at least `10000` filtered DFT-labeled frames before the first production split/training; smaller sets are pilot/exception cases unless explicitly justified. |
+| Dataset sufficiency | No fixed frame count defines sufficiency. Assess configuration-space coverage, held-out energy/force accuracy, model deviation/uncertainty, active-learning convergence (if used), MD stability, and the target physical observables. |
 | Learning curve | `lcurve.out` training and validation errors both converge; large train/validation gap means overfitting; plot energy, force, and learning-rate traces. |
 | Parity/residual plots | Held-out energy parity, force parity, and force residual histogram show no systematic curvature, source-specific bias, or high-temperature-only failure. |
 | Physics checks | lattice/volume, a known defect/adsorption/reaction energy, diffusion trend, or barrier vs DFT for the target system. |
 | MD stability | short NVE or weakly thermostatted run has no atom loss, unphysical chemistry, or severe energy drift. |
-| In-distribution monitor | Optional 4-model DeePMD committee force model deviation when active learning or high-risk extrapolation is requested. |
+| In-distribution monitor | Optional 4-model DeePMD committee force model deviation when active learning or high-risk extrapolation is requested (mechanism below); when to run it and the selection/stopping strategy are owned by `tesla-mlp-training`. |
 | Dataset coverage map | Required before DPMD handoff/report use: make a descriptor PCA over all compatible DFT `train`, `val`, and `test` frames to inspect split coverage and duplicates, not to claim accuracy. |
 
 Regression starting points:
@@ -51,8 +51,9 @@ dp test -m graph.pb -s ./test_data -n 0 -d detail_file
 Report:
 
 - model path and whether compressed.
-- total filtered DFT-labeled frame count before splitting; flag anything below `10000`
-  as pilot/exception unless there is a documented special reason.
+- total filtered DFT-labeled frame count before splitting; state it as a project
+  parameter and the sufficiency evidence (coverage, held-out accuracy, deviation,
+  stability), not as a pass/fail gate by itself.
 - test data path, frame count, compositions, and temperature/structure coverage.
 - `Energy RMSE/Natoms` in eV/atom or meV/atom.
 - `Force RMSE` in eV/A.
@@ -105,9 +106,9 @@ coverage diagnostics.
 
 Use this when the user asks for active learning/concurrent learning, when DPMD is being
 used to explore unknown phase space, or when held-out/physics checks suggest serious
-extrapolation risk. It is not the default way to build the initial dataset because
-training four comparable models is usually slower than adding targeted AIMD labels from
-different initial structures and temperatures.
+extrapolation risk. The active-learning strategy around it (when to start, per-round
+selection counts, thresholds, stopping criteria) is owned by `tesla-mlp-training`; this
+section covers the mechanism for running a DeePMD committee deviation monitor.
 
 Train at least four models with identical data/settings but different random seeds. In LAMMPS:
 

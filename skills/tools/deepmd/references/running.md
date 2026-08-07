@@ -5,7 +5,7 @@
 ## Workflow shape
 
 ```text
-define target simulation -> generate at least 10000 filtered DFT/AIMD labels by default
+define target simulation -> generate DFT/AIMD labels covering the target distribution
   -> convert with dpdata -> count/filter frames -> split train/validation/test
   -> train a DP model -> freeze/compress -> dp test on held-out data with detail files
   -> lcurve/parity plots -> DFT-all descriptor PCA -> automatic DeepMD QA verdict
@@ -71,11 +71,11 @@ the PCA figure, or run individual helpers only for debugging.
 
 Default bootstrap strategy:
 
-- Prefer more VASP/CP2K AIMD labels from several physically plausible initial models
-  and several temperatures over a default 4-model committee active-learning loop.
-- Unless there is a documented special reason, assemble at least `10000` filtered
-  DFT-labeled frames before the first split and production training. This is a default
-  floor for usable DeepMD bootstrap data, not a guarantee of sufficiency.
+- Assemble VASP/CP2K AIMD labels from several physically plausible initial models and
+  several temperatures. No fixed frame count defines sufficiency: assess
+  configuration-space coverage, held-out energy/force accuracy, model
+  deviation/uncertainty, active-learning convergence, MD stability, and the target
+  physical observables.
 - Use different initial structures to cover composition/order/defect/interface or
   adsorption motifs that the final DPMD may visit. Do not let one relaxed minimum define
   the whole training distribution.
@@ -88,13 +88,13 @@ Default bootstrap strategy:
 - Count only converged, chemically sensible frames after filtering. Raw AIMD step count
   is not the dataset size if some electronic steps failed, structures decomposed, or
   duplicate/equilibrating frames are discarded.
-- If the project deliberately starts below `10000` labels because the system is
-  unusually expensive, the request is only a smoke test/pilot, or the user asked for a
-  quick run, record that exception and keep the model out of production reporting until
-  more labels are added.
-- Only switch to 4-model committee/DP-GEN-style active learning when the user requests
-  it, when DPMD exploration is the project goal, or when held-out/physics checks show a
-  clear extrapolation gap that targeted AIMD cannot cover efficiently.
+- If the project deliberately starts with a small set (unusually expensive system,
+  smoke test/pilot, or user-directed quick run), record that exception explicitly and
+  keep the model out of production reporting until more labels are added.
+- 4-model committee/DP-GEN-style active learning is an available mechanism (see
+  `references/validation.md`); its strategy — when to start it, per-round selection
+  counts, model-deviation thresholds, stopping criteria — is owned by
+  `tesla-mlp-training`.
 
 Typical sources:
 
@@ -109,8 +109,8 @@ Sampling strategies:
   600, 800, 1000, 1200, and 1400 K for high-temperature diffusion or transport studies.
 - Add new AIMD data when validation shows gaps: under-covered structures,
   high-temperature failure, unstable DPMD, poor held-out errors by source, or physics
-  checks that disagree with DFT. Model deviation/DP-GEN can automate this loop, but is
-  not the default path because 4-model committee training is usually slower.
+  checks that disagree with DFT. Model deviation/DP-GEN can automate this loop; the
+  strategy for running it is owned by `tesla-mlp-training`.
 
 Hard filter before conversion:
 
@@ -178,9 +178,9 @@ systems = [
     "data/model_B_1000K",
 ]
 nframes = sum(len(dpdata.LabeledSystem(path, fmt="deepmd/npy")) for path in systems)
-if nframes < 10000:
-    raise SystemExit(f"Need >=10000 filtered DFT frames by default; found {nframes}")
 print(f"filtered DFT-labeled frames: {nframes}")
+# sufficiency is judged by coverage + held-out accuracy + deviation + stability,
+# not by a fixed frame count; record the count and the sufficiency evidence.
 ```
 
 DeepMD npy layout to inspect when debugging:

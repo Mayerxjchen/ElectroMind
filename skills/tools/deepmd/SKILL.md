@@ -24,17 +24,16 @@ Deep Potential Molecular Dynamics uses a trained DP model to provide energies an
 ## Hard guardrails
 
 - The training distribution must cover the production task: composition, phase, defects/interfaces, volume/strain, temperature, and relevant reactive/diffusive events.
-- Default initial-dataset strategy: generate more DFT/AIMD labels from multiple
-  physically plausible starting models and multiple temperatures before training the
-  first production DP model. Prefer this direct coverage expansion over default
-  4-model committee active learning unless the user explicitly requests concurrent
-  learning, model-deviation exploration, or the validation risk justifies the cost.
-- Unless there is a documented special reason, collect at least `10000` filtered
-  DFT-labeled frames before the first dataset split and production training. Count
-  converged, chemically sensible frames after filtering, not raw AIMD ionic steps. If a
-  smaller set is used for a smoke test, expensive pilot, strict reproduction, or
-  user-directed quick run, label the result as non-production/pilot until more labels
-  are added.
+- No fixed frame count universally defines a production-ready potential.
+  Dataset sufficiency is assessed using: configuration-space coverage,
+  held-out energy/force accuracy, model deviation/uncertainty,
+  active-learning convergence, MD stability, target physical observables.
+  50/500/10000 frames are project parameters, not global hard guardrails;
+  record any deliberate small-set pilot as an explicit non-production exception.
+  Initial-dataset design and active-learning strategy (when to start collecting,
+  per-round selection counts, model-deviation thresholds, stopping criteria) is owned
+  by `tesla-mlp-training`; this skill owns the mechanics of converting, training,
+  validating, and deploying DeepMD models.
 - For high-temperature diffusion, transport, or reactive MD work, include training
   frames at temperatures at least as high as the final DPMD temperature;
   low-temperature-only AIMD gives a narrow potential-energy surface.
@@ -42,9 +41,9 @@ Deep Potential Molecular Dynamics uses a trained DP model to provide energies an
 - The `type_map` order is a contract. It must match dpdata output and LAMMPS atom types.
 - Production DPMD requires validation outside the training frames: held-out error,
   learning-curve review, parity plots, dataset coverage checks, physics checks, and
-  short stability tests. A 4-model committee model-deviation monitor is optional and
-  should be used only when requested or when uncertainty/extrapolation risk is the main
-  objective.
+  short stability tests. Model deviation is available as an uncertainty monitor
+  (`references/validation.md`); when to run a committee model-deviation monitor is an
+  active-learning strategy choice owned by `tesla-mlp-training`.
 - Default DeepMD execution is chained, not interactive. After DFT label sources are
   identified, proceed through conversion/splitting, `dp train`, learning-curve plot,
   `dp freeze`, held-out `dp test`, parity plots, DFT-all descriptor PCA, and the QA

@@ -1,11 +1,21 @@
 ---
 name: comp-chem-workflow
-description: Entry point and controller for computational chemistry and materials workflows. Use when the agent must design, prepare, run, monitor, resume, validate, or report multi-stage atomistic work - DFT, quantum chemistry, MD, machine-learning potentials, phonons, HPC pipelines, benchmarks, reproductions, or literature/reviewer-derived calculations.
+description: >
+  General controller for multi-stage computational chemistry workflows
+  that do not have a dedicated procedure. Use tesla-mlp-training for
+  ai2-kit/TESLA machine-learning-potential workflows.
 ---
 
 # Computational Chemistry Workflow Controller
 
-Use this skill first for any nontrivial computational task. It owns the lifecycle, the durable state record, the validation ladder, iterative scientific review loops, and the approval breakpoints; domain skills (`structure-prep`, `vasp`, `cp2k`, `lammps`, `hpc-submit`) own the engine-specific work, including parsing their own outputs.
+Dedicated procedures take precedence: TESLA/active-learning MLIP workflows ->
+`tesla-mlp-training`; reviewer-response campaigns -> `review-response`;
+document-derived calculations -> `literature-to-calculation`; everything else
+with a nontrivial computational task -> this skill. This skill owns the
+lifecycle, the durable state record, the validation ladder, iterative scientific
+review loops, and the approval breakpoints; domain skills (`structure-prep`,
+`vasp`, `cp2k`, `lammps`, `hpc-submit`) own the engine-specific work, including
+parsing their own outputs.
 
 For multi-stage, HPC, resumable, or handoff-heavy projects, durable state is the
 `.research/` protocol from the `research-orchestrator` skill: task DAG, artifact
