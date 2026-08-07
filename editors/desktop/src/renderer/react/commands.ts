@@ -13,19 +13,14 @@ import type { CommandRegistry, CommandSpec, CommandContext, ParsedArgs } from ".
 import { getCommandRegistry } from "./command-registry.ts";
 import { modelPolicyLabel, modelSelectionFromPolicy } from "./model-policy.ts";
 import { requestConfirm } from "./confirm-bridge.ts";
-import { isSkillTrusted } from "../store/types.ts";
+import { isSkillTrusted, type PermitRequest } from "../store/types.ts";
 import { currentFeature } from "../features.ts";
 import { skillDoctorText, skillInfoText, skillListText } from "./skill-view.ts";
+import { approvalGate } from "./state.ts";
+import { commandServices } from "./services.ts";
 
 // ── 事件 / 能力助手 ─────────────────────────────────────────────────
-
-function dispatch(name: string, detail?: unknown): void {
-  window.dispatchEvent(new CustomEvent(name, { detail }));
-}
-
-function sendInput(text: string, mode: string): void {
-  dispatch("electromind:user-input", { text, delivery: "auto", mode });
-}
+// P2: 命令不再直接摸 window.* —— 统一走 commandServices（services.ts）。
 
 function activeThread(ctx: CommandContext) {
   const id = ctx.store.getActiveThreadId();
@@ -34,6 +29,14 @@ function activeThread(ctx: CommandContext) {
 
 function activeThreadId(ctx: CommandContext): string | null {
   return ctx.store.getActiveThreadId();
+}
+
+/** 当前待审批队列首项（/allow /deny 作用于最旧一条）。 */
+function firstPendingPermit(
+  ctx: CommandContext,
+): PermitRequest | null {
+  const t = activeThread(ctx);
+  return t?.pendingPermits?.[0] ?? null;
 }
 
 function targetLabel(thread: ReturnType<typeof activeThread>): string {
@@ -86,6 +89,10 @@ function agent(
 export function registerCoreCommands(registry: CommandRegistry): void {
   if (registry.size > 0) return;
 
+  // P2: 统一状态门 —— 命令域策略注入通用 Registry（等待审批时只放行
+  // /status /logs /stop /allow /deny）。
+  registry.setStateGate(approvalGate);
+
   const specList: CommandSpec[] = [
     // ── View ──────────────────────────────────────────────────────
     ui({
@@ -96,7 +103,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       shortcut: "meta+k",
       available: () => true,
       execute: () => {
-        dispatch("electromind:palette-toggle");
+        commandServices.ui.open("electromind:palette-toggle");
         return { ok: true };
       },
     }),
@@ -108,7 +115,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       shortcut: "meta+l",
       available: () => true,
       execute: () => {
-        dispatch("electromind:focus-composer");
+        commandServices.ui.open("electromind:focus-composer");
         return { ok: true };
       },
     }),
@@ -120,7 +127,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       shortcut: "meta+shift+enter",
       available: () => true,
       execute: () => {
-        dispatch("electromind:enqueue-next");
+        commandServices.ui.open("electromind:enqueue-next");
         return { ok: true };
       },
     }),
@@ -132,7 +139,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       shortcut: "meta+b",
       available: () => true,
       execute: () => {
-        dispatch("electromind:toggle-threads");
+        commandServices.ui.open("electromind:toggle-threads");
         return { ok: true };
       },
     }),
@@ -145,7 +152,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       available: () => true,
       execute: (ctx) => {
         const open = ctx.store.getState().inspector.open;
-        ctx.store.setInspector({ open: !open });
+        commandServices.inspector.toggle(ctx);
         return { ok: true, message: open ? "Inspector 已关闭" : "Inspector 已打开" };
       },
     }),
@@ -161,8 +168,41 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         return t?.status === "running" || (t?.pendingPermits?.length ?? 0) > 0;
       },
       execute: () => {
-        dispatch("electromind:stop");
+        commandServices.runs.stop();
         return { ok: true };
+      },
+    }),
+    // P2: 审批动作 —— /allow /deny 作用于待审批队列首项。
+    // 经 permitToolCall / denyToolCall 走主进程 IPC，不绕过权限模式。
+    deterministic({
+      id: "run.allow",
+      title: "批准工具调用",
+      description: "批准当前待审批的工具调用（/allow）",
+      category: "permissions",
+      slash: ["allow"],
+      usage: "/allow",
+      available: (ctx) => Boolean(firstPendingPermit(ctx)),
+      execute: (ctx) => {
+        const permit = firstPendingPermit(ctx);
+        if (!permit) return { ok: false, error: "没有待审批的工具调用" };
+        commandServices.runs.permit(permit);
+        return { ok: true, message: `已批准: ${permit.toolName}` };
+      },
+    }),
+    deterministic({
+      id: "run.deny",
+      title: "拒绝工具调用",
+      description: "拒绝当前待审批的工具调用（/deny [reason]）",
+      category: "permissions",
+      slash: ["deny"],
+      usage: "/deny [reason]",
+      available: (ctx) => Boolean(firstPendingPermit(ctx)),
+      execute: (ctx, args) => {
+        const permit = firstPendingPermit(ctx);
+        if (!permit) return { ok: false, error: "没有待审批的工具调用" };
+        const reason = String(args.reason ?? "").trim();
+        commandServices.runs.deny(permit, reason || undefined);
+        return { ok: true, message: `已拒绝: ${permit.toolName}` };
       },
     }),
 
@@ -359,7 +399,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         const modelArg = String(args.model ?? "");
         if (!modelArg) {
           // 无参数 → 打开 Model Picker
-          dispatch("electromind:model-picker-toggle");
+          commandServices.models.openPicker();
           return { ok: true, message: "Model Picker 已打开" };
         }
         const selection = modelSelectionFromPolicy(modelArg);
@@ -377,7 +417,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       slash: ["skills"],
       available: () => true,
       execute: () => {
-        dispatch("electromind:skills-open");
+        commandServices.skills.openPanel();
         return { ok: true };
       },
     }),
@@ -431,7 +471,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         const name = String(args.name ?? "").trim().toLowerCase();
         if (!name) {
           if (!threadId) return { ok: false, error: "没有活动会话" };
-          dispatch("electromind:skill-picker-toggle");
+          commandServices.skills.openPicker();
           return { ok: true, message: "Skill Picker 已打开" };
         }
         if (name === "list") {
@@ -499,9 +539,8 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         }
         if (!threadId) return { ok: false, error: "没有活动会话" };
         // 携带 skill 名 + 任务文本；后端确定性激活（不绕过权限模式）
-        dispatch("electromind:user-input", {
+        commandServices.runs.send({
           text: task,
-          delivery: "auto",
           mode: "agent",
           skill: name,
         });
@@ -532,7 +571,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
           };
         }
         const trust = Boolean(args.trust);
-        void window.desktop.sendWireCommand({
+        commandServices.skills.wire({
           cmd: "skills/install",
           ...(id ? { thread_id: id } : {}),
           source,
@@ -561,7 +600,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         if (!name) {
           return { ok: false, error: "需要 skill 名称（/skill trust <name>）" };
         }
-        void window.desktop.sendWireCommand({
+        commandServices.skills.wire({
           cmd: "skills/trust",
           ...(id ? { thread_id: id } : {}),
           name,
@@ -586,7 +625,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         if (!name) {
           return { ok: false, error: "需要 skill 名称（/skill revoke <name>）" };
         }
-        void window.desktop.sendWireCommand({
+        commandServices.skills.wire({
           cmd: "skills/trust",
           ...(id ? { thread_id: id } : {}),
           name,
@@ -611,7 +650,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         if (!name) {
           return { ok: false, error: "需要 skill 名称（/skill update <name>）" };
         }
-        void window.desktop.sendWireCommand({
+        commandServices.skills.wire({
           cmd: "skills/update",
           ...(id ? { thread_id: id } : {}),
           name,
@@ -642,7 +681,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
           cancelText: "取消",
         });
         if (!ok) return { ok: false, error: "已取消" };
-        void window.desktop.sendWireCommand({
+        commandServices.skills.wire({
           cmd: "skills/remove",
           ...(id ? { thread_id: id } : {}),
           name,
@@ -674,8 +713,8 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       execute: (ctx) => {
         const id = activeThreadId(ctx);
         if (!id) return { ok: false, error: "没有活动会话" };
-        ctx.store.setInspector({ open: true, activeTab: "jobs" });
-        void window.desktop.sendWireCommand({ cmd: "hpc/submissions", thread_id: id });
+        commandServices.inspector.open(ctx, "jobs");
+        commandServices.wire.send({ cmd: "hpc/submissions", thread_id: id });
         return { ok: true, message: "作业列表已刷新（Inspector → 任务）" };
       },
     }),
@@ -687,7 +726,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       slash: ["artifacts"],
       available: () => true,
       execute: (ctx) => {
-        ctx.store.setInspector({ open: true, activeTab: "artifacts" });
+        commandServices.inspector.open(ctx, "artifacts");
         return { ok: true, message: "产物视图已打开（Inspector → 产物）" };
       },
     }),
@@ -721,7 +760,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       slash: ["logs"],
       available: () => Boolean(window.desktop?.openLogDir),
       execute: () => {
-        void window.desktop.openLogDir();
+        commandServices.diagnostics.openLogDir();
         return { ok: true };
       },
     }),
@@ -731,9 +770,19 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       description: "打开快捷键与心智模型面板",
       category: "developer",
       slash: ["help"],
+      usage: "/help [--all]",
       available: () => true,
-      execute: () => {
-        dispatch("electromind:open-shortcuts");
+      execute: (_ctx, args) => {
+        // /help --all：在 Palette 里展示全部命令（含未接线 / 不可用项）。
+        // 用 dedicated 事件携带 showUnimplemented，Palette 据此放开过滤。
+        const showAll = args.all === true;
+        if (showAll) {
+          commandServices.ui.open(
+            "electromind:palette-toggle-all",
+          );
+          return { ok: true, message: "Palette 已显示全部命令（含未接线项）" };
+        }
+        commandServices.ui.open("electromind:open-shortcuts");
         return { ok: true };
       },
     }),
@@ -749,7 +798,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       available: () =>
         Boolean(window.desktop?.sendWireCommand),
       execute: () => {
-        void window.desktop.sendWireCommand({ cmd: "skills/reload" });
+        commandServices.skills.wire({ cmd: "skills/reload" });
         return { ok: true, message: "Skills 目录重新发现已触发" };
       },
     }),
@@ -770,7 +819,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         if (!id || !artifactId) {
           return { ok: false, error: "需要 artifact_id（/validate <artifact_id> [parser]）" };
         }
-        void window.desktop.sendWireCommand({
+        commandServices.wire.send({
           cmd: "artifact/validate",
           thread_id: id,
           artifact_id: artifactId,
@@ -825,7 +874,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         if (!id) return { ok: false, error: "没有活动会话" };
         ctx.store.updateThread(id, { sessionMode: "ask" } as never);
         const text = String(args.text ?? "").trim();
-        if (text) sendInput(text, "ask");
+        if (text) commandServices.runs.send({ text, mode: "ask" });
         return { ok: true, message: text ? "Ask 任务已发送" : "已切换 Ask 模式" };
       },
     }),
@@ -842,7 +891,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         if (!id) return { ok: false, error: "没有活动会话" };
         ctx.store.updateThread(id, { sessionMode: "plan" } as never);
         const text = String(args.text ?? "").trim();
-        if (text) sendInput(text, "plan");
+        if (text) commandServices.runs.send({ text, mode: "plan" });
         return { ok: true, message: text ? "Plan 任务已发送" : "已切换 Plan 模式" };
       },
     }),
@@ -859,7 +908,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         if (!id) return { ok: false, error: "没有活动会话" };
         ctx.store.updateThread(id, { sessionMode: "agent" } as never);
         const text = String(args.text ?? "").trim();
-        if (text) sendInput(text, "agent");
+        if (text) commandServices.runs.send({ text, mode: "agent" });
         return { ok: true, message: text ? "Agent 任务已发送" : "已切换 Agent 模式" };
       },
     }),
@@ -925,9 +974,8 @@ export function registerSkillSlashCommands(
             return { ok: false, error: `需要任务描述（/${name} <task>）` };
           }
           // 携带 skill 名 + 任务文本；后端确定性激活（不绕过权限模式）
-          dispatch("electromind:user-input", {
+          commandServices.runs.send({
             text,
-            delivery: "auto",
             mode: "agent",
             skill: name,
           });

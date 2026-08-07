@@ -62,13 +62,27 @@ export const CommandPalette: React.FC = () => {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
+  // /help --all 时展示全部命令（含未接线 / 不可用项），用于心智模型建设
+  const [showUnimplemented, setShowUnimplemented] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const onToggle = () => setOpen((v) => !v);
+    const onToggle = () => {
+      setShowUnimplemented(false);
+      setOpen((v) => !v);
+    };
+    // P2: /help --all 走同一 Palette，但放开可用性过滤
+    const onToggleAll = () => {
+      setShowUnimplemented(true);
+      setOpen(true);
+    };
     window.addEventListener("electromind:palette-toggle", onToggle);
-    return () => window.removeEventListener("electromind:palette-toggle", onToggle);
+    window.addEventListener("electromind:palette-toggle-all", onToggleAll);
+    return () => {
+      window.removeEventListener("electromind:palette-toggle", onToggle);
+      window.removeEventListener("electromind:palette-toggle-all", onToggleAll);
+    };
   }, []);
 
   // 打开时清空查询并聚焦
@@ -80,7 +94,8 @@ export const CommandPalette: React.FC = () => {
     }
   }, [open]);
 
-  // 可用命令（可用性由 registry 统一判断）+ 搜索过滤
+  // 可用命令（可用性由 registry 统一判断）+ 搜索过滤。
+  // showUnimplemented 时跳过 available 过滤（注册即展示，便于 /help --all）。
   const results = useMemo(() => {
     const ctx = {
       store: sharedThreadStore(),
@@ -89,7 +104,10 @@ export const CommandPalette: React.FC = () => {
     const registry = getCommandRegistry();
     const candidates = registry
       .search(query)
-      .filter((spec) => registry.isAvailable(spec.id, ctx));
+      .filter(
+        (spec) =>
+          showUnimplemented || registry.isAvailable(spec.id, ctx),
+      );
     // 按分类排序（保持分类内注册顺序）
     const byCat = new Map<CommandCategory, CommandSpec[]>();
     for (const spec of candidates) {
@@ -101,7 +119,7 @@ export const CommandPalette: React.FC = () => {
       category: c,
       commands: byCat.get(c)!,
     }));
-  }, [query, open]);
+  }, [query, open, showUnimplemented]);
 
   // 展平列表用于键盘导航
   const flat = useMemo(

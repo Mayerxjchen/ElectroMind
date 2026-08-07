@@ -78,6 +78,13 @@ export function tokensToArgs(commandId: string, tokens: string[]): ParsedArgs {
       return { target: tokens[0] ?? "" };
     case "thread.compact":
       return { focus: tokens[0] ?? "" };
+    case "run.allow":
+      return {};
+    case "run.deny":
+      // /deny [reason] —— 余下 token 都是拒绝理由
+      return { reason: joined };
+    case "help":
+      return { all: tokens.includes("--all") };
     default:
       return { text: joined, tokens };
   }

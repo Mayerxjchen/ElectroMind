@@ -76,6 +76,16 @@ export class CommandRegistry {
   private readonly commands = new Map<string, CommandSpec>();
   private readonly slashIndex = new Map<string, string>();
   private readonly shortcutIndex = new Map<string, string>();
+  /** P2: 状态门（如 waiting_approval 时限制命令集）。 */
+  private stateGate: ((ctx: CommandContext) => (id: string) => boolean) | null =
+    null;
+
+  /** 安装统一状态门（注册期调用一次；命令域实现，Registry 保持通用）。 */
+  setStateGate(
+    gate: (ctx: CommandContext) => (id: string) => boolean,
+  ): void {
+    this.stateGate = gate;
+  }
 
   /** 注册命令。id / slash / shortcut 重复即抛错 —— 注册期冲突是编程错误。 */
   register(spec: CommandSpec): void {
@@ -180,6 +190,10 @@ export class CommandRegistry {
   isAvailable(id: string, ctx: CommandContext): boolean {
     const spec = this.commands.get(id);
     if (!spec) return false;
+    // P2: 统一状态门（waiting_approval 等）先于命令自身 available 判定。
+    // execute() 也走 isAvailable —— 快捷键 / Slash / Palette 全部被同一道门约束。
+    const gate = this.stateGate?.(ctx);
+    if (gate && !gate(id)) return false;
     try {
       return spec.available(ctx);
     } catch {
