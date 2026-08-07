@@ -47,7 +47,7 @@ If `.research/` does not exist yet but the task qualifies for durable state, ini
 - Document-derived single target with execution work -> `comp-chem-workflow`, then the relevant tool skill.
 - Structure missing or rebuilt -> `structure-prep`, with structure review before engine handoff.
 - Periodic DFT -> `vasp` or another periodic engine skill; molecular QC -> use an appropriate quantum chemistry skill; CP2K systems -> `cp2k`.
-- Biomolecular/liquid/membrane MD -> use an appropriate MD engine; materials/reactive/MLP MD -> `lammps`; MLP work -> `mlp` or the program-specific MLP tool.
+- Biomolecular/liquid/membrane MD -> use an appropriate MD engine; materials/reactive/MLP MD -> `lammps`; MLP work -> `deepmd` or the program-specific MLP tool; TESLA active-learning workflows -> `tesla-mlp-training`.
 - Post-processing only -> the engine skill that produced the outputs.
 - Manuscript + reviewer-comments campaign -> `review-response`.
 

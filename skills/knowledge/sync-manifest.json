@@ -140,10 +140,6 @@
       "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
       "source": "skills/knowledge/bonding-analysis.md"
     },
-    "skills/tools/mlp/references/knowledge/machine-learning-potentials.md": {
-      "sha256": "b827f3cea4c8b24e79dcdb6046e5ec7fefe0ae28b2230dd196e0a5bda6420d31",
-      "source": "skills/knowledge/machine-learning-potentials.md"
-    },
     "skills/tools/multiwfn/references/knowledge/bonding-analysis.md": {
       "sha256": "6b002c22b8e6f5b0f74c9ef5b8d268cc5c0f352a1464786545b96e0fc7145229",
       "source": "skills/knowledge/bonding-analysis.md"

@@ -332,7 +332,6 @@ def test_expected_repository_skill_set(tmp_path):
             "hpc-submit",
             "lammps",
             "lobster",
-            "mlp",
             "multiwfn",
             "packmol",
             "report",

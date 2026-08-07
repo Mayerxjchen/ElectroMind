@@ -30,5 +30,5 @@ Workflow shape for every MD task: validate setup → minimize → equilibrate (v
 
 - No production observables from a trajectory whose equilibration was not verified.
 - Zero lost atoms — any loss invalidates the trajectory.
-- An MLP driving MD must be validated for the composition/T-range (`mlp` skill, model deviation).
+- A learned potential driving production MD must first pass its program-specific validation (`deepmd` for DeepMD). For TESLA exploration or committee/model-deviation workflows, use `tesla-mlp-training`.
 - Do not mix unit systems between data file, parameters, and script.

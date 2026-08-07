@@ -5,7 +5,7 @@ description: Entry point and controller for computational chemistry and material
 
 # Computational Chemistry Workflow Controller
 
-Use this skill first for any nontrivial computational task. It owns the lifecycle, the durable state record, the validation ladder, iterative scientific review loops, and the approval breakpoints; domain skills (`structure-prep`, `vasp`, `cp2k`, `lammps`, `mlp`, `hpc-submit`) own the engine-specific work, including parsing their own outputs.
+Use this skill first for any nontrivial computational task. It owns the lifecycle, the durable state record, the validation ladder, iterative scientific review loops, and the approval breakpoints; domain skills (`structure-prep`, `vasp`, `cp2k`, `lammps`, `hpc-submit`) own the engine-specific work, including parsing their own outputs.
 
 For multi-stage, HPC, resumable, or handoff-heavy projects, durable state is the
 `.research/` protocol from the `research-orchestrator` skill: task DAG, artifact

@@ -84,7 +84,6 @@ targets = [
 source = "skills/knowledge/machine-learning-potentials.md"
 targets = [
   "skills/tools/deepmd/references/knowledge/machine-learning-potentials.md",
-  "skills/tools/mlp/references/knowledge/machine-learning-potentials.md",
 ]
 
 [[references]]
