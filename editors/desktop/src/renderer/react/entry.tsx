@@ -25,6 +25,7 @@ import { sharedThreadStore } from "./useStore";
 import { getCommandRegistry, type CommandContext } from "./command-registry";
 import { registerCoreCommands, registerSkillSlashCommands } from "./commands";
 import { modelSelectionFromPolicy } from "./model-policy";
+import { loadDesktopFeatures } from "../features";
 
 /** Render the AppShell skeleton.  Called once at module evaluation.
  *  Guard: if the vanilla fallback already rendered its own shell
@@ -104,6 +105,9 @@ function mountComposerIntoDock(store: ThreadStore, attempt = 0): void {
  *  composer can subscribe immediately. */
 mountAppShell();
 mountComposerIntoDock(sharedThreadStore());
+
+// ── P0: Feature Flags 预加载（fail-closed 缓存；新功能由 flag 门控，默认全关）──
+void loadDesktopFeatures();
 
 // ── P1: 统一 Command Registry ───────────────────────────────────────
 // 单例暴露到 window：vanilla keydown（main.ts）与 React 面板共用同一份

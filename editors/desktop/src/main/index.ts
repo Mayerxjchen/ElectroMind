@@ -39,6 +39,7 @@ import type {
   ArtifactPreview,
   ArtifactSummary,
   DesktopEvent,
+  DesktopFeaturesPayload,
   ExecutionStatePayload,
   NewSessionOptions,
   ResetSessionOptions,
@@ -50,6 +51,7 @@ import type {
   ThreadSummary,
   WireEvent,
 } from "../shared/protocol";
+import { parseFeatures } from "../shared/features";
 import { parseWireLine } from "../shared/wire";
 import { createReconnectScheduler } from "../shared/reconnect";
 import {
@@ -159,6 +161,16 @@ function desktopSettingsPath(): string {
 /** 从 ~/.electromind/desktop.json 读取 YOLO；缺省或损坏时为 false。 */
 function loadYoloMode(): boolean {
   return readDesktopSettings().yoloMode === true;
+}
+
+/**
+ * Desktop v2 Feature Flags。从 desktop.json 的 `features` 块解析，fail-closed：
+ * 缺省/损坏/字段非 boolean 一律回落默认值（默认 = 当前稳定桌面行为）。
+ * 新功能必须先经此处 Flag 才可上线（spec 2026-08-07 §2）。
+ */
+function loadFeatureFlags(): DesktopFeaturesPayload {
+  const settings = readDesktopSettings();
+  return parseFeatures(settings.features);
 }
 
 function saveYoloMode(enabled: boolean): void {
@@ -1569,6 +1581,7 @@ ipcMain.handle("desktop:get-thread-meta", async (_event, threadId: string) => {
   return readThreadMeta(threadId);
 });
 ipcMain.handle("desktop:get-settings", async () => readAppSettings());
+ipcMain.handle("desktop:get-features", async () => loadFeatureFlags());
 ipcMain.handle("desktop:open-documentation", async () => {
   await shell.openExternal(DOCUMENTATION_URL);
 });

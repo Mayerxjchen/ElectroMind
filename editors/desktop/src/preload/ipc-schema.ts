@@ -19,6 +19,7 @@ export type ParamShape = Array<
 
 export const IPC_PARAM_SHAPES: Record<string, ParamShape> = {
   "desktop:set-yolo-mode": ["boolean"],
+  "desktop:get-features": [],
   "desktop:get-thread-meta": ["string"],
   "desktop:open-artifact": ["string"],
   "desktop:read-artifact": ["string"],

@@ -3,6 +3,7 @@ import { validateIpcParams } from "./ipc-schema";
 import type {
   DesktopApi,
   DesktopEvent,
+  DesktopFeaturesPayload,
   FileMetadata,
   FilePreview,
   FileRef,
@@ -71,6 +72,9 @@ const desktopApi: DesktopApi = {
   },
   getSettings() {
     return invoke("desktop:get-settings");
+  },
+  getFeatures(): Promise<DesktopFeaturesPayload> {
+    return invoke("desktop:get-features");
   },
   openDocumentation() {
     return invoke("desktop:open-documentation");

@@ -5,6 +5,15 @@ export type AppInfo = {
     userName: string;
 };
 
+/** Desktop v2 Feature Flags（形状见 shared/features.ts，主进程解析后下发）。 */
+export type DesktopFeaturesPayload = {
+    shell_v2: boolean;
+    compact_composer: boolean;
+    slash_skill_v2: boolean;
+    auto_model_v2: boolean;
+    legacy_skills_panel: boolean;
+};
+
 export type ExecutionStatePayload = {
     mode: "local" | "sandbox" | "ssh" | null;
     resolved_backend: "local" | "docker" | "podman" | "ssh" | null;
@@ -366,6 +375,8 @@ export type DesktopApi = {
     listThreads(): Promise<ThreadSummary[]>;
     getThreadMeta(threadId: string): Promise<ThreadMeta>;
     getSettings(): Promise<AppSettings>;
+    /** Desktop v2 Feature Flags（主进程从 desktop.json features 解析，fail-closed）。 */
+    getFeatures(): Promise<DesktopFeaturesPayload>;
     openDocumentation(): Promise<void>;
     /** P4.4: 一键打开日志目录。 */
     openLogDir(): Promise<{ ok: boolean; error?: string }>;

@@ -32,7 +32,8 @@
         "test:agent-process-tree": "node --test scripts/agent-process-tree.test.mjs",
         "test:threadstore-singleton": "node --test scripts/threadstore-singleton.test.mjs",
         "test:package-agent": "node --test scripts/package-agent.test.mjs",
-        "test:cdp-smoke": "node --test scripts/cdp-smoke.test.mjs"
+        "test:cdp-smoke": "node --test scripts/cdp-smoke.test.mjs",
+        "test:features": "node --test scripts/features.test.mjs"
     },
     "devDependencies": {
         "@electron/packager": "^18.3.6",
