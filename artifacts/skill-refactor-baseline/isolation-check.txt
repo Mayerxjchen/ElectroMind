@@ -1,0 +1,2 @@
+check-skill-isolation: clean (17 skills)
+isolation exit=0

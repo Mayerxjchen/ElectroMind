@@ -1,0 +1,8 @@
+17 Skills discovered but not activatable because this workspace is untrusted.
+
+Discovery: successful
+Activation: blocked by workspace trust
+Action: trust this workspace to enable its project Skills
+(run `electromind skills doctor --list-blocked` to list them)
+34 candidates, 17 issues, generation 1
+doctor exit=2

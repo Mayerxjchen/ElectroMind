@@ -61,6 +61,9 @@ artifacts/*
 # 执行内核验收证据（M0/M1-M7）随仓库跟踪，指向实际 tested_commit
 !artifacts/acceptance/
 !artifacts/acceptance/**
+# MLIP-first Skill 重构基线（PR-0）随仓库跟踪
+!artifacts/skill-refactor-baseline/
+!artifacts/skill-refactor-baseline/**
 benchmarks/
 .trae
 
