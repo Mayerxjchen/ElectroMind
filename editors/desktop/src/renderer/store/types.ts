@@ -173,7 +173,20 @@ export type SkillStateItem = {
   status: "available" | "loaded" | "unavailable";
   /** P4: manual（仅用户 /skill 调用）/ both（模型与用户均可）/ model。 */
   invocation?: "model" | "manual" | "both";
+  /** 信任依据（wire 已下发）；缺失 → untrusted（fail-closed，不再回退 status）。 */
+  trust_state?: "trusted" | "untrusted";
+  /** 来源 scope：builtin | admin | user | project | add_dir | plugin。 */
+  scope?: string;
+  skill_id?: string;
 };
+
+/** 信任判定：仅显式 trust_state=trusted 可信；缺失一律视为不可信（fail-closed）。
+ *  禁止用 available/loaded 推断 trusted（spec 2026-08-07 §P3 强制规则）。 */
+export function isSkillTrusted(
+  item: Pick<SkillStateItem, "trust_state">,
+): boolean {
+  return item.trust_state === "trusted";
+}
 
 export type SkillDiagnostic = {
   code: string;

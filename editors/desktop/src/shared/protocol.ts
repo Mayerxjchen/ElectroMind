@@ -102,6 +102,13 @@ export type SkillStateItem = {
     source: string;
     sha256: string;
     status: "available" | "loaded" | "unavailable";
+    /** 信任依据（wire skills/state_payload 已下发）；缺失 → untrusted（fail-closed）。 */
+    trust_state?: "trusted" | "untrusted";
+    /** manual（仅用户 /skill 调用）/ both（模型与用户均可）。 */
+    invocation?: "model" | "manual" | "both";
+    /** 来源 scope：builtin | admin | user | project | add_dir | plugin。 */
+    scope?: string;
+    skill_id?: string;
 };
 
 export type SkillDiagnosticPayload = {

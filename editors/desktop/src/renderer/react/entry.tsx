@@ -136,13 +136,7 @@ sharedThreadStore().subscribe((state) => {
   const fingerprint = skills ? `${skills.generation}:${skills.digest}` : "";
   if (fingerprint === lastSkillFingerprint) return;
   lastSkillFingerprint = fingerprint;
-  registerSkillSlashCommands(
-    commandRegistry,
-    (skills?.skills ?? []).map((s) => ({
-      ...s,
-      trust_state: (s as { trust_state?: string }).trust_state,
-    })),
-  );
+  registerSkillSlashCommands(commandRegistry, skills?.skills ?? []);
 });
 
 // ── Public API ─────────────────────────────────────────────────────

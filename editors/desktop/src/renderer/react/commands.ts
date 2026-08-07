@@ -12,6 +12,7 @@
 import type { CommandRegistry, CommandSpec, CommandContext } from "./command-registry";
 import { modelPolicyLabel, modelSelectionFromPolicy } from "./model-policy.ts";
 import { requestConfirm } from "./confirm-bridge.ts";
+import { isSkillTrusted } from "../store/types.ts";
 
 // ── 事件 / 能力助手 ─────────────────────────────────────────────────
 
@@ -626,21 +627,18 @@ export function registerSkillSlashCommands(
     description: string;
     source: string;
     sha256: string;
-    status: string;
+    status: "available" | "loaded" | "unavailable";
     invocation?: "model" | "manual" | "both";
-    trust_state?: string;
+    trust_state?: "trusted" | "untrusted";
   }[],
 ): void {
   registry.unregisterByPrefix(SKILL_COMMAND_PREFIX);
   for (const skill of skills) {
     // 可信 + 可用户调用（manual / both）才生成命令。
-    // trust_state 是唯一信任依据；旧数据无 trust_state 字段时才回退
-    // status（loaded/available 视为可用）—— 显式 untrusted 不得通过。
-    const trusted =
-      skill.trust_state === "trusted" ||
-      (skill.trust_state === undefined &&
-        (skill.status === "loaded" || skill.status === "available"));
-    if (!trusted) continue;
+    // isSkillTrusted：trust_state 是唯一信任依据，缺失一律视为不可信
+    // （fail-closed），不再用 available/loaded 推断 trusted
+    // （spec 2026-08-07 §P3 强制规则）。
+    if (!isSkillTrusted(skill)) continue;
     const invocation = skill.invocation ?? "both";
     if (invocation === "model") continue;
     const name = skill.name.trim();

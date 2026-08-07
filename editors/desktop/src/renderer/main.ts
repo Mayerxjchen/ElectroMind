@@ -2717,6 +2717,10 @@ async function start(): Promise<void> {
     source: string;
     sha256: string;
     status: "available" | "loaded" | "unavailable";
+    trust_state?: "trusted" | "untrusted";
+    invocation?: "model" | "manual" | "both";
+    scope?: string;
+    skill_id?: string;
   }
 
   interface SkillDiagnosticPayload {

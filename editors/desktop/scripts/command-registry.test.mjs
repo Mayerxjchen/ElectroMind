@@ -348,6 +348,28 @@ test("skill commands: untrusted and model-only skills are excluded", () => {
   resetCommandRegistry();
 });
 
+test("skill commands: missing trust_state fails closed even when loaded", () => {
+  // spec 2026-08-07 §P3：trust_state 缺失 → 不可执行；不再用 available/loaded
+  // 推断 trusted。任何状态回退都是信任边界缺陷。
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerSkillSlashCommands(reg, [
+    skill("no-trust-loaded", { trust_state: undefined, status: "loaded" }),
+    skill("no-trust-available", { trust_state: undefined, status: "available" }),
+  ]);
+  assert.equal(
+    reg.commandForSlash("no-trust-loaded"),
+    undefined,
+    "缺 trust_state 即使 loaded 也不生成命令（fail-closed）",
+  );
+  assert.equal(
+    reg.commandForSlash("no-trust-available"),
+    undefined,
+    "缺 trust_state 即使 available 也不生成命令（fail-closed）",
+  );
+  resetCommandRegistry();
+});
+
 test("skill commands: catalog refresh rebuilds without duplicates", () => {
   resetCommandRegistry();
   const reg = getCommandRegistry();
