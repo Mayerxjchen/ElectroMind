@@ -199,6 +199,28 @@ declare the gate artifact itself in `inputs`, e.g. `artifact_id: structure-gate`
 consume and the validator will warn.
 This keeps review in model design while preserving single-owner expensive execution.
 
+## Catalytic Pathway Task Wave
+
+Iterative catalytic pathways map to task waves rather than one giant submission batch:
+
+```text
+T_clean_relax -> accepted clean slab
+T_A_models -> A* candidate structures + structure_gate
+T_A_relax -> relaxed A* candidates + parser results
+T_A_select -> accepted A* path starting point
+T_B_models -> B* candidates generated from accepted A*
+T_B_relax -> relaxed B* candidates
+T_TS_AB -> TS/NEB between accepted A* and B* when needed
+```
+
+Use `structure-prep` for candidate construction, engine skills for
+relaxation/static/frequency/TS jobs, `hpc-submit` for scheduler ownership, and the
+`report` skill or plotting scripts for the final path diagram. Hard rule: a candidate
+structure set is reviewed before expensive submission. The first reactant adsorption
+and any co-adsorption branch may include multiple candidates, but downstream
+intermediates are generated from accepted relaxed predecessors unless the pathway
+explicitly branches.
+
 ## Engine Input Generation
 
 Engine-runner tasks that write VASP, CP2K, LAMMPS, or similar inputs must

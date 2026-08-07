@@ -34,12 +34,14 @@ The dataset defines the model's domain. Cover:
 
 One dataset should have one label method fingerprint: functional, pseudopotentials/basis, k-point policy, cutoff, Hubbard U, spin, dispersion, solvation, SCF thresholds, and stress convention. Mixing inconsistent DFT settings usually appears as irreducible error or energy offsets.
 
-For DeePMD-style initial datasets, the default non-special bootstrap target is at least
-`10000` filtered DFT-labeled frames before the first split and production training. This
-means converged, chemically sensible frames after filtering, not raw AIMD ionic steps.
-Smaller datasets are reasonable for smoke tests, very expensive pilots, strict
-reproductions, or explicit quick runs, but they should be labeled as pilot/exception
-models until more labels are added.
+No fixed frame count universally defines a production-ready potential. Dataset
+sufficiency is assessed using: configuration-space coverage, held-out energy/force
+accuracy, model deviation/uncertainty, active-learning convergence, MD stability, and
+the target physical observables. 50/500/10000 frames are project parameters, not global
+hard guardrails. Smaller datasets are reasonable for smoke tests, very expensive
+pilots, strict reproductions, or explicit quick runs, but they should be labeled as
+pilot/exception models until more labels are added. Count converged, chemically
+sensible frames after filtering, not raw AIMD ionic steps.
 
 Split data before training:
 
@@ -91,11 +93,12 @@ Interpretation guardrails:
 
 Active learning is optional, not a mandatory first response. A practical bootstrap for
 many DeePMD projects is to label a broader AIMD set first: several plausible initial
-models, several temperatures, a single consistent DFT fingerprint, and normally at least
-`10000` filtered DFT-labeled frames before splitting/training. Use committee or
-DP-GEN-style active learning when the target is open-ended exploration, when validation
-shows extrapolation gaps, or when the user explicitly asks for uncertainty-guided data
-selection.
+models, several temperatures, a single consistent DFT fingerprint, and enough frames to
+cover the target configuration space — sufficiency is judged by coverage, held-out
+accuracy, deviation/uncertainty, stability, and observables, not a fixed count. Use
+committee or DP-GEN-style active learning when the target is open-ended exploration,
+when validation shows extrapolation gaps, or when the user explicitly asks for
+uncertainty-guided data selection.
 
 ```text
 train committee -> explore with MD/structure search -> detect uncertain frames

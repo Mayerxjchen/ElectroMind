@@ -169,23 +169,13 @@ DeltaG_i = DeltaE_i + DeltaZPE_i + DeltaH_thermal_i - T*DeltaS_i
            + reservoir / pressure / solvation / pH / potential terms when relevant
 ```
 
-For surface intermediates and transition states, finite-difference frequencies can provide ZPE and thermal corrections. In VASP-backed workflows, VASPKIT task 501 can process adsorbate or selected reacting-atom frequency corrections; usually fix the slab and free only the adsorbate/reacting atoms for a tractable approximation. For gas-phase molecules, compute isolated molecule frequencies and use a gas thermochemistry route such as VASPKIT task 502, JANAF/NIST data, or molecular quantum-chemistry thermochemistry.
+For surface intermediates and transition states, finite-difference frequencies can provide ZPE and thermal corrections. In VASP-backed workflows, fix the slab and free only the adsorbate/reacting atoms for a tractable approximation, then apply the frequency corrections with the `vaspkit` skill's thermochemistry workflow (VASPKIT task 501 for adsorbates, task 502 for gas-phase molecules). For gas-phase molecules, alternatively use JANAF/NIST data or molecular quantum-chemistry thermochemistry.
 
 Corrections are optional only when the stated result is an electronic-energy path or a screening-level comparison. For publication-level free-energy claims, record the correction table, temperature, pressure, standard states, entropy treatment, and any neglected terms.
 
-## Multi-round workflow with `.research`
+## Multi-round workflow
 
-Catalytic pathways are naturally iterative. In a structured project, represent this as task waves rather than one giant submission batch:
-
-```text
-T_clean_relax -> accepted clean slab
-T_A_models -> A* candidate structures + structure_gate
-T_A_relax -> relaxed A* candidates + parser results
-T_A_select -> accepted A* path starting point
-T_B_models -> B* candidates generated from accepted A*
-T_B_relax -> relaxed B* candidates
-T_TS_AB -> TS/NEB between accepted A* and B* when needed
-```
+Catalytic pathways are naturally iterative. In a structured project, represent this as task waves rather than one giant submission batch; the `.research/` task-DAG pattern (including a worked catalytic task-wave example) is defined by the `research-orchestrator` skill's `references/task-protocol.md`.
 
 Use `structure-prep` for candidate construction, `research-orchestrator` gates for model review, engine skills for relaxation/static/frequency/TS jobs, `hpc-submit` for scheduler ownership, and the `report` skill or plotting scripts for the final path diagram.
 

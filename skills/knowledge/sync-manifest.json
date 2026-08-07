@@ -5,11 +5,11 @@
       "source": "skills/knowledge/bonding-analysis.md"
     },
     "skills/procedures/comp-chem-workflow/references/knowledge/catalytic-reaction-pathways.md": {
-      "sha256": "69faa590a81c9eed03d29593c2295021bdfefda2fc9111d081026e93c1c584c5",
+      "sha256": "7eeb967cbde9f588d1ca08f5fe2aa5b20e45cf6c5a17608ba107fc37f2c959eb",
       "source": "skills/knowledge/catalytic-reaction-pathways.md"
     },
     "skills/procedures/comp-chem-workflow/references/knowledge/electrochemistry.md": {
-      "sha256": "74d04db7f6e0c24f8ac2579d0290529854ffc9f9326fd31c755d1867579785f1",
+      "sha256": "f9331a39de20bd950aec6fcbf239d6a549ffbd23197b975a69f984bde2b65bce",
       "source": "skills/knowledge/electrochemistry.md"
     },
     "skills/procedures/comp-chem-workflow/references/knowledge/electronic-structure.md": {
@@ -29,7 +29,7 @@
       "source": "skills/knowledge/bonding-analysis.md"
     },
     "skills/procedures/research-orchestrator/references/knowledge/electrochemistry.md": {
-      "sha256": "74d04db7f6e0c24f8ac2579d0290529854ffc9f9326fd31c755d1867579785f1",
+      "sha256": "f9331a39de20bd950aec6fcbf239d6a549ffbd23197b975a69f984bde2b65bce",
       "source": "skills/knowledge/electrochemistry.md"
     },
     "skills/procedures/research-orchestrator/references/knowledge/electronic-structure.md": {
@@ -92,6 +92,10 @@
       "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
       "source": "skills/knowledge/molecular-dynamics.md"
     },
+    "skills/tools/cp2k/references/knowledge/periodic-dft-modeling.md": {
+      "sha256": "ba934c4e7198f7f7ef4fe3147fad202c77be30ea2c8ab03a5974ff29e70fe997",
+      "source": "skills/knowledge/periodic-dft-modeling.md"
+    },
     "skills/tools/cp2k/references/knowledge/periodic-electrostatics.md": {
       "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",
       "source": "skills/knowledge/periodic-electrostatics.md"
@@ -121,12 +125,16 @@
       "source": "skills/knowledge/force-fields.md"
     },
     "skills/tools/deepmd/references/knowledge/machine-learning-potentials.md": {
-      "sha256": "b827f3cea4c8b24e79dcdb6046e5ec7fefe0ae28b2230dd196e0a5bda6420d31",
+      "sha256": "fda21ddfb84f61c9bdb03aebd7850baffe8874bdc5702789c91f47bae63681a4",
       "source": "skills/knowledge/machine-learning-potentials.md"
     },
     "skills/tools/deepmd/references/knowledge/molecular-dynamics.md": {
       "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
       "source": "skills/knowledge/molecular-dynamics.md"
+    },
+    "skills/tools/deepmd/references/knowledge/periodic-dft-modeling.md": {
+      "sha256": "ba934c4e7198f7f7ef4fe3147fad202c77be30ea2c8ab03a5974ff29e70fe997",
+      "source": "skills/knowledge/periodic-dft-modeling.md"
     },
     "skills/tools/lammps/references/knowledge/force-fields.md": {
       "sha256": "0e5b421e77fd83413b81df947b1a80a805c9658429047418b6b6dcdabdbdf715",
@@ -205,7 +213,7 @@
       "source": "skills/knowledge/bonding-analysis.md"
     },
     "skills/tools/vasp/references/knowledge/electrochemistry.md": {
-      "sha256": "74d04db7f6e0c24f8ac2579d0290529854ffc9f9326fd31c755d1867579785f1",
+      "sha256": "f9331a39de20bd950aec6fcbf239d6a549ffbd23197b975a69f984bde2b65bce",
       "source": "skills/knowledge/electrochemistry.md"
     },
     "skills/tools/vasp/references/knowledge/electronic-structure.md": {
@@ -223,6 +231,10 @@
     "skills/tools/vasp/references/knowledge/molecular-dynamics.md": {
       "sha256": "69c90af36abd08f82b06f58dba6e89cf96d13fbb14d26806411fa5b5772d3966",
       "source": "skills/knowledge/molecular-dynamics.md"
+    },
+    "skills/tools/vasp/references/knowledge/periodic-dft-modeling.md": {
+      "sha256": "ba934c4e7198f7f7ef4fe3147fad202c77be30ea2c8ab03a5974ff29e70fe997",
+      "source": "skills/knowledge/periodic-dft-modeling.md"
     },
     "skills/tools/vasp/references/knowledge/periodic-electrostatics.md": {
       "sha256": "74f567ce278e84d2b072bb1c3003470d1f64a7ef6e816e31fb8ef246733d1075",

@@ -104,6 +104,14 @@ targets = [
 ]
 
 [[references]]
+source = "skills/knowledge/periodic-dft-modeling.md"
+targets = [
+  "skills/tools/cp2k/references/knowledge/periodic-dft-modeling.md",
+  "skills/tools/deepmd/references/knowledge/periodic-dft-modeling.md",
+  "skills/tools/vasp/references/knowledge/periodic-dft-modeling.md",
+]
+
+[[references]]
 source = "skills/knowledge/periodic-electrostatics.md"
 targets = [
   "skills/procedures/comp-chem-workflow/references/knowledge/periodic-electrostatics.md",

@@ -160,40 +160,17 @@ Use constant-potential calculations when the scientific question depends on char
 
 ## Fixed-charge potential scans with implicit electrolyte
 
-Many VASPsol electrochemical papers use a practical fixed-charge scan rather than a self-consistent fixed-potential run. The calculation changes `NELECT`, the implicit electrolyte supplies counter-charge, and each charge state corresponds to a different electrode potential. Energies are then fitted as a function of potential and compared at the same target `U`.
+A practical fixed-charge scan (rather than a self-consistent fixed-potential run)
+changes the electron count, lets the implicit electrolyte supply counter-charge, and
+fits corrected energies as a function of electrode potential. The charged slab is
+stabilized by a compensating continuum charge (homogeneous-background /
+Poisson-Boltzmann style) rather than by explicit ions; it is not the same as a
+calculation that directly targets an electron chemical potential and reports a
+grand-potential-like quantity.
 
-Typical potential conversion for one common VASPsol + `FERMI_SHIFT` convention:
-
-```text
-U_vs_SHE = -(Efermi + FERMI_SHIFT) - 4.44
-```
-
-Here `Efermi` is read from `OUTCAR`, `FERMI_SHIFT` from the VASP stdout file, and `4.44 eV` is the common absolute SHE reference used by that workflow. Other functionals/solvation models may use a different calibrated SHE value.
-
-The charged fixed-electron energy is commonly corrected before fitting:
-
-```text
-q = NELECT - NELECT_PZC
-E_corr = E_VASP + q*FERMI_SHIFT - q*(Efermi + FERMI_SHIFT)
-```
-
-Keep the sign convention with the spreadsheet or script that generated the analysis. Under this convention the expression is algebraically equivalent to `E_VASP - q*Efermi`, but the unsimplified form is easier to audit because it exposes the two quantities extracted from VASP output.
-
-Fit the corrected energies to a capacitor-like parabola:
-
-```text
-E_corr(U) = a*U^2 + b*U + c
-```
-
-or equivalently:
-
-```text
-E_corr(U) = 0.5*C*(U - U_PZC)^2 + E_PZC
-```
-
-The potential of zero charge is the neutral-charge potential in a direct scan, or the minimum of the fitted parabola when using the capacitor form. Curvature gives an effective capacitance under the chosen model. Adsorption energies at constant potential should be obtained by evaluating two fitted curves at the same `U` and then subtracting, not by subtracting raw fixed-charge points that sit at different potentials.
-
-This workflow is related to homogeneous-background and Poisson-Boltzmann implicit-electrolyte approaches: the charged slab is stabilized by a compensating continuum charge rather than by explicit ions. It is not the same as a VASPsol++ `EFERMI_ref` calculation, where the calculation directly targets an electron chemical potential and reports a grand-potential-like quantity.
+The code-specific mechanics — `NELECT`/`FERMI_SHIFT` conventions, `OUTCAR` extraction,
+`E_corr` formulas, parabola fits, VASPsol vs VASPsol++ distinction — are documented in
+the `vasp` skill's `references/electrochemistry.md`.
 
 ## Reporting checklist
 
@@ -203,7 +180,7 @@ This workflow is related to homogeneous-background and Poisson-Boltzmann implici
 - Free-energy corrections included and omitted.
 - Step energies, limiting step, limiting potential, and overpotential.
 - Whether the model is vacuum CHE, implicit solvent, explicit solvent, or constant potential.
-- For fixed-charge potential scans, `NELECT_PZC`, charge convention, `Efermi`, `FERMI_SHIFT`, SHE calibration, corrected-energy formula, fitted potential range, and fit coefficients.
+- For fixed-charge potential scans (VASPsol conventions: `NELECT_PZC`, charge convention, `Efermi`, `FERMI_SHIFT`, SHE calibration, corrected-energy formula, fitted potential range, fit coefficients), report per the `vasp` skill's `references/electrochemistry.md`.
 - For constant-potential work, electron chemical potential reference, calibration to SHE/RHE, electrolyte model, and whether reported values are free energies or grand potentials.
 
 ## Literature anchors
