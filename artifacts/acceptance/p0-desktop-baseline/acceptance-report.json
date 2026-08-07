@@ -12,7 +12,7 @@
     },
     "skills_cdp": {
       "status": "pass",
-      "detail": "skills-manager-cdp.test.mjs（旧链，对基线包）通过；skills-manager-slash-cdp 需 dev 分支重新打包（基线包无 /skill 命令），属 P3 验收，非 P0"
+      "detail": "skills-manager-cdp.test.mjs（旧链，对基线包）通过；skills-manager-slash-cdp（P3 slash 流）在基线包无 /skill 命令，需 dev 包"
     },
     "three_size_screenshots": {
       "status": "pass",
@@ -26,6 +26,10 @@
     "hpc_recovery_smoke": {
       "status": "pass",
       "detail": "12/12（真集群，host=ikkemhpc，job=3522463）—— 提交后本地退出 → Job 继续；reconcile 恢复原 job_id（绝不重提）；重复 prepare 禁二次 sbatch；rsync 收集 + SHA 核对；Scheduler 成功但 Parser 失败 → 不标科学成功(rejected)；CP2K 成功输出 → VALIDATED"
+    },
+    "dev_package_verification": {
+      "status": "pass",
+      "detail": "对 desktop-stability-v2 重新打包（嵌入重建 agent）后的验收：standalone-smoke 3/3；skills-manager-cdp 1/1；skills-manager-slash-cdp 1/1（add→trust→update→revoke→remove→重启持久化）。修复了 slash remove 后 catalog 残留 bug（根因：_emit_skills_catalog 用 list() 缓存；修复 7cc32ab 改 reload()）"
     }
   }
 }
