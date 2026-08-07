@@ -809,3 +809,51 @@ test("skill root: /skill trust <name> and /skill add <src> --trust delegate to d
   __seedDesktopFeaturesForTest({});
   resetCommandRegistry();
 });
+
+test("skill manager: thread-agnostic — no active thread → wire without thread_id", async () => {
+  __seedDesktopFeaturesForTest({ slash_skill_v2: true });
+  resetCommandRegistry();
+  const reg = getCommandRegistry();
+  registerCoreCommands(reg);
+  const events = [];
+  const prevWindow = globalThis.window;
+  globalThis.window = makeWireWindow(events);
+  try {
+    // 旧 Skills Manager 语义：管理命令不依赖活动会话
+    const ctx = {
+      store: {
+        getActiveThreadId: () => null,
+        getState: () => ({ bridgeActive: true }),
+      },
+    };
+    for (const [id, args] of [
+      ["skill.trust", { name: "cp2k" }],
+      ["skill.revoke", { name: "cp2k" }],
+      ["skill.update", { name: "cp2k" }],
+    ]) {
+      assert.equal(reg.isAvailable(id, ctx), true, `${id} 无线程也可用`);
+      const res = await reg.execute(id, ctx, args);
+      assert.equal(res.ok, true);
+      const wire = events.find((e) => e.type === "wire")?.cmd;
+      assert.equal(wire.thread_id, undefined, `${id} 无线程时不带 thread_id`);
+      events.length = 0;
+    }
+    // add 同理
+    assert.equal(reg.isAvailable("skill.add", ctx), true);
+    const add = await reg.execute("skill.add", ctx, { source: "https://x" });
+    assert.equal(add.ok, true);
+    assert.equal(events.find((e) => e.type === "wire")?.cmd.thread_id, undefined);
+    events.length = 0;
+    // reload 同理：与旧面板刷新按钮一致，无线程也触发
+    assert.equal(reg.isAvailable("skills.reload", ctx), true);
+    const reload = await reg.execute("skills.reload", ctx, {});
+    assert.equal(reload.ok, true);
+    assert.deepEqual(events.find((e) => e.type === "wire")?.cmd, {
+      cmd: "skills/reload",
+    });
+  } finally {
+    globalThis.window = prevWindow;
+  }
+  __seedDesktopFeaturesForTest({});
+  resetCommandRegistry();
+});

@@ -509,8 +509,9 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       },
     }),
     // ── /skill 管理命令（P3 阶段 2，deterministic 后端接口）──────────
-    // 全部门控 slash_skill_v2 + 活动会话 + sendWireCommand；wire 命令在
-    // main 侧属 ALLOWED_WIRE_COMMANDS（模型不可触发，仅用户显式操作）。
+    // 全部门控 slash_skill_v2 + sendWireCommand；wire 命令在 main 侧属
+    // ALLOWED_WIRE_COMMANDS（模型不可触发，仅用户显式操作）。
+    // 与旧 Skills Manager 同语义：管理命令不依赖活动会话（特征对等）。
     deterministic({
       id: "skill.add",
       title: "安装 Skill",
@@ -518,13 +519,13 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       category: "skills",
       slash: ["skill-add"],
       usage: "/skill add <source> [--trust]",
-      available: (ctx) =>
+      available: () =>
         currentFeature("slash_skill_v2") &&
-        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+        Boolean(window.desktop?.sendWireCommand),
       execute: (ctx, args) => {
-        const id = activeThreadId(ctx);
+        const id = activeThreadId(ctx) ?? undefined;
         const source = String(args.source ?? "").trim();
-        if (!id || !source) {
+        if (!source) {
           return {
             ok: false,
             error: "需要 source（/skill add <git-url|本地目录> [--trust]）",
@@ -533,7 +534,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         const trust = Boolean(args.trust);
         void window.desktop.sendWireCommand({
           cmd: "skills/install",
-          thread_id: id,
+          ...(id ? { thread_id: id } : {}),
           source,
           trust,
         });
@@ -550,18 +551,19 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       category: "skills",
       slash: ["skill-trust"],
       usage: "/skill trust <name>",
-      available: (ctx) =>
+      // 与旧 Skills Manager 同语义：管理命令不依赖活动会话（特征对等）
+      available: () =>
         currentFeature("slash_skill_v2") &&
-        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+        Boolean(window.desktop?.sendWireCommand),
       execute: (ctx, args) => {
-        const id = activeThreadId(ctx);
+        const id = activeThreadId(ctx) ?? undefined;
         const name = String(args.name ?? "").trim().toLowerCase();
-        if (!id || !name) {
+        if (!name) {
           return { ok: false, error: "需要 skill 名称（/skill trust <name>）" };
         }
         void window.desktop.sendWireCommand({
           cmd: "skills/trust",
-          thread_id: id,
+          ...(id ? { thread_id: id } : {}),
           name,
           granted: true,
         });
@@ -575,18 +577,18 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       category: "skills",
       slash: ["skill-revoke"],
       usage: "/skill revoke <name>",
-      available: (ctx) =>
+      available: () =>
         currentFeature("slash_skill_v2") &&
-        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+        Boolean(window.desktop?.sendWireCommand),
       execute: (ctx, args) => {
-        const id = activeThreadId(ctx);
+        const id = activeThreadId(ctx) ?? undefined;
         const name = String(args.name ?? "").trim().toLowerCase();
-        if (!id || !name) {
+        if (!name) {
           return { ok: false, error: "需要 skill 名称（/skill revoke <name>）" };
         }
         void window.desktop.sendWireCommand({
           cmd: "skills/trust",
-          thread_id: id,
+          ...(id ? { thread_id: id } : {}),
           name,
           granted: false,
         });
@@ -600,18 +602,18 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       category: "skills",
       slash: ["skill-update"],
       usage: "/skill update <name>",
-      available: (ctx) =>
+      available: () =>
         currentFeature("slash_skill_v2") &&
-        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+        Boolean(window.desktop?.sendWireCommand),
       execute: (ctx, args) => {
-        const id = activeThreadId(ctx);
+        const id = activeThreadId(ctx) ?? undefined;
         const name = String(args.name ?? "").trim().toLowerCase();
-        if (!id || !name) {
+        if (!name) {
           return { ok: false, error: "需要 skill 名称（/skill update <name>）" };
         }
         void window.desktop.sendWireCommand({
           cmd: "skills/update",
-          thread_id: id,
+          ...(id ? { thread_id: id } : {}),
           name,
         });
         return { ok: true, message: `已触发更新: ${name}` };
@@ -624,13 +626,13 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       category: "skills",
       slash: ["skill-remove"],
       usage: "/skill remove <name>",
-      available: (ctx) =>
+      available: () =>
         currentFeature("slash_skill_v2") &&
-        Boolean(activeThreadId(ctx) && window.desktop?.sendWireCommand),
+        Boolean(window.desktop?.sendWireCommand),
       execute: async (ctx, args) => {
-        const id = activeThreadId(ctx);
+        const id = activeThreadId(ctx) ?? undefined;
         const name = String(args.name ?? "").trim().toLowerCase();
-        if (!id || !name) {
+        if (!name) {
           return { ok: false, error: "需要 skill 名称（/skill remove <name>）" };
         }
         const ok = await requestConfirm({
@@ -642,7 +644,7 @@ export function registerCoreCommands(registry: CommandRegistry): void {
         if (!ok) return { ok: false, error: "已取消" };
         void window.desktop.sendWireCommand({
           cmd: "skills/remove",
-          thread_id: id,
+          ...(id ? { thread_id: id } : {}),
           name,
         });
         return { ok: true, message: `已触发卸载: ${name}` };
@@ -743,14 +745,11 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       description: "触发 Catalog 重新加载",
       category: "skills",
       slash: ["reload-skills"],
-      available: (ctx) => {
-        const id = activeThreadId(ctx);
-        return Boolean(id && window.desktop?.sendWireCommand);
-      },
-      execute: (ctx) => {
-        const id = activeThreadId(ctx);
-        if (!id) return { ok: false, error: "没有活动会话" };
-        void window.desktop.sendWireCommand({ cmd: "skills/reload", thread_id: id });
+      // Skills Manager 与活动会话解耦（旧面板刷新按钮也无线程）——特征对等
+      available: () =>
+        Boolean(window.desktop?.sendWireCommand),
+      execute: () => {
+        void window.desktop.sendWireCommand({ cmd: "skills/reload" });
         return { ok: true, message: "Skills 目录重新发现已触发" };
       },
     }),
