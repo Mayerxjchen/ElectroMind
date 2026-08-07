@@ -31,13 +31,13 @@ test("parseFeatures: defaults when missing / non-object", () => {
 });
 
 test("parseFeatures: defaults match current stable desktop behavior", () => {
-  // 全部新功能默认关闭；旧 Skills 面板默认开启。
+  // 全部新功能默认关闭；旧 Skills 面板 P4 起默认关闭（/skill v2 替代）。
   assert.deepEqual(features.DEFAULT_FEATURES, {
     shell_v2: false,
     compact_composer: false,
     slash_skill_v2: false,
     auto_model_v2: false,
-    legacy_skills_panel: true,
+    legacy_skills_panel: false,
   });
 });
 
@@ -45,7 +45,7 @@ test("parseFeatures: partial override keeps defaults for the rest", () => {
   const out = features.parseFeatures({ compact_composer: true });
   assert.equal(out.compact_composer, true);
   assert.equal(out.shell_v2, false);
-  assert.equal(out.legacy_skills_panel, true);
+  assert.equal(out.legacy_skills_panel, false);
 });
 
 test("parseFeatures: non-boolean values fail closed to defaults", () => {
@@ -83,9 +83,9 @@ test("parseFeatures: unknown keys ignored, result has exactly 5 keys", () => {
 });
 
 test("parseFeatures: return object is a fresh copy (no shared mutation)", () => {
-  const a = features.parseFeatures({ legacy_skills_panel: false });
+  const a = features.parseFeatures({ legacy_skills_panel: true });
   const b = features.parseFeatures({});
-  assert.equal(a.legacy_skills_panel, false);
-  assert.equal(b.legacy_skills_panel, true);
+  assert.equal(a.legacy_skills_panel, true);
+  assert.equal(b.legacy_skills_panel, false);
   assert.notEqual(a, b);
 });

@@ -47,15 +47,32 @@ test("skill is a supported event entry (skills-open contract)", () => {
 });
 
 test("P6: attachmentEntriesForFlags hides skill under compact composer", () => {
-  const compact = m.attachmentEntriesForFlags({ compactComposer: true });
+  // compact_composer=true 且 legacy 面板仍开 → 隐藏 Skill 按钮
+  const compact = m.attachmentEntriesForFlags({
+    compactComposer: true,
+    legacySkillsPanel: true,
+  });
   assert.ok(!compact.some((e) => e.id === "skill"), "compact 隐藏 Skill 按钮");
   assert.ok(compact.some((e) => e.id === "file"), "文件入口保留");
   assert.ok(compact.some((e) => e.id === "image"), "图片入口保留");
   assert.ok(compact.some((e) => e.id === "folder"), "文件夹入口保留");
 
-  const normal = m.attachmentEntriesForFlags({ compactComposer: false });
-  assert.ok(normal.some((e) => e.id === "skill"), "非 compact 保留 Skill 按钮");
+  const normal = m.attachmentEntriesForFlags({
+    compactComposer: false,
+    legacySkillsPanel: true,
+  });
+  assert.ok(normal.some((e) => e.id === "skill"), "非 compact 且 legacy 开 → 保留 Skill 按钮");
   assert.equal(normal.length, m.ATTACHMENT_ENTRIES.length);
+});
+
+test("P4: legacy_skills_panel=false hides skill entry regardless of compact", () => {
+  // 默认 flag（legacy_skills_panel=false）→ Skill 入口隐藏（fail-closed）
+  const closed = m.attachmentEntriesForFlags({
+    compactComposer: false,
+    legacySkillsPanel: false,
+  });
+  assert.ok(!closed.some((e) => e.id === "skill"), "legacy 关 → 隐藏 Skill 按钮");
+  assert.equal(closed.length, m.ATTACHMENT_ENTRIES.length - 1);
 });
 
 test("attachmentRef inserts a visible reference, never empty text", () => {

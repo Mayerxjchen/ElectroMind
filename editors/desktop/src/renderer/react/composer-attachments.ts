@@ -56,13 +56,15 @@ export function attachmentEntries(): readonly AttachmentEntry[] {
   return ATTACHMENT_ENTRIES;
 }
 
-/** P6: 按 compact_composer 过滤附件条目（纯函数，便于 node --test）。
- *  compact_composer=true → 隐藏 Skill 入口：/skill v2 + Skill Picker
- *  已替代旧 Skills 面板按钮（P6 "移除 Skills 按钮"）。 */
+/** P4/P6: 按 Feature Flag 过滤附件条目（纯函数，便于 node --test）。
+ *  Skill 入口打开旧 Skills 面板 —— 两种情况下隐藏：
+ *   - compact_composer=true  /skill v2 + Picker 已替代旧面板按钮（P6）；
+ *   - legacy_skills_panel=false  旧面板默认关闭（P4，fail-closed）。 */
 export function attachmentEntriesForFlags(flags: {
   compactComposer: boolean;
+  legacySkillsPanel: boolean;
 }): readonly AttachmentEntry[] {
-  if (flags.compactComposer) {
+  if (flags.compactComposer || !flags.legacySkillsPanel) {
     return ATTACHMENT_ENTRIES.filter((e) => e.id !== "skill");
   }
   return ATTACHMENT_ENTRIES;

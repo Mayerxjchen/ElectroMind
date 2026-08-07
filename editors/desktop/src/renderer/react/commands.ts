@@ -415,8 +415,12 @@ export function registerCoreCommands(registry: CommandRegistry): void {
       description: "查看 / 安装 / 信任 Skills",
       category: "skills",
       slash: ["skills"],
-      available: () => true,
+      // P4: 旧面板默认关闭（fail-closed）—— flag 开才可打开；/skill 是主路径
+      available: () => currentFeature("legacy_skills_panel"),
       execute: () => {
+        if (!currentFeature("legacy_skills_panel")) {
+          return { ok: false, error: "legacy_skills_panel 未启用" };
+        }
         commandServices.skills.openPanel();
         return { ok: true };
       },

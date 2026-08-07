@@ -9,7 +9,7 @@
  *   - compact_composer   精简 Composer（移除模式/模型/权限下拉等）
  *   - slash_skill_v2     /skill 根命令 + Picker（替代旧 Skills 面板）
  *   - auto_model_v2      Auto Model 快照 / 溯源 / /model 扩展
- *   - legacy_skills_panel 旧 Skills 面板（默认 true；slash_skill_v2 验收后关闭）
+ *   - legacy_skills_panel 旧 Skills 面板（P4: 默认关闭；slash_skill_v2 验收后删除）
  *
  * fail-closed 规则：features 缺失、非对象、字段非 boolean → 一律回落默认值，
  * 绝不把未知 flag 解释为"开启"。默认值 = 当前稳定桌面行为。
@@ -29,7 +29,8 @@ export const DEFAULT_FEATURES: DesktopFeatures = {
   compact_composer: false,
   slash_skill_v2: false,
   auto_model_v2: false,
-  legacy_skills_panel: true,
+  // P4: 旧 Skills 面板默认关闭（/skill v2 替代）；显式开 flag 可回退
+  legacy_skills_panel: false,
 };
 
 /** 把 desktop.json 里的 `features` 原样解析为强类型 DesktopFeatures。

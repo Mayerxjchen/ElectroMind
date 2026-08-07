@@ -457,6 +457,7 @@ export const Composer: React.FC<Props> = ({
             <div className="composer-attach-menu" role="menu" data-attach-menu>
               {attachmentEntriesForFlags({
                 compactComposer: currentFeature("compact_composer"),
+                legacySkillsPanel: currentFeature("legacy_skills_panel"),
               }).map((entry) =>
                 entry.supported ? (
                   <button
