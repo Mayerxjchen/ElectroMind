@@ -159,3 +159,36 @@ async def test_activate_skill_for_run_success_injects_and_broadcasts(
     assert params["digest"] == "abc123"
     # payload 已前置注入系统提示
     assert runner.agent.system.startswith("{") and runner.agent.system.endswith("sys")
+
+
+def test_emit_skills_catalog_reloads_fresh_not_cached(monkeypatch):
+    """``skills/list`` 用 reload()（重扫）而非 list()（缓存）。
+
+    list() 首次加载后返回缓存，install/update/remove/trust 等变更后再
+    吐的目录仍是旧的（面板残留已删 Skill）。reload() 做指纹检测，
+    磁盘变化时重新扫描。这里用 stub 证明 emit 的是 reload() 的产物。
+    """
+    lines = _capture(monkeypatch)
+
+    class _StubService:
+        def list(self):
+            # 缓存视图：仍含 cp2k（旧目录）
+            return _fake_catalog()
+
+        def reload(self):
+            # 重扫视图：cp2k 已被移除
+            return SimpleNamespace(
+                generation=2,
+                catalog_digest="digest-2",
+                cwd="",
+                repo_root="",
+                source_fingerprints={},
+                resolution={},
+                candidates=[],
+            )
+
+    monkeypatch.setattr(wire, "_skills_service", lambda: _StubService())
+    wire._emit_skills_catalog({"thread_id": ""})
+    payload = json.loads(lines[-1])
+    assert payload["method"] == "skills/list"
+    assert payload["params"]["skills"] == []

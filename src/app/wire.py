@@ -1030,9 +1030,14 @@ def _skills_catalog_payload(catalog, *, thread_id: str = "") -> dict:
 
 
 def _emit_skills_catalog(command: dict) -> None:
-    """``skills/list`` — the full candidate catalog (picker view)."""
+    """``skills/list`` — the full candidate catalog (picker view).
+
+    用 reload() 而非 list()：list() 首次加载后返回缓存，install/update/
+    remove/trust 等变更后仍会吐旧目录（面板残留已删 Skill）。reload()
+    做指纹检测，磁盘变化时重新扫描（内容不变则零成本返回当前目录）。
+    """
     service = _skills_service()
-    catalog = service.list()
+    catalog = service.reload()
     thread_id = str(command.get("thread_id", ""))
     _emit_jsonrpc(
         "skills/list",
@@ -1070,11 +1075,7 @@ def _emit_skills_get(command: dict) -> None:
 def _emit_skills_reload(command: dict) -> None:
     """``skills/reload`` — re-discover; bump generation on content change."""
     service = _skills_service()
-    log(
-        f"[dbg-reload] pre gen={service.list().generation} fp={ {k: v[:8] for k, v in getattr(service, '_source_fingerprints', {}).items()} }"
-    )
     catalog = service.reload()
-    log(f"[dbg-reload] post gen={catalog.generation}")
     thread_id = str(command.get("thread_id", ""))
     _emit_jsonrpc(
         "skills/reload",
